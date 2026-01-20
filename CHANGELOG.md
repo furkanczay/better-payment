@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [2.3.0](https://github.com/furkanczay/better-payment/compare/v2.2.0...v2.3.0) (2026-01-20)
+
+
+### ✨ Features
+
+* **parampos:** add ParamPOS payment provider integration ([5ed11b9](https://github.com/furkanczay/better-payment/commit/5ed11b92b783ade3a39c02f9b4402969c2076ee9))
+
 ## [2.2.0](https://github.com/furkanczay/better-payment/compare/v2.1.0...v2.2.0) (2025-12-07)
 
 
