@@ -7,6 +7,7 @@ export enum ProviderType {
   IYZICO = 'iyzico',
   PAYTR = 'paytr',
   AKBANK = 'akbank',
+  PARAMPOS = 'parampos',
 }
 
 /**
@@ -43,6 +44,20 @@ export interface AkbankProviderConfig {
 }
 
 /**
+ * Parampos provider config (ek alanlar gerekiyor)
+ */
+export interface ParamposProviderConfig {
+  enabled: boolean;
+  config: PaymentProviderConfig & {
+    clientCode: string;
+    clientUsername: string;
+    clientPassword: string;
+    guid: string;
+    testMode?: boolean;
+  };
+}
+
+/**
  * Her provider için config (generic type)
  */
 export interface ProviderConfig {
@@ -56,6 +71,13 @@ export interface ProviderConfig {
         storeKey: string;
         secure3DStoreKey?: string;
         testMode?: boolean;
+      })
+    | (PaymentProviderConfig & {
+        clientCode: string;
+        clientUsername: string;
+        clientPassword: string;
+        guid: string;
+        testMode?: boolean;
       });
 }
 
@@ -67,6 +89,7 @@ export interface BetterPayConfig {
     [ProviderType.IYZICO]?: IyzicoProviderConfig;
     [ProviderType.PAYTR]?: PayTRProviderConfig;
     [ProviderType.AKBANK]?: AkbankProviderConfig;
+    [ProviderType.PARAMPOS]?: ParamposProviderConfig;
   };
   defaultProvider?: ProviderType;
 }
@@ -78,4 +101,5 @@ export interface ProviderInstances {
   [ProviderType.IYZICO]?: any;
   [ProviderType.PAYTR]?: any;
   [ProviderType.AKBANK]?: any;
+  [ProviderType.PARAMPOS]?: any;
 }

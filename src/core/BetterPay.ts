@@ -3,6 +3,7 @@ import { BetterPayConfig, ProviderType, ProviderInstances } from './BetterPayCon
 import { Iyzico } from '../providers/iyzico';
 import { PayTR } from '../providers/paytr';
 import { Akbank } from '../providers/akbank';
+import { Parampos } from '../providers/parampos';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -120,6 +121,13 @@ export class BetterPay {
       this.providers[ProviderType.AKBANK] = new Akbank(akbankConfig as any);
     }
 
+    // Parampos provider'ı başlat
+    if (this.config.providers[ProviderType.PARAMPOS]?.enabled) {
+      const paramposConfig = this.config.providers[ProviderType.PARAMPOS].config;
+      this.validateParamposConfig(paramposConfig);
+      this.providers[ProviderType.PARAMPOS] = new Parampos(paramposConfig as any);
+    }
+
     // Default provider kontrolü
     if (this.defaultProvider && !this.providers[this.defaultProvider]) {
       throw new Error(`Default provider '${this.defaultProvider}' is not enabled or configured`);
@@ -234,6 +242,50 @@ export class BetterPay {
           `  AKBANK_STORE_KEY=your-store-key\n` +
           `  AKBANK_SECURE3D_STORE_KEY=your-3d-store-key (optional, for 3DS payments)\n` +
           `  AKBANK_BASE_URL=https://www.akbank.com/api\n\n` +
+          `Or configure them directly in your BetterPay config.`
+      );
+    }
+  }
+
+  /**
+   * Parampos config validation
+   */
+  private validateParamposConfig(
+    config: PaymentProviderConfig & {
+      clientCode: string;
+      clientUsername: string;
+      clientPassword: string;
+      guid: string;
+    }
+  ): void {
+    const missingFields: string[] = [];
+
+    if (!config.clientCode) {
+      missingFields.push('clientCode (PARAMPOS_CLIENT_CODE)');
+    }
+    if (!config.clientUsername) {
+      missingFields.push('clientUsername (PARAMPOS_CLIENT_USERNAME)');
+    }
+    if (!config.clientPassword) {
+      missingFields.push('clientPassword (PARAMPOS_CLIENT_PASSWORD)');
+    }
+    if (!config.guid) {
+      missingFields.push('guid (PARAMPOS_GUID)');
+    }
+    if (!config.baseUrl) {
+      missingFields.push('baseUrl (PARAMPOS_BASE_URL)');
+    }
+
+    if (missingFields.length > 0) {
+      throw new Error(
+        `Parampos provider configuration is missing required fields:\n` +
+          `  - ${missingFields.join('\n  - ')}\n\n` +
+          `Please add these environment variables to your .env file:\n` +
+          `  PARAMPOS_CLIENT_CODE=your-client-code\n` +
+          `  PARAMPOS_CLIENT_USERNAME=your-username\n` +
+          `  PARAMPOS_CLIENT_PASSWORD=your-password\n` +
+          `  PARAMPOS_GUID=your-guid\n` +
+          `  PARAMPOS_BASE_URL=https://testposws.param.com.tr/turkpos.ws/service_turkpos_prod.asmx\n\n` +
           `Or configure them directly in your BetterPay config.`
       );
     }
@@ -433,5 +485,46 @@ export class BetterPay {
       );
     }
     return provider as Akbank;
+  }
+
+  /**
+   * Parampos provider'ına doğrudan erişim
+   *
+   * @example
+   * ```typescript
+   * const result = await betterPay.parampos.createPayment({ ... });
+   * const threeDSResult = await betterPay.parampos.initThreeDSPayment({ ... });
+   * ```
+   *
+   * @throws Error if Parampos provider is not enabled or configured
+   */
+  get parampos(): Parampos {
+    const provider = this.providers[ProviderType.PARAMPOS];
+    if (!provider) {
+      const enabledProviders = this.getEnabledProviders();
+      throw new Error(
+        `Parampos provider is not enabled or configured.\n` +
+          `Enabled providers: ${enabledProviders.length > 0 ? enabledProviders.join(', ') : 'none'}\n` +
+          `Please add Parampos configuration to your BetterPay config:\n` +
+          `{\n` +
+          `  providers: {\n` +
+          `    parampos: {\n` +
+          `      enabled: true,\n` +
+          `      config: {\n` +
+          `        clientCode: process.env.PARAMPOS_CLIENT_CODE,\n` +
+          `        clientUsername: process.env.PARAMPOS_CLIENT_USERNAME,\n` +
+          `        clientPassword: process.env.PARAMPOS_CLIENT_PASSWORD,\n` +
+          `        guid: process.env.PARAMPOS_GUID,\n` +
+          `        apiKey: process.env.PARAMPOS_GUID,\n` +
+          `        secretKey: process.env.PARAMPOS_CLIENT_PASSWORD,\n` +
+          `        baseUrl: 'https://testposws.param.com.tr/turkpos.ws/service_turkpos_prod.asmx',\n` +
+          `        testMode: true\n` +
+          `      }\n` +
+          `    }\n` +
+          `  }\n` +
+          `}`
+      );
+    }
+    return provider as Parampos;
   }
 }

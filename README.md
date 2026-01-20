@@ -19,7 +19,7 @@ Türkiye'deki tüm ödeme altyapılarını entegre edebilen unified payment gate
 
 - ✅ **İyzico** - Tam destek (V2 Authorization, Checkout Form, Subscription, Installment Inquiry)
 - ✅ **PayTR** - Tam destek
-- 🔜 **ParamPOS** - Planlanan
+- ✅ **Parampos** - Tam destek (SOAP API, 3D Secure, Taksit, İade/İptal)
 
 ## Kurulum
 
@@ -59,6 +59,19 @@ const paymentConfig = {
         merchantId: process.env.PAYTR_MERCHANT_ID!,
         merchantSalt: process.env.PAYTR_MERCHANT_SALT!,
         baseUrl: 'https://www.paytr.com',
+      },
+    },
+    parampos: {
+      enabled: false, // İsteğe bağlı - Kullanmak için true yapın
+      config: {
+        clientCode: process.env.PARAMPOS_CLIENT_CODE!,
+        clientUsername: process.env.PARAMPOS_CLIENT_USERNAME!,
+        clientPassword: process.env.PARAMPOS_CLIENT_PASSWORD!,
+        guid: process.env.PARAMPOS_GUID!,
+        apiKey: process.env.PARAMPOS_GUID!,
+        secretKey: process.env.PARAMPOS_CLIENT_PASSWORD!,
+        baseUrl: 'https://testposws.param.com.tr/turkpos.ws/service_turkpos_prod.asmx',
+        testMode: true,
       },
     },
   },
@@ -504,6 +517,209 @@ const refund2 = await betterPay.refund({ ... });
 const cancel2 = await betterPay.cancel({ ... });
 ```
 
+## Parampos Kullanımı
+
+Parampos, Türkiye'de 22 banka ve 9 kart markası ile çalışan SOAP tabanlı bir ödeme altyapısıdır.
+
+### Parampos Konfigürasyonu
+
+```typescript
+import { BetterPay, ProviderType } from 'better-payment';
+
+const betterPay = new BetterPay({
+  providers: {
+    parampos: {
+      enabled: true,
+      config: {
+        clientCode: process.env.PARAMPOS_CLIENT_CODE!,
+        clientUsername: process.env.PARAMPOS_CLIENT_USERNAME!,
+        clientPassword: process.env.PARAMPOS_CLIENT_PASSWORD!,
+        guid: process.env.PARAMPOS_GUID!,
+        apiKey: process.env.PARAMPOS_GUID!,
+        secretKey: process.env.PARAMPOS_CLIENT_PASSWORD!,
+        baseUrl: 'https://testposws.param.com.tr/turkpos.ws/service_turkpos_prod.asmx',
+        testMode: true,
+      },
+    },
+  },
+  defaultProvider: ProviderType.PARAMPOS,
+});
+```
+
+**Önemli Not:** Parampos kullanmadan önce sunucunuzun statik IP adresini integration@param.com.tr adresine göndererek beyaz listeye eklettirmeniz gerekmektedir.
+
+### Parampos ile Direkt Ödeme
+
+```typescript
+const result = await betterPay.parampos.createPayment({
+  price: '100.00',
+  paidPrice: '100.00',
+  currency: Currency.TRY,
+  basketId: 'BASKET123',
+  paymentCard: {
+    cardHolderName: 'John Doe',
+    cardNumber: '5528790000000008',
+    expireMonth: '12',
+    expireYear: '2030',
+    cvc: '123',
+  },
+  buyer: {
+    id: 'BUYER123',
+    name: 'John',
+    surname: 'Doe',
+    email: 'email@email.com',
+    identityNumber: '12345678901',
+    registrationAddress: 'Address',
+    city: 'Istanbul',
+    country: 'Turkey',
+    ip: '85.34.78.112',
+    gsmNumber: '+905301234567',
+  },
+  shippingAddress: {
+    contactName: 'John Doe',
+    city: 'Istanbul',
+    country: 'Turkey',
+    address: 'Address',
+  },
+  billingAddress: {
+    contactName: 'John Doe',
+    city: 'Istanbul',
+    country: 'Turkey',
+    address: 'Address',
+  },
+  basketItems: [
+    {
+      id: 'ITEM1',
+      name: 'Product',
+      category1: 'Electronics',
+      itemType: BasketItemType.PHYSICAL,
+      price: '100.00',
+    },
+  ],
+});
+
+if (result.status === 'success') {
+  console.log('Ödeme başarılı:', result.paymentId);
+}
+```
+
+### Parampos ile 3D Secure Ödeme
+
+```typescript
+// 1. 3D Secure işlemini başlat
+const threeDSResult = await betterPay.parampos.initThreeDSPayment({
+  // Yukarıdaki parametreler + aşağıdakiler
+  callbackUrl: 'https://your-domain.com/payment/callback',
+  installment: 1, // Taksit sayısı (1 = tek çekim)
+  price: '100.00',
+  paidPrice: '100.00',
+  currency: Currency.TRY,
+  // ... diğer parametreler
+});
+
+if (threeDSResult.status === 'pending' && threeDSResult.threeDSHtmlContent) {
+  // Base64 HTML içeriğini decode et ve kullanıcıya göster
+  const htmlContent = Buffer.from(
+    threeDSResult.threeDSHtmlContent,
+    'base64'
+  ).toString('utf-8');
+
+  // HTML içeriğini sayfada göster (banka 3DS sayfasına yönlendirir)
+  document.getElementById('payment-form').innerHTML = htmlContent;
+}
+
+// 2. Banka callback'inden sonra ödemeyi tamamla
+// Callback handler'ınızda:
+const completeResult = await betterPay.parampos.completeThreeDSPayment({
+  islemGUID: callbackData.islemGUID,
+  md: callbackData.md,
+  mdStatus: callbackData.mdStatus,
+  orderId: callbackData.orderId,
+  GUID: callbackData.GUID,
+  hash: callbackData.hash,
+});
+
+if (completeResult.status === 'success') {
+  console.log('3D Secure ödeme başarılı:', completeResult.paymentId);
+}
+```
+
+### Parampos ile Taksitli Ödeme
+
+```typescript
+const installmentResult = await betterPay.parampos.initThreeDSPayment({
+  price: '1000.00',
+  paidPrice: '1060.00', // Taksit komisyonu dahil toplam tutar
+  currency: Currency.TRY,
+  basketId: 'BASKET123',
+  callbackUrl: 'https://your-domain.com/callback',
+  installment: 6, // 6 taksit
+  // ... diğer parametreler
+});
+
+// Taksit komisyon hesaplama (otomatik)
+// 2 taksit: %2, 3 taksit: %3, ... 12 taksit: %12
+```
+
+### Parampos İşlemleri
+
+```typescript
+// İade
+const refund = await betterPay.parampos.refund({
+  paymentId: 'payment-guid',
+  price: '50.00', // Kısmi iade
+  currency: Currency.TRY,
+  ip: '85.34.78.112',
+});
+
+// İptal (Void)
+const cancel = await betterPay.parampos.cancel({
+  paymentId: 'payment-guid',
+  ip: '85.34.78.112',
+});
+
+// Ödeme Sorgulama
+const payment = await betterPay.parampos.getPayment('payment-guid');
+
+// BIN Sorgulama (Kart Bilgisi)
+const binInfo = await betterPay.parampos.binCheck('552879');
+if (binInfo.cardType) {
+  console.log('Kart Tipi:', binInfo.cardType); // CREDIT, DEBIT
+  console.log('Banka:', binInfo.bankName);
+  console.log('Kart Ailesi:', binInfo.cardFamily); // VISA, MASTERCARD
+  console.log('Ticari Kart:', binInfo.commercial);
+}
+```
+
+### Parampos API Özellikleri
+
+**Hash Algoritmaları:**
+- Ödeme İstekleri: SHA256 → Base64
+- 3DS Callback Doğrulama: SHA1 → Base64
+
+**Desteklenen İşlemler:**
+- ✅ Direkt ödeme (3D Secure olmadan)
+- ✅ 3D Secure ödeme (başlatma ve tamamlama)
+- ✅ Taksitli ödemeler (otomatik komisyon hesaplama)
+- ✅ İade işlemi (tam/kısmi)
+- ✅ İptal işlemi (void)
+- ✅ Ödeme sorgulama
+- ✅ BIN sorgulama (kart bilgisi)
+
+**Para Birimleri:**
+- TRY (Türk Lirası)
+- USD (Amerikan Doları)
+- EUR (Euro)
+- GBP (İngiliz Sterlini)
+
+**Test Ortamı:**
+- Test URL: `https://testposws.param.com.tr/turkpos.ws/service_turkpos_prod.asmx`
+- IP Kaydı: integration@param.com.tr
+
+**Production Ortamı:**
+- Production URL: ParamPOS panelinden alınır
+- IP Kaydı: ParamPOS > Entegrasyon Bilgilerim panelinden yapılır
+
 ## TypeScript Desteği
 
 Better Pay, tam TypeScript desteği sunar:
@@ -604,6 +820,7 @@ Tüm provider'lar aşağıdaki metodları uygular:
 - `refund(request)` - İade işlemi
 - `cancel(request)` - İptal işlemi
 - `getPayment(paymentId)` - Ödeme sorgulama
+- `binCheck(binNumber)` - BIN sorgulama (provider desteğine bağlı)
 
 ### İyzico Özel Metodlar
 
@@ -857,10 +1074,15 @@ MIT
   - [x] 3D Secure Ödeme
   - [x] TypeScript Desteği
   - [ ] BIN Check
-- [ ] ParamPOS
-  - [ ] Non3D Ödeme
-  - [ ] 3D Secure Ödeme
-  - [ ] TypeScript Desteği
+- [x] Parampos
+  - [x] Non3D Ödeme
+  - [x] 3D Secure Ödeme
+  - [x] Taksitli Ödemeler
+  - [x] İade ve İptal
+  - [x] Ödeme Sorgulama
+  - [x] BIN Check
+  - [x] TypeScript Desteği
+  - [x] SOAP API Entegrasyonu
 
 ### Banka Sanal POS'ları
 

@@ -49,3 +49,4 @@ export {
 export { Iyzico } from './providers/iyzico';
 export { PayTR } from './providers/paytr';
 export { Akbank } from './providers/akbank';
+export { Parampos } from './providers/parampos';
