@@ -4,7 +4,8 @@
       "WebFetch(domain:www.npmjs.com)",
       "WebFetch(domain:github.com)",
       "Bash(npm install:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(npx shadcn@latest add badge separator scroll-area tooltip)"
     ]
   }
 }
