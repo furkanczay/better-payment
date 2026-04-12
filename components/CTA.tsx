@@ -5,33 +5,55 @@ import { cn } from "@/lib/utils";
 
 export default function CTA() {
   return (
-    <section className="py-28 px-4 sm:px-6 bg-muted/20">
-      <div className="max-w-3xl mx-auto">
-        <div className="relative rounded-3xl border border-primary/20 bg-card overflow-hidden p-10 sm:p-16 text-center">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/5 pointer-events-none" />
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+    <section className="py-32 px-5 sm:px-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="relative rounded-2xl overflow-hidden border border-border bg-card noise">
+          {/* Background gradient mesh */}
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute top-0 left-1/4 w-[400px] h-[300px] bg-primary/10 rounded-full blur-[80px]" />
+            <div className="absolute bottom-0 right-1/4 w-[300px] h-[200px] bg-primary/6 rounded-full blur-[60px]" />
+          </div>
+          {/* Top shimmer line */}
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
 
-          <div className="relative">
-            <h2 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight">
-              Ready to simplify payments?
-            </h2>
-            <p className="mt-4 text-muted-foreground text-lg max-w-md mx-auto">
-              Join developers who stopped duplicating payment logic across providers.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
+          <div className="relative px-8 sm:px-16 py-20 flex flex-col lg:flex-row items-center lg:items-end justify-between gap-10">
+            {/* Copy */}
+            <div className="text-center lg:text-left max-w-xl">
+              <p className="text-xs font-mono uppercase tracking-[0.2em] text-primary mb-4">
+                Get Started
+              </p>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground tracking-tight leading-tight">
+                Stop duplicating
+                <br />
+                payment logic.
+              </h2>
+              <p className="mt-4 text-muted-foreground text-base max-w-md mx-auto lg:mx-0">
+                One package, three providers, full TypeScript support. Install once and unify your
+                entire payment stack.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row lg:flex-col xl:flex-row gap-3 shrink-0">
               <Link
                 href="/docs"
-                className={cn(buttonVariants({ size: "lg" }), "gap-2 h-12 px-6")}
+                className={cn(
+                  buttonVariants({ size: "lg" }),
+                  "gap-2 h-11 px-7 text-sm font-semibold whitespace-nowrap",
+                )}
               >
-                Get Started <ArrowRight className="w-4 h-4" />
+                Read the Docs <ArrowRight className="w-3.5 h-3.5" />
               </Link>
               <a
                 href="https://github.com/furkanczay/better-payment"
                 target="_blank"
                 rel="noopener noreferrer"
-                className={cn(buttonVariants({ variant: "outline", size: "lg" }), "gap-2 h-12 px-6")}
+                className={cn(
+                  buttonVariants({ variant: "outline", size: "lg" }),
+                  "gap-2 h-11 px-7 text-sm font-medium whitespace-nowrap",
+                )}
               >
-                <ExternalLink className="w-4 h-4" /> View on GitHub
+                <ExternalLink className="w-3.5 h-3.5" /> View on GitHub
               </a>
             </div>
           </div>
