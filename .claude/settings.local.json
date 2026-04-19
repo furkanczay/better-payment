@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm D:/projects/better-payment/packages/better-payment/src/adapters/next-js.ts D:/projects/better-payment/packages/better-payment/src/adapters/node.ts)",
+      "Bash(rmdir D:/projects/better-payment/packages/better-payment/src/adapters)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm test *)",
+      "Bash(awk -F: '{print $1}')"
+    ]
+  }
+}

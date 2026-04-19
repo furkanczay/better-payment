@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { BetterPay } from '../../../src/core/BetterPay';
-import { ProviderType } from '../../../src/core/BetterPayConfig';
+import { BetterPayment } from '../../../src/core/BetterPayment';
+import { ProviderType } from '../../../src/core/BetterPaymentConfig';
 import { mockPaymentRequest } from '../../fixtures/payment-data';
 
 /**
@@ -10,17 +10,17 @@ import { mockPaymentRequest } from '../../fixtures/payment-data';
  * - Provider switching works correctly
  * - Each provider sends requests with correct format
  * - Provider-specific configurations are isolated
- * - BetterPay correctly routes to the right provider
+ * - BetterPayment correctly routes to the right provider
  */
 
-describe('BetterPay Multi-Provider Integration', () => {
-  let betterPay: BetterPay;
+describe('BetterPayment Multi-Provider Integration', () => {
+  let betterPay: BetterPayment;
   let capturedRequests: Array<{ provider: string; url: string; data: any }> = [];
 
   beforeEach(() => {
     capturedRequests = [];
 
-    betterPay = new BetterPay({
+    betterPay = new BetterPayment({
       providers: {
         iyzico: {
           enabled: true,
@@ -186,7 +186,7 @@ describe('BetterPay Multi-Provider Integration', () => {
     });
 
     it('should throw error when accessing disabled provider', () => {
-      const singleProvider = new BetterPay({
+      const singleProvider = new BetterPayment({
         providers: {
           iyzico: {
             enabled: true,

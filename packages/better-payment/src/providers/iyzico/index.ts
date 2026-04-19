@@ -19,6 +19,20 @@ import {
   PWIPaymentRetrieveResponse,
   InstallmentInfoRequest,
   InstallmentInfoResponse,
+  SubscriptionInitializeRequest,
+  SubscriptionInitializeResponse,
+  SubscriptionCancelRequest,
+  SubscriptionCancelResponse,
+  SubscriptionUpgradeRequest,
+  SubscriptionUpgradeResponse,
+  SubscriptionRetrieveRequest,
+  SubscriptionRetrieveResponse,
+  SubscriptionCardUpdateRequest,
+  SubscriptionCardUpdateResponse,
+  SubscriptionProductCreateRequest,
+  SubscriptionProductResponse,
+  PricingPlanCreateRequest,
+  PricingPlanResponse,
 } from '../../types';
 import { createIyzicoHeaders } from './utils';
 import {
@@ -484,12 +498,9 @@ export class Iyzico extends PaymentProvider {
    * ===================
    */
 
-  /**
-   * Abonelik başlat (NON3D)
-   */
   async initializeSubscription(
-    request: import('../../types').SubscriptionInitializeRequest
-  ): Promise<import('../../types').SubscriptionInitializeResponse> {
+    request: SubscriptionInitializeRequest
+  ): Promise<SubscriptionInitializeResponse> {
     try {
       const iyzicoRequest = {
         locale: request.locale || this.config.locale || 'tr',
@@ -540,12 +551,9 @@ export class Iyzico extends PaymentProvider {
     }
   }
 
-  /**
-   * Aboneliği iptal et
-   */
   async cancelSubscription(
-    request: import('../../types').SubscriptionCancelRequest
-  ): Promise<import('../../types').SubscriptionCancelResponse> {
+    request: SubscriptionCancelRequest
+  ): Promise<SubscriptionCancelResponse> {
     try {
       const response = await this.sendRequest<any>(
         `/v2/subscription/subscriptions/${request.subscriptionReferenceCode}/cancel`,
@@ -562,12 +570,9 @@ export class Iyzico extends PaymentProvider {
     }
   }
 
-  /**
-   * Aboneliği yükselt/güncelle
-   */
   async upgradeSubscription(
-    request: import('../../types').SubscriptionUpgradeRequest
-  ): Promise<import('../../types').SubscriptionUpgradeResponse> {
+    request: SubscriptionUpgradeRequest
+  ): Promise<SubscriptionUpgradeResponse> {
     try {
       const iyzicoRequest = {
         newPricingPlanReferenceCode: request.newPricingPlanReferenceCode,
@@ -590,12 +595,9 @@ export class Iyzico extends PaymentProvider {
     }
   }
 
-  /**
-   * Abonelik detaylarını getir
-   */
   async retrieveSubscription(
-    request: import('../../types').SubscriptionRetrieveRequest
-  ): Promise<import('../../types').SubscriptionRetrieveResponse> {
+    request: SubscriptionRetrieveRequest
+  ): Promise<SubscriptionRetrieveResponse> {
     try {
       const response = await this.sendRequest<any>(
         `/v2/subscription/subscriptions/${request.subscriptionReferenceCode}`,
@@ -612,12 +614,9 @@ export class Iyzico extends PaymentProvider {
     }
   }
 
-  /**
-   * Abonelik kartı güncelle (Checkout Form ile)
-   */
   async updateSubscriptionCard(
-    request: import('../../types').SubscriptionCardUpdateRequest
-  ): Promise<import('../../types').SubscriptionCardUpdateResponse> {
+    request: SubscriptionCardUpdateRequest
+  ): Promise<SubscriptionCardUpdateResponse> {
     try {
       const iyzicoRequest = {
         locale: request.locale || this.config.locale || 'tr',
@@ -641,12 +640,9 @@ export class Iyzico extends PaymentProvider {
     }
   }
 
-  /**
-   * Abonelik ürünü oluştur
-   */
   async createSubscriptionProduct(
-    request: import('../../types').SubscriptionProductCreateRequest
-  ): Promise<import('../../types').SubscriptionProductResponse> {
+    request: SubscriptionProductCreateRequest
+  ): Promise<SubscriptionProductResponse> {
     try {
       const iyzicoRequest = {
         locale: request.locale || this.config.locale || 'tr',
@@ -667,12 +663,9 @@ export class Iyzico extends PaymentProvider {
     }
   }
 
-  /**
-   * Fiyatlandırma planı oluştur
-   */
   async createPricingPlan(
-    request: import('../../types').PricingPlanCreateRequest
-  ): Promise<import('../../types').PricingPlanResponse> {
+    request: PricingPlanCreateRequest
+  ): Promise<PricingPlanResponse> {
     try {
       const iyzicoRequest = {
         locale: request.locale || this.config.locale || 'tr',

@@ -1,4 +1,8 @@
 import { PaymentProviderConfig } from './PaymentProvider';
+import type { Iyzico } from '../providers/iyzico';
+import type { PayTR } from '../providers/paytr';
+import type { Akbank } from '../providers/akbank';
+import type { Parampos } from '../providers/parampos';
 
 /**
  * Provider türleri
@@ -81,10 +85,7 @@ export interface ProviderConfig {
       });
 }
 
-/**
- * BetterPay ana konfigürasyonu
- */
-export interface BetterPayConfig {
+export interface BetterPaymentConfig {
   providers: {
     [ProviderType.IYZICO]?: IyzicoProviderConfig;
     [ProviderType.PAYTR]?: PayTRProviderConfig;
@@ -98,8 +99,8 @@ export interface BetterPayConfig {
  * Provider instance map
  */
 export interface ProviderInstances {
-  [ProviderType.IYZICO]?: any;
-  [ProviderType.PAYTR]?: any;
-  [ProviderType.AKBANK]?: any;
-  [ProviderType.PARAMPOS]?: any;
+  [ProviderType.IYZICO]?: Iyzico;
+  [ProviderType.PAYTR]?: PayTR;
+  [ProviderType.AKBANK]?: Akbank;
+  [ProviderType.PARAMPOS]?: Parampos;
 }

@@ -8,12 +8,12 @@ import {
   CancelRequest,
   CancelResponse,
 } from '../types';
-import { ProviderType } from '../core/BetterPayConfig';
+import { ProviderType } from '../core/BetterPaymentConfig';
 
 /**
  * Client configuration
  */
-export interface BetterPayClientConfig {
+export interface BetterPaymentClientConfig {
   /**
    * Base URL for API endpoints
    * @example '/api/pay'
@@ -39,7 +39,7 @@ export interface BetterPayClientConfig {
 class ProviderClient {
   constructor(
     private provider: ProviderType,
-    private config: BetterPayClientConfig
+    private config: BetterPaymentClientConfig
   ) {}
 
   /**
@@ -260,7 +260,7 @@ class ProviderClient {
  * document.getElementById('payment-iframe').innerHTML = threeds.threeDSHtmlContent;
  * ```
  */
-export class BetterPayClient {
+export class BetterPaymentClient {
   /**
    * İyzico provider client
    */
@@ -271,7 +271,7 @@ export class BetterPayClient {
    */
   readonly paytr: ProviderClient;
 
-  constructor(private config: BetterPayClientConfig) {
+  constructor(private config: BetterPaymentClientConfig) {
     this.iyzico = new ProviderClient(ProviderType.IYZICO, config);
     this.paytr = new ProviderClient(ProviderType.PAYTR, config);
   }
@@ -331,6 +331,6 @@ export class BetterPayClient {
  * });
  * ```
  */
-export function createBetterPayClient(config: BetterPayClientConfig): BetterPayClient {
-  return new BetterPayClient(config);
+export function createBetterPaymentClient(config: BetterPaymentClientConfig): BetterPaymentClient {
+  return new BetterPaymentClient(config);
 }

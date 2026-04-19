@@ -1,5 +1,5 @@
 import { PaymentProvider, PaymentProviderConfig } from './PaymentProvider';
-import { BetterPayConfig, ProviderType, ProviderInstances } from './BetterPayConfig';
+import { BetterPaymentConfig, ProviderType, ProviderInstances } from './BetterPaymentConfig';
 import { Iyzico } from '../providers/iyzico';
 import { PayTR } from '../providers/paytr';
 import { Akbank } from '../providers/akbank';
@@ -14,16 +14,16 @@ import {
   CancelRequest,
   CancelResponse,
 } from '../types';
-import { BetterPayHandler } from './BetterPayHandler';
+import { BetterPaymentHandler } from './BetterPaymentHandler';
 
 /**
- * BetterPay - Merkezi ödeme yönetim sınıfı
+ * BetterPayment - Merkezi ödeme yönetim sınıfı
  *
  * Config dosyası ile tüm payment provider'ları tek yerden yönetmenizi sağlar.
  *
  * @example
  * ```typescript
- * const betterPay = new BetterPay({
+ * const betterPay = new BetterPayment({
  *   providers: {
  *     iyzico: {
  *       enabled: true,
@@ -63,36 +63,23 @@ import { BetterPayHandler } from './BetterPayHandler';
  * const payment2 = await betterPay.paytr.initThreeDSPayment({ ... });
  * ```
  */
-export class BetterPay {
-  private config: BetterPayConfig;
+export class BetterPayment {
+  private config: BetterPaymentConfig;
   private providers: ProviderInstances = {};
   private defaultProvider?: ProviderType;
-  private _handler: BetterPayHandler;
+  private _handler: BetterPaymentHandler;
 
-  constructor(config: BetterPayConfig) {
+  constructor(config: BetterPaymentConfig) {
     this.config = config;
     this.defaultProvider = config.defaultProvider;
     this.initializeProviders();
-    this._handler = new BetterPayHandler(this);
+    this._handler = new BetterPaymentHandler(this);
   }
 
   /**
-   * HTTP handler for framework integrations
-   *
-   * Use this with framework adapters to create automatic API endpoints:
-   *
-   * @example
-   * ```typescript
-   * // Next.js App Router
-   * import { toNextJsHandler } from 'better-pay/next-js';
-   * export const { GET, POST } = toNextJsHandler(betterPay.handler);
-   *
-   * // Express
-   * import { toNodeHandler } from 'better-pay/node';
-   * app.all('/api/pay/*', toNodeHandler(betterPay));
-   * ```
+   * HTTP handler for creating API endpoints
    */
-  get handler(): BetterPayHandler {
+  get handler(): BetterPaymentHandler {
     return this._handler;
   }
 

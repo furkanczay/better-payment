@@ -1,21 +1,16 @@
-// Main export - Recommended way to use the library
-export { BetterPay } from './core/BetterPay';
+export { BetterPayment } from './core/BetterPayment';
 
-// Config exports
 export {
-  BetterPayConfig,
+  BetterPaymentConfig,
   ProviderType,
   ProviderConfig,
   ProviderInstances,
-} from './core/BetterPayConfig';
+} from './core/BetterPaymentConfig';
 
-// Core exports (for advanced usage)
 export { PaymentProvider, PaymentProviderConfig } from './core/PaymentProvider';
 
-// Handler exports (for framework integrations)
-export { BetterPayHandler, BetterPayRequest, BetterPayResponse } from './core/BetterPayHandler';
+export { BetterPaymentHandler, BetterPaymentRequest, BetterPaymentResponse } from './core/BetterPaymentHandler';
 
-// Type exports
 export {
   PaymentStatus,
   Currency,
@@ -45,7 +40,6 @@ export {
   InstallmentPrice,
 } from './types';
 
-// Provider exports (for advanced usage - direct provider access)
 export { Iyzico } from './providers/iyzico';
 export { PayTR } from './providers/paytr';
 export { Akbank } from './providers/akbank';

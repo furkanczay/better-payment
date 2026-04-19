@@ -11,16 +11,6 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     },
-    "./adapters/next-js": {
-      "types": "./dist/adapters/next-js.d.ts",
-      "import": "./dist/adapters/next-js.mjs",
-      "require": "./dist/adapters/next-js.js"
-    },
-    "./adapters/node": {
-      "types": "./dist/adapters/node.d.ts",
-      "import": "./dist/adapters/node.mjs",
-      "require": "./dist/adapters/node.js"
-    },
     "./client": {
       "types": "./dist/client/index.d.ts",
       "import": "./dist/client/index.mjs",
@@ -83,7 +73,6 @@
   "devDependencies": {
     "@commitlint/cli": "^18.4.3",
     "@commitlint/config-conventional": "^18.4.3",
-    "@types/express": "^5.0.3",
     "@types/node": "^20.19.22",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
@@ -91,7 +80,6 @@
     "eslint": "^8.54.0",
     "husky": "^8.0.3",
     "lint-staged": "^15.2.0",
-    "next": "15.5.4",
     "prettier": "^3.1.0",
     "standard-version": "^9.5.0",
     "tsup": "^8.0.1",

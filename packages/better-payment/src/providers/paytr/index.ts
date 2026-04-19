@@ -314,15 +314,21 @@ export class PayTR extends PaymentProvider {
     }
   }
 
-  /**
-   * İptal işlemi (PayTR'da iade ile aynı)
-   */
-  async cancel(request: CancelRequest): Promise<CancelResponse> {
+  async cancel(_request: CancelRequest): Promise<CancelResponse> {
+    // PayTR void endpoint yok. Tam iptal için refund() kullanılmalı.
+    return {
+      status: PaymentStatus.FAILURE,
+      errorMessage:
+        'PayTR cancel requires the full payment amount. Use refund() with the original price instead.',
+      rawResponse: { note: 'PayTR does not support void; issue a full refund via refund()' },
+    };
+  }
+
+  async _cancelWithAmount(request: CancelRequest & { price: string }): Promise<CancelResponse> {
     try {
-      // PayTR'da cancel ve refund aynı endpoint'i kullanır
       const refundResult = await this.refund({
         paymentId: request.paymentId,
-        price: '0', // Tam iade için sıfır gönderilir
+        price: request.price,
         currency: 'TRY',
         ip: request.ip,
         conversationId: request.conversationId,
