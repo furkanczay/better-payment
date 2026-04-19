@@ -6,15 +6,19 @@
     "build": "pnpm --filter better-payment build",
     "build:web": "pnpm --filter web build",
     "test": "pnpm --filter better-payment test",
-    "release:patch": "pnpm --filter better-payment release:patch",
-    "release:minor": "pnpm --filter better-payment release:minor",
-    "release:major": "pnpm --filter better-payment release:major",
-    "release:beta": "pnpm --filter better-payment release:beta"
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm build && changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "turbo": "^2.5.4"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "sharp", "unrs-resolver"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
   }
 }

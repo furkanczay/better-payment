@@ -33,12 +33,10 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build",
-    "release": "standard-version",
-    "release:minor": "standard-version --release-as minor",
-    "release:major": "standard-version --release-as major",
-    "release:patch": "standard-version --release-as patch",
-    "release:beta": "standard-version --prerelease beta"
+    "prepublishOnly": "pnpm build",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm build && changeset publish"
   },
   "keywords": [
     "payment",
@@ -81,7 +79,6 @@
     "husky": "^8.0.3",
     "lint-staged": "^15.2.0",
     "prettier": "^3.1.0",
-    "standard-version": "^9.5.0",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
     "vitest": "^4.0.1"
