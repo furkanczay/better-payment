@@ -1,0 +1,66 @@
+---
+title: Parampos
+description: Parampos (Param) payment integration reference.
+---
+
+Parampos uses SOAP/XML protocol with WS-Security authentication.
+
+## Configuration
+
+```typescript
+parampos: {
+  enabled: true,
+  config: {
+    clientCode: process.env.PARAMPOS_CLIENT_CODE!,
+    clientUsername: process.env.PARAMPOS_CLIENT_USERNAME!,
+    clientPassword: process.env.PARAMPOS_CLIENT_PASSWORD!,
+    baseUrl: 'https://test-dmz.param.com.tr', // or production URL
+  },
+}
+```
+
+## Direct Payment (2D)
+
+```typescript
+const result = await payment.parampos.createPayment({
+  price: '100.00',
+  paidPrice: '100.00',
+  currency: Currency.TRY,
+  installment: 1,
+  paymentCard: { cardHolderName, cardNumber, expireMonth, expireYear, cvc },
+  buyer: { /* ... */ },
+  basketItems: [{ /* ... */ }],
+});
+```
+
+## 3D Secure
+
+```typescript
+// Initialize — returns HTML form to submit
+const init = await payment.parampos.initThreeDSPayment({
+  ...paymentRequest,
+  callbackUrl: 'https://yoursite.com/callback',
+});
+
+// Complete (in callback)
+const result = await payment.parampos.completeThreeDSPayment({
+  paymentId: body.paymentId,
+  md: body.MD,
+});
+```
+
+## Refund & Cancel
+
+```typescript
+await payment.parampos.refund({
+  paymentTransactionId: 'transaction-id',
+  price: '50.00',
+  currency: Currency.TRY,
+});
+
+await payment.parampos.cancel({ paymentId: 'payment-id' });
+```
+
+<Callout type="info">
+  Parampos does not support installment queries through this library. Contact Param directly for installment configuration.
+</Callout>

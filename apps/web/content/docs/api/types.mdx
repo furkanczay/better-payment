@@ -1,0 +1,167 @@
+---
+title: Type Reference
+description: TypeScript types exported from better-payment.
+---
+
+## Core Types
+
+### PaymentRequest
+
+```typescript
+interface PaymentRequest {
+  price: string;
+  paidPrice: string;
+  currency: Currency;
+  installment?: number;
+  paymentCard: PaymentCard;
+  buyer: Buyer;
+  shippingAddress: Address;
+  billingAddress: Address;
+  basketItems: BasketItem[];
+  conversationId?: string;
+}
+```
+
+### PaymentCard
+
+```typescript
+interface PaymentCard {
+  cardHolderName: string;
+  cardNumber: string;
+  expireMonth: string;
+  expireYear: string;
+  cvc: string;
+  registerCard?: number;
+}
+```
+
+### Buyer
+
+```typescript
+interface Buyer {
+  id: string;
+  name: string;
+  surname: string;
+  email: string;
+  identityNumber: string;
+  registrationAddress: string;
+  city: string;
+  country: string;
+  ip: string;
+  zipCode?: string;
+  mobilePhoneNumber?: string;
+}
+```
+
+### Address
+
+```typescript
+interface Address {
+  contactName: string;
+  city: string;
+  country: string;
+  address: string;
+  zipCode?: string;
+}
+```
+
+### BasketItem
+
+```typescript
+interface BasketItem {
+  id: string;
+  name: string;
+  category1: string;
+  category2?: string;
+  itemType: BasketItemType;
+  price: string;
+}
+```
+
+## Enums
+
+### Currency
+
+```typescript
+enum Currency {
+  TRY = 'TRY',
+  USD = 'USD',
+  EUR = 'EUR',
+  GBP = 'GBP',
+}
+```
+
+### BasketItemType
+
+```typescript
+enum BasketItemType {
+  PHYSICAL = 'PHYSICAL',
+  VIRTUAL = 'VIRTUAL',
+}
+```
+
+### PaymentStatus
+
+```typescript
+enum PaymentStatus {
+  SUCCESS = 'success',
+  FAILURE = 'failure',
+  PENDING = 'pending',
+}
+```
+
+### ProviderType
+
+```typescript
+enum ProviderType {
+  IYZICO = 'iyzico',
+  PAYTR = 'paytr',
+  AKBANK = 'akbank',
+  PARAMPOS = 'parampos',
+}
+```
+
+## Response Types
+
+### PaymentResponse
+
+```typescript
+interface PaymentResponse {
+  status: PaymentStatus;
+  paymentId?: string;
+  errorMessage?: string;
+  errorCode?: string;
+  conversationId?: string;
+  rawResponse?: unknown;
+}
+```
+
+### ThreeDSInitResponse
+
+```typescript
+interface ThreeDSInitResponse {
+  status: PaymentStatus;
+  htmlContent?: string;     // İyzico — embed in page
+  redirectUrl?: string;     // some providers
+  token?: string;           // PayTR — use in iframe URL
+  errorMessage?: string;
+  rawResponse?: unknown;
+}
+```
+
+### RefundResponse / CancelResponse
+
+```typescript
+interface RefundResponse {
+  status: PaymentStatus;
+  refundedAmount?: string;
+  errorMessage?: string;
+  rawResponse?: unknown;
+}
+
+interface CancelResponse {
+  status: PaymentStatus;
+  errorMessage?: string;
+  rawResponse?: unknown;
+}
+```

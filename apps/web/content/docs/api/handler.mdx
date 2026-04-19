@@ -1,0 +1,91 @@
+---
+title: BetterPaymentHandler
+description: Framework-agnostic HTTP handler for routing payment requests.
+---
+
+`BetterPaymentHandler` is a framework-agnostic HTTP handler that routes incoming requests to the correct provider method based on the URL path.
+
+## Route Format
+
+```
+POST /api/pay/:provider/:action
+GET  /api/pay/:provider/:action
+```
+
+| Segment | Values |
+|---------|--------|
+| `:provider` | `iyzico`, `paytr`, `akbank`, `parampos` |
+| `:action` | see table below |
+
+## Supported Routes
+
+### Common (all providers)
+
+| Method | Action | Provider method |
+|--------|--------|-----------------|
+| POST | `create` | `createPayment()` |
+| POST | `3ds/init` | `initThreeDSPayment()` |
+| POST | `3ds/complete` | `completeThreeDSPayment()` |
+| POST | `refund` | `refund()` |
+| POST | `cancel` | `cancel()` |
+| POST | `installment` | `getInstallmentInfo()` |
+
+### İyzico-specific
+
+| Method | Action | Provider method |
+|--------|--------|-----------------|
+| POST | `checkout/init` | `initCheckoutForm()` |
+| POST | `checkout/retrieve` | `retrieveCheckoutForm()` |
+| POST | `pwi/init` | `initPWIPayment()` |
+| POST | `pwi/retrieve` | `retrievePWIPayment()` |
+| POST | `bin-check` | `checkBIN()` |
+| POST | `subscription/initialize` | `initializeSubscription()` |
+| POST | `subscription/cancel` | `cancelSubscription()` |
+| POST | `subscription/upgrade` | `upgradeSubscription()` |
+| POST | `subscription/retrieve` | `retrieveSubscription()` |
+| POST | `subscription/card-update` | `updateSubscriptionCard()` |
+| POST | `subscription/product` | `createSubscriptionProduct()` |
+| POST | `subscription/pricing-plan` | `createSubscriptionPricingPlan()` |
+
+## Handler Interface
+
+```typescript
+import type { BetterPaymentRequest, BetterPaymentResponse } from 'better-payment';
+
+// Input
+interface BetterPaymentRequest {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body?: unknown;
+}
+
+// Output
+interface BetterPaymentResponse {
+  status: number;
+  headers?: Record<string, string>;
+  body: unknown;
+}
+
+// Usage
+const res = await payment.handler.handle(req);
+```
+
+## Accessing the Handler
+
+```typescript
+const payment = new BetterPayment({ /* ... */ });
+
+// The handler is on .handler
+const handler = payment.handler;
+
+// Process a request
+const response = await handler.handle({
+  method: 'POST',
+  url: 'https://yoursite.com/api/pay/iyzico/create',
+  headers: { 'content-type': 'application/json' },
+  body: { price: '100.00', /* ... */ },
+});
+// response.status === 200
+// response.body === { status: 'success', paymentId: '...' }
+```

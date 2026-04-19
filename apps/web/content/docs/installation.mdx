@@ -1,0 +1,85 @@
+---
+title: Installation
+description: Install better-payment and set up your environment.
+---
+
+## Requirements
+
+- Node.js `>= 20.0.0`
+- TypeScript `>= 5.0` (recommended)
+
+## Install
+
+<Tabs items={["npm", "pnpm", "yarn", "bun"]}>
+  <Tab value="npm">
+    ```bash
+    npm install better-payment
+    ```
+  </Tab>
+  <Tab value="pnpm">
+    ```bash
+    pnpm add better-payment
+    ```
+  </Tab>
+  <Tab value="yarn">
+    ```bash
+    yarn add better-payment
+    ```
+  </Tab>
+  <Tab value="bun">
+    ```bash
+    bun add better-payment
+    ```
+  </Tab>
+</Tabs>
+
+## Environment Variables
+
+Create a `.env.local` file (or `.env`) with your provider credentials:
+
+```bash
+# İyzico
+IYZICO_API_KEY=your-api-key
+IYZICO_SECRET_KEY=your-secret-key
+IYZICO_BASE_URL=https://sandbox-api.iyzipay.com
+
+# PayTR
+PAYTR_MERCHANT_ID=your-merchant-id
+PAYTR_MERCHANT_KEY=your-merchant-key
+PAYTR_MERCHANT_SALT=your-merchant-salt
+
+# Akbank
+AKBANK_CLIENT_ID=your-client-id
+AKBANK_CLIENT_SECRET=your-client-secret
+AKBANK_MERCHANT_SAFE_ID=your-merchant-safe-id
+
+# Parampos
+PARAMPOS_CLIENT_CODE=your-client-code
+PARAMPOS_CLIENT_USERNAME=your-username
+PARAMPOS_CLIENT_PASSWORD=your-password
+```
+
+<Callout type="warn">
+  Never commit API keys to version control. Use environment variables and ensure `.env` is in your `.gitignore`.
+</Callout>
+
+## Verify Installation
+
+```typescript
+import { BetterPayment } from 'better-payment';
+
+const payment = new BetterPayment({
+  providers: {
+    iyzico: {
+      enabled: true,
+      config: {
+        apiKey: 'test',
+        secretKey: 'test',
+        baseUrl: 'https://sandbox-api.iyzipay.com',
+      },
+    },
+  },
+});
+
+console.log(payment.getEnabledProviders()); // ['iyzico']
+```

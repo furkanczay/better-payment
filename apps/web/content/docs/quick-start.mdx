@@ -1,0 +1,131 @@
+---
+title: Quick Start
+description: Make your first payment in under 5 minutes.
+---
+
+## 1. Initialize BetterPayment
+
+```typescript
+import { BetterPayment, ProviderType } from 'better-payment';
+
+const payment = new BetterPayment({
+  defaultProvider: ProviderType.IYZICO,
+  providers: {
+    iyzico: {
+      enabled: true,
+      config: {
+        apiKey: process.env.IYZICO_API_KEY!,
+        secretKey: process.env.IYZICO_SECRET_KEY!,
+        baseUrl: process.env.IYZICO_BASE_URL ?? 'https://sandbox-api.iyzipay.com',
+      },
+    },
+  },
+});
+```
+
+## 2. Build a Payment Request
+
+```typescript
+import { Currency, BasketItemType } from 'better-payment';
+
+const request = {
+  price: '100.00',
+  paidPrice: '100.00',
+  currency: Currency.TRY,
+  installment: 1,
+  paymentCard: {
+    cardHolderName: 'John Doe',
+    cardNumber: '5528790000000008',
+    expireMonth: '12',
+    expireYear: '2030',
+    cvc: '123',
+  },
+  buyer: {
+    id: 'BY789',
+    name: 'John',
+    surname: 'Doe',
+    email: 'johndoe@example.com',
+    identityNumber: '74300864791',
+    registrationAddress: 'Nidakule Göztepe, Merdivenköy Mah.',
+    city: 'Istanbul',
+    country: 'Turkey',
+    ip: '85.34.78.112',
+  },
+  shippingAddress: {
+    contactName: 'Jane Doe',
+    city: 'Istanbul',
+    country: 'Turkey',
+    address: 'Nidakule Göztepe, Merdivenköy Mah.',
+  },
+  billingAddress: {
+    contactName: 'Jane Doe',
+    city: 'Istanbul',
+    country: 'Turkey',
+    address: 'Nidakule Göztepe, Merdivenköy Mah.',
+  },
+  basketItems: [
+    {
+      id: 'BI101',
+      name: 'Binocular',
+      category1: 'Collectibles',
+      itemType: BasketItemType.PHYSICAL,
+      price: '100.00',
+    },
+  ],
+};
+```
+
+## 3. Create a Payment
+
+```typescript
+const result = await payment.createPayment(request);
+
+if (result.status === 'success') {
+  console.log('Payment ID:', result.paymentId);
+} else {
+  console.error('Error:', result.errorMessage);
+}
+```
+
+## 4. Initialize 3D Secure
+
+```typescript
+const threeDSResult = await payment.initThreeDSPayment({
+  ...request,
+  callbackUrl: 'https://yoursite.com/payment/callback',
+});
+
+// Redirect user to threeDSResult.htmlContent or threeDSResult.redirectUrl
+```
+
+## 5. Complete 3D Secure
+
+```typescript
+// In your callback endpoint:
+const completeResult = await payment.completeThreeDSPayment({
+  paymentId: body.paymentId,        // from provider callback
+  conversationId: body.conversationId,
+});
+```
+
+## Using Multiple Providers
+
+```typescript
+const payment = new BetterPayment({
+  defaultProvider: ProviderType.IYZICO,
+  providers: {
+    iyzico: { enabled: true, config: { /* ... */ } },
+    paytr: { enabled: true, config: { /* ... */ } },
+  },
+});
+
+// Use default provider (iyzico)
+await payment.createPayment(request);
+
+// Use specific provider
+await payment.iyzico.createPayment(request);
+await payment.paytr.initThreeDSPayment(paytrRequest);
+
+// Use .use() for dynamic routing
+await payment.use(ProviderType.PAYTR).initThreeDSPayment(paytrRequest);
+```

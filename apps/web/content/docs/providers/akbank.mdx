@@ -1,0 +1,62 @@
+---
+title: Akbank
+description: Akbank payment integration reference.
+---
+
+Akbank uses OAuth2 token-based authentication and supports 2D and 3D Secure payments.
+
+## Configuration
+
+```typescript
+akbank: {
+  enabled: true,
+  config: {
+    clientId: process.env.AKBANK_CLIENT_ID!,
+    clientSecret: process.env.AKBANK_CLIENT_SECRET!,
+    merchantSafeId: process.env.AKBANK_MERCHANT_SAFE_ID!,
+    terminalSafeId: process.env.AKBANK_TERMINAL_SAFE_ID!,
+    baseUrl: 'https://apiprod.akbank.com', // or sandbox URL
+  },
+}
+```
+
+## Direct Payment (2D)
+
+```typescript
+const result = await payment.akbank.createPayment({
+  price: '100.00',
+  paidPrice: '100.00',
+  currency: Currency.TRY,
+  installment: 1,
+  paymentCard: { cardHolderName, cardNumber, expireMonth, expireYear, cvc },
+  buyer: { /* ... */ },
+  basketItems: [{ /* ... */ }],
+});
+```
+
+## 3D Secure
+
+```typescript
+// Initialize
+const init = await payment.akbank.initThreeDSPayment({
+  ...paymentRequest,
+  callbackUrl: 'https://yoursite.com/callback',
+});
+
+// Complete (in callback)
+const result = await payment.akbank.completeThreeDSPayment({
+  paymentId: body.paymentId,
+});
+```
+
+## Refund & Cancel
+
+```typescript
+await payment.akbank.refund({
+  paymentTransactionId: 'transaction-id',
+  price: '50.00',
+  currency: Currency.TRY,
+});
+
+await payment.akbank.cancel({ paymentId: 'payment-id' });
+```

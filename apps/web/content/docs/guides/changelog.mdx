@@ -1,0 +1,70 @@
+---
+title: Changelog
+description: Release history and breaking changes for better-payment.
+---
+
+## v3.0.0
+
+### Breaking Changes
+
+**Class renames** — all `BetterPay*` exports renamed to `BetterPayment*`:
+
+| Before | After |
+|--------|-------|
+| `BetterPay` | `BetterPayment` |
+| `BetterPayConfig` | `BetterPaymentConfig` |
+| `BetterPayHandler` | `BetterPaymentHandler` |
+| `BetterPayRequest` | `BetterPaymentRequest` |
+| `BetterPayResponse` | `BetterPaymentResponse` |
+| `BetterPayClient` | `BetterPaymentClient` |
+| `createBetterPayClient` | `createBetterPaymentClient` |
+
+**Adapters removed** — `better-payment/adapters/next-js` and `better-payment/adapters/node` no longer exist. Use `BetterPaymentHandler` directly.
+
+**PayTR `cancel()` changed** — no longer silently calls `refund()` with amount 0. Returns `FAILURE` with a descriptive error. Use `refund()` with the original amount instead.
+
+### New Features
+
+- 13 new İyzico-specific handler routes (checkout form, PWI, installment, BIN check, subscriptions)
+- `BetterPaymentHandler` extended with full iyzico API surface
+- `requireIyzico()` type guard for iyzico-only routes
+
+### Migration Guide
+
+```typescript
+// Before
+import { BetterPay } from 'better-payment';
+const pay = new BetterPay({ ... });
+
+// After
+import { BetterPayment } from 'better-payment';
+const pay = new BetterPayment({ ... });
+```
+
+```typescript
+// Before (adapter)
+import { createNextHandler } from 'better-payment/adapters/next-js';
+
+// After (manual integration — see Next.js guide)
+import { getBetterPayment } from '@/lib/payment';
+```
+
+## v2.3.0
+
+- Add Parampos (Param) provider with SOAP/XML support
+- Add Akbank provider with OAuth2 authentication
+- Add installment info query for İyzico and PayTR
+
+## v2.0.0
+
+- Add PayTR provider with iframe 3D Secure
+- Multi-provider configuration (`providers` map)
+- `use(ProviderType)` dynamic provider switching
+- `getEnabledProviders()` and `isProviderEnabled()` helpers
+
+## v1.0.0
+
+- Initial release with İyzico support
+- 2D payment, 3D Secure init/complete
+- Refund and cancel
+- TypeScript-first design

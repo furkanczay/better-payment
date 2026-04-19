@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "fumadocs-ui/css/preset.css";
+@import "fumadocs-ui/css/shadcn.css";
+
+@source "../node_modules/fumadocs-ui/dist";
 
 @custom-variant dark (&:is(.dark *));
 

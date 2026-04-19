@@ -1,0 +1,148 @@
+---
+title: Next.js Integration
+description: Complete guide for integrating better-payment with Next.js App Router.
+---
+
+## Setup
+
+### 1. Create the singleton
+
+```typescript
+// lib/payment.ts
+import { BetterPayment, ProviderType } from 'better-payment';
+
+let _instance: BetterPayment | null = null;
+
+export function getBetterPayment(): BetterPayment {
+  if (!_instance) {
+    _instance = new BetterPayment({
+      defaultProvider: ProviderType.IYZICO,
+      providers: {
+        iyzico: {
+          enabled: true,
+          config: {
+            apiKey: process.env.IYZICO_API_KEY!,
+            secretKey: process.env.IYZICO_SECRET_KEY!,
+            baseUrl: process.env.IYZICO_BASE_URL ?? 'https://sandbox-api.iyzipay.com',
+          },
+        },
+      },
+    });
+  }
+  return _instance;
+}
+```
+
+<Callout type="warn">
+  Use lazy initialization (a function, not a module-level `new BetterPayment(...)`) to avoid crashes during Next.js static page generation when env vars are not available.
+</Callout>
+
+### 2. Create the catch-all route handler
+
+```typescript
+// app/api/pay/[...path]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { getBetterPayment } from '@/lib/payment';
+import type { BetterPaymentRequest } from 'better-payment';
+
+async function handler(req: NextRequest): Promise<NextResponse> {
+  const contentType = req.headers.get('content-type') ?? '';
+  let body: unknown;
+
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    if (contentType.includes('application/json')) {
+      body = await req.json().catch(() => undefined);
+    } else if (contentType.includes('application/x-www-form-urlencoded')) {
+      const fd = await req.formData();
+      const obj: Record<string, string> = {};
+      fd.forEach((v, k) => { obj[k] = v as string; });
+      body = obj;
+    }
+  }
+
+  const betterPayReq: BetterPaymentRequest = {
+    method: req.method,
+    url: req.url,
+    headers: Object.fromEntries(req.headers.entries()),
+    body,
+  };
+
+  const res = await getBetterPayment().handler.handle(betterPayReq);
+
+  return NextResponse.json(res.body, {
+    status: res.status,
+    headers: res.headers,
+  });
+}
+
+export const GET = handler;
+export const POST = handler;
+```
+
+### 3. Configure environment variables
+
+```bash
+# .env.local
+IYZICO_API_KEY=your-api-key
+IYZICO_SECRET_KEY=your-secret-key
+IYZICO_BASE_URL=https://sandbox-api.iyzipay.com
+```
+
+## Making Payments from the Frontend
+
+```typescript
+// Client-side payment initiation
+const response = await fetch('/api/pay/iyzico/create', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    price: '100.00',
+    paidPrice: '100.00',
+    currency: 'TRY',
+    // ...
+  }),
+});
+
+const result = await response.json();
+```
+
+## 3D Secure Flow
+
+```typescript
+// 1. Initialize from Server Action or API Route
+const init = await fetch('/api/pay/iyzico/3ds/init', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ ...paymentData, callbackUrl: `${origin}/payment/callback` }),
+});
+
+const { htmlContent } = await init.json();
+
+// 2. Display htmlContent in an iframe or dangerouslySetInnerHTML
+// 3. Handle callback in a separate route
+```
+
+### Callback Route
+
+```typescript
+// app/payment/callback/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { getBetterPayment } from '@/lib/payment';
+
+export async function POST(req: NextRequest) {
+  const body = await req.formData();
+  const paymentId = body.get('paymentId') as string;
+  const conversationId = body.get('conversationId') as string;
+
+  const result = await getBetterPayment().iyzico.completeThreeDSPayment({
+    paymentId,
+    conversationId,
+  });
+
+  if (result.status === 'success') {
+    return NextResponse.redirect(new URL('/payment/success', req.url));
+  }
+
+  return NextResponse.redirect(new URL('/payment/failure', req.url));
+}
+```

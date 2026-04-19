@@ -1,0 +1,15 @@
+{
+  "title": "better-payment",
+  "pages": [
+    "index",
+    "installation",
+    "quick-start",
+    "configuration",
+    "---Providers---",
+    "providers",
+    "---API Reference---",
+    "api",
+    "---Guides---",
+    "guides"
+  ]
+}

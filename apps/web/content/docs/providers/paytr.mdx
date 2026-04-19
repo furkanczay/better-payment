@@ -1,0 +1,87 @@
+---
+title: PayTR
+description: PayTR integration reference — iframe 3D payment and refunds.
+---
+
+PayTR uses form-urlencoded requests and HMAC-SHA256 token validation. It supports only the iframe 3D Secure flow.
+
+## Configuration
+
+```typescript
+paytr: {
+  enabled: true,
+  config: {
+    merchantId: process.env.PAYTR_MERCHANT_ID!,
+    merchantKey: process.env.PAYTR_MERCHANT_KEY!,
+    merchantSalt: process.env.PAYTR_MERCHANT_SALT!,
+    baseUrl: 'https://www.paytr.com', // optional
+    locale: 'tr',
+  },
+}
+```
+
+## 3D Secure (Iframe)
+
+PayTR's primary payment flow is iframe-based 3D Secure.
+
+**Get Token:**
+
+```typescript
+const result = await payment.paytr.initThreeDSPayment({
+  price: '100.00',
+  paidPrice: '100.00',
+  currency: Currency.TRY,
+  callbackUrl: 'https://yoursite.com/payment/callback',
+  buyer: { id, name, surname, email, ip, /* ... */ },
+  basketItems: [{ id, name, category1, itemType, price }],
+  // PayTR specific:
+  userBasket: [['Product Name', '100.00', 1]],
+  noInstallment: 0,
+  maxInstallment: 0,
+});
+
+// Embed in iframe:
+// <iframe src={`https://www.paytr.com/odeme/guvenli/${result.token}`} />
+```
+
+**Callback (webhook):**
+
+```typescript
+// PayTR posts to your callbackUrl with status
+// Verify the token and update your order
+```
+
+## Refund
+
+```typescript
+await payment.paytr.refund({
+  paymentId: 'merchant-oid',         // your order ID
+  price: '50.00',
+  currency: Currency.TRY,
+});
+```
+
+## Cancel
+
+<Callout type="error">
+  PayTR does not support payment voids. `cancel()` returns a FAILURE status with an explanatory message. To reverse a PayTR payment, call `refund()` with the original payment amount.
+</Callout>
+
+```typescript
+// This will fail — use refund() instead
+await payment.paytr.cancel({ paymentId: 'order-id' });
+// Returns: { status: 'failure', errorMessage: 'PayTR cancel requires...' }
+
+// Correct approach:
+await payment.paytr.refund({ paymentId: 'order-id', price: originalAmount });
+```
+
+## Installment Info
+
+```typescript
+const info = await payment.paytr.getInstallmentInfo({
+  binNumber: '552879',
+  price: '100.00',
+  currency: Currency.TRY,
+});
+```

@@ -1,0 +1,59 @@
+---
+title: Introduction
+description: A unified, type-safe payment gateway library for Node.js and Turkish payment providers.
+---
+
+**better-payment** is a unified payment gateway library that lets you integrate multiple Turkish payment providers—İyzico, PayTR, Akbank, and Parampos—through a single, consistent TypeScript API.
+
+## Why better-payment?
+
+Every payment provider has its own SDK, request format, authentication scheme, and error model. Switching providers or supporting multiple ones requires writing adapter code for each. **better-payment** abstracts all of that.
+
+<Cards>
+  <Card title="Single API" description="One interface for all providers — createPayment, refund, cancel work the same regardless of which provider processes the transaction." />
+  <Card title="Type-Safe" description="Full TypeScript types for every request and response. No more guessing at field names or response shapes." />
+  <Card title="Framework Agnostic" description="Built-in HTTP handler works with any Node.js framework. Native integrations for Next.js, Express, and more." />
+  <Card title="Multi-Provider" description="Use multiple providers simultaneously. Route specific payment methods to specific providers." />
+</Cards>
+
+## Supported Providers
+
+| Provider | 2D Payment | 3D Secure | Refund | Cancel | Installment |
+|----------|-----------|-----------|--------|--------|-------------|
+| İyzico   | ✅ | ✅ | ✅ | ✅ | ✅ |
+| PayTR    | ✅ | ✅ | ✅ | ⚠️ | ✅ |
+| Akbank   | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Parampos | ✅ | ✅ | ✅ | ✅ | ❌ |
+
+> **⚠️ PayTR Cancel**: PayTR does not support voids. `cancel()` returns an error; use `refund()` with the original amount instead.
+
+## Quick Example
+
+```typescript
+import { BetterPayment, ProviderType } from 'better-payment';
+
+const payment = new BetterPayment({
+  defaultProvider: ProviderType.IYZICO,
+  providers: {
+    iyzico: {
+      enabled: true,
+      config: {
+        apiKey: process.env.IYZICO_API_KEY!,
+        secretKey: process.env.IYZICO_SECRET_KEY!,
+        baseUrl: 'https://sandbox-api.iyzipay.com',
+      },
+    },
+  },
+});
+
+const result = await payment.createPayment({
+  price: '100.00',
+  paidPrice: '100.00',
+  currency: Currency.TRY,
+  buyer: { /* ... */ },
+  shippingAddress: { /* ... */ },
+  billingAddress: { /* ... */ },
+  basketItems: [{ /* ... */ }],
+  paymentCard: { /* ... */ },
+});
+```

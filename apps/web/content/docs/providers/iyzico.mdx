@@ -1,0 +1,158 @@
+---
+title: İyzico
+description: Full İyzico integration reference — payments, checkout forms, subscriptions, and more.
+---
+
+İyzico is a Turkish payment provider with REST/JSON API and HMAC-SHA256 authentication.
+
+## Configuration
+
+```typescript
+iyzico: {
+  enabled: true,
+  config: {
+    apiKey: process.env.IYZICO_API_KEY!,
+    secretKey: process.env.IYZICO_SECRET_KEY!,
+    baseUrl: process.env.IYZICO_BASE_URL ?? 'https://sandbox-api.iyzipay.com',
+    locale: 'tr', // optional, default: 'tr'
+  },
+}
+```
+
+## Direct Payment (2D)
+
+```typescript
+const result = await payment.iyzico.createPayment({
+  price: '100.00',
+  paidPrice: '100.00',
+  currency: Currency.TRY,
+  installment: 1,
+  paymentCard: { cardHolderName, cardNumber, expireMonth, expireYear, cvc },
+  buyer: { id, name, surname, email, identityNumber, ip, /* ... */ },
+  shippingAddress: { contactName, city, country, address },
+  billingAddress: { contactName, city, country, address },
+  basketItems: [{ id, name, category1, itemType, price }],
+});
+```
+
+## 3D Secure
+
+**Initialize:**
+
+```typescript
+const init = await payment.iyzico.initThreeDSPayment({
+  ...paymentRequest,
+  callbackUrl: 'https://yoursite.com/payment/callback',
+});
+// Redirect user to: init.htmlContent (rendered in iframe or redirect)
+```
+
+**Complete (in callback endpoint):**
+
+```typescript
+const result = await payment.iyzico.completeThreeDSPayment({
+  paymentId: body.paymentId,
+  conversationId: body.conversationId,
+});
+```
+
+## Checkout Form
+
+İyzico's hosted checkout form — no PCI DSS scope for card data.
+
+```typescript
+// Initialize
+const form = await payment.iyzico.initCheckoutForm({
+  ...paymentRequest,
+  callbackUrl: 'https://yoursite.com/checkout/callback',
+  enabledInstallments: [1, 2, 3, 6, 9],
+});
+// form.checkoutFormContent — embed as HTML
+// form.token — save for retrieve step
+
+// Retrieve result (in callback)
+const result = await payment.iyzico.retrieveCheckoutForm({
+  token: body.token,
+});
+```
+
+**Handler endpoints:**
+- `POST /api/pay/iyzico/checkout/init`
+- `POST /api/pay/iyzico/checkout/retrieve`
+
+## PWI (Protected Wire Transfer)
+
+İyzico's bank transfer payment method.
+
+```typescript
+const init = await payment.iyzico.initPWIPayment({ ...request });
+const result = await payment.iyzico.retrievePWIPayment({ token: init.token });
+```
+
+**Handler endpoints:**
+- `POST /api/pay/iyzico/pwi/init`
+- `POST /api/pay/iyzico/pwi/retrieve`
+
+## Installment Info
+
+Query available installment options for a BIN.
+
+```typescript
+const info = await payment.iyzico.getInstallmentInfo({
+  binNumber: '552879',
+  price: '100.00',
+  currency: Currency.TRY,
+});
+// info.installmentDetails[].installmentPrices[]
+```
+
+**Handler endpoint:** `POST /api/pay/iyzico/installment`
+
+## BIN Check
+
+```typescript
+const bin = await payment.iyzico.checkBIN({ binNumber: '552879' });
+// bin.cardType, bin.cardAssociation, bin.cardFamily
+```
+
+**Handler endpoint:** `POST /api/pay/iyzico/bin-check`
+
+## Refund & Cancel
+
+```typescript
+await payment.iyzico.refund({
+  paymentTransactionId: 'transaction-id',
+  price: '50.00',
+  currency: Currency.TRY,
+});
+
+await payment.iyzico.cancel({ paymentId: 'payment-id' });
+```
+
+## Subscriptions (v2 API)
+
+İyzico's full subscription management API.
+
+```typescript
+// Initialize subscription
+await payment.iyzico.initializeSubscription({ /* ... */ });
+
+// Manage
+await payment.iyzico.cancelSubscription({ subscriptionReferenceCode });
+await payment.iyzico.upgradeSubscription({ /* ... */ });
+await payment.iyzico.retrieveSubscription({ subscriptionReferenceCode });
+await payment.iyzico.updateSubscriptionCard({ /* ... */ });
+
+// Product & pricing plan management
+await payment.iyzico.createSubscriptionProduct({ name, description });
+await payment.iyzico.createSubscriptionPricingPlan({ productReferenceCode, /* ... */ });
+```
+
+**Handler endpoints:**
+- `POST /api/pay/iyzico/subscription/initialize`
+- `POST /api/pay/iyzico/subscription/cancel`
+- `POST /api/pay/iyzico/subscription/upgrade`
+- `POST /api/pay/iyzico/subscription/retrieve`
+- `POST /api/pay/iyzico/subscription/card-update`
+- `POST /api/pay/iyzico/subscription/product`
+- `POST /api/pay/iyzico/subscription/pricing-plan`

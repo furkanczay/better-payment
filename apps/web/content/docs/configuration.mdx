@@ -1,0 +1,145 @@
+---
+title: Configuration
+description: Full configuration reference for BetterPayment.
+---
+
+## BetterPaymentConfig
+
+```typescript
+import { BetterPayment, ProviderType } from 'better-payment';
+
+const payment = new BetterPayment({
+  defaultProvider: ProviderType.IYZICO, // optional
+  providers: {
+    iyzico: {
+      enabled: true,
+      config: {
+        apiKey: string,
+        secretKey: string,
+        baseUrl: string,
+        locale?: 'tr' | 'en', // default: 'tr'
+      },
+    },
+    paytr: {
+      enabled: true,
+      config: {
+        merchantId: string,
+        merchantKey: string,
+        merchantSalt: string,
+        baseUrl?: string, // default: 'https://www.paytr.com'
+        locale?: 'tr' | 'en',
+      },
+    },
+    akbank: {
+      enabled: true,
+      config: {
+        clientId: string,
+        clientSecret: string,
+        merchantSafeId: string,
+        terminalSafeId: string,
+        baseUrl?: string,
+      },
+    },
+    parampos: {
+      enabled: true,
+      config: {
+        clientCode: string,
+        clientUsername: string,
+        clientPassword: string,
+        baseUrl?: string,
+      },
+    },
+  },
+});
+```
+
+## Provider Access
+
+```typescript
+// Access by property (throws if not enabled)
+payment.iyzico
+payment.paytr
+payment.akbank
+payment.parampos
+
+// Dynamic access
+payment.use(ProviderType.PAYTR)
+
+// Check availability
+payment.isProviderEnabled(ProviderType.IYZICO)  // boolean
+payment.getEnabledProviders()                    // ProviderType[]
+```
+
+## HTTP Handler
+
+`BetterPaymentHandler` routes HTTP requests to the correct provider method. Mount it at any path — the handler parses the URL to determine provider and action.
+
+```
+POST /api/pay/:provider/:action
+GET  /api/pay/:provider/:action
+```
+
+### Next.js App Router
+
+```typescript
+// app/api/pay/[...path]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { getBetterPayment } from '@/lib/payment';
+
+async function handler(req: NextRequest) {
+  const contentType = req.headers.get('content-type') ?? '';
+  let body: unknown;
+
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    if (contentType.includes('application/json')) {
+      body = await req.json().catch(() => undefined);
+    } else if (contentType.includes('application/x-www-form-urlencoded')) {
+      const fd = await req.formData();
+      const obj: Record<string, string> = {};
+      fd.forEach((v, k) => { obj[k] = v as string; });
+      body = obj;
+    }
+  }
+
+  const res = await getBetterPayment().handler.handle({
+    method: req.method,
+    url: req.url,
+    headers: Object.fromEntries(req.headers.entries()),
+    body,
+  });
+
+  return NextResponse.json(res.body, {
+    status: res.status,
+    headers: res.headers,
+  });
+}
+
+export const GET = handler;
+export const POST = handler;
+```
+
+<Callout type="info">
+  Use a lazy singleton (function that initializes on first call) to avoid build-time env var errors with Next.js static generation.
+</Callout>
+
+### Express
+
+```typescript
+import express from 'express';
+import { payment } from './lib/payment';
+
+const app = express();
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.all('/api/pay/*', async (req, res) => {
+  const result = await payment.handler.handle({
+    method: req.method,
+    url: `${req.protocol}://${req.get('host')}${req.originalUrl}`,
+    headers: req.headers as Record<string, string>,
+    body: req.body,
+  });
+
+  res.status(result.status).json(result.body);
+});
+```
