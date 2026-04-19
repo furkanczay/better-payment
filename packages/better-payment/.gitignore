@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.env
+.env.local
+.vscode/
+.idea/
+*.swp
+*.swo
+coverage/
+.nyc_output/
+PUBLISHING.md
+RELEASE.md
+NOTES.md
