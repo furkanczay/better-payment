@@ -66,7 +66,7 @@ export default function Navbar() {
             width={304}
             height={64}
             alt="better-payment logo"
-            className="h-6 w-auto"
+            className="h-16 w-auto"
           />
           <Badge
             variant="secondary"
@@ -108,7 +108,10 @@ export default function Navbar() {
             href="https://www.npmjs.com/package/better-payment"
             target="_blank"
             rel="noopener noreferrer"
-            className={cn(buttonVariants({ size: "sm" }), "h-8 px-3 text-xs font-medium")}
+            className={cn(
+              buttonVariants({ size: "sm" }),
+              "h-8 px-3 text-xs font-medium",
+            )}
           >
             npm install
           </a>
@@ -119,7 +122,11 @@ export default function Navbar() {
           className="md:hidden p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-accent/60"
           onClick={() => setOpen(!open)}
         >
-          {open ? <X className="w-4.5 h-4.5" /> : <Menu className="w-4.5 h-4.5" />}
+          {open ? (
+            <X className="w-4.5 h-4.5" />
+          ) : (
+            <Menu className="w-4.5 h-4.5" />
+          )}
         </button>
       </nav>
 

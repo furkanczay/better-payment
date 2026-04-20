@@ -22,9 +22,21 @@ const links = {
     { label: "Akbank", href: "/docs/banks/akbank" },
   ],
   Resources: [
-    { label: "npm", href: "https://www.npmjs.com/package/better-payment", external: true },
-    { label: "GitHub", href: "https://github.com/furkanczay/better-payment", external: true },
-    { label: "Issues", href: "https://github.com/furkanczay/better-payment/issues", external: true },
+    {
+      label: "npm",
+      href: "https://www.npmjs.com/package/better-payment",
+      external: true,
+    },
+    {
+      label: "GitHub",
+      href: "https://github.com/furkanczay/better-payment",
+      external: true,
+    },
+    {
+      label: "Issues",
+      href: "https://github.com/furkanczay/better-payment/issues",
+      external: true,
+    },
     { label: "Changelog", href: "/docs/guides/changelog" },
   ],
 };
@@ -36,17 +48,21 @@ export default function Footer() {
         <div className="grid grid-cols-2 sm:grid-cols-6 gap-10">
           {/* Brand */}
           <div className="col-span-2 sm:col-span-2">
-            <Link href="/" className="flex items-center gap-2.5 mb-4 w-fit group">
+            <Link
+              href="/"
+              className="flex items-center gap-2.5 mb-4 w-fit group"
+            >
               <Image
                 src="/better-payment-logo.svg"
                 width={304}
                 height={64}
                 alt="better-payment"
-                className="h-5 w-auto opacity-90 group-hover:opacity-100 transition-opacity"
+                className="h-16 w-auto opacity-90 group-hover:opacity-100 transition-opacity"
               />
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-[230px]">
-              A unified, type-safe payment gateway library for Node.js and TypeScript.
+              A unified, type-safe payment gateway library for Node.js and
+              TypeScript.
             </p>
             <div className="flex items-center gap-3 mt-5">
               <a
@@ -105,7 +121,8 @@ export default function Footer() {
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <span className="text-xs text-muted-foreground/50">
-            © {new Date().getFullYear()} better-payment. Released under the MIT License.
+            © {new Date().getFullYear()} better-payment. Released under the MIT
+            License.
           </span>
           <span className="text-xs text-muted-foreground/35 font-mono">
             Built with Next.js, Tailwind CSS & shadcn/ui
