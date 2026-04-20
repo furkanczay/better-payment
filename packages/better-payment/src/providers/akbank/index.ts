@@ -71,6 +71,7 @@ export class Akbank extends PaymentProvider {
       },
     });
     this.setupAxiosLogging(this.client, 'akbank');
+    this.setupAxiosRetry(this.client);
   }
 
   /**

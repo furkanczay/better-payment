@@ -67,6 +67,7 @@ export class PayTR extends PaymentProvider {
       },
     });
     this.setupAxiosLogging(this.client, 'paytr');
+    this.setupAxiosRetry(this.client);
   }
 
   /**

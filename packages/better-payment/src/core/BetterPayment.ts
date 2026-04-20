@@ -88,7 +88,12 @@ export class BetterPayment {
     const mode = this.config.mode || 'production';
     const defaults = PROVIDER_DEFAULT_URLS[providerType];
     const baseUrl = config.baseUrl ?? (defaults ? (defaults[mode] ?? defaults['production']) : undefined);
-    return { ...config, baseUrl, logger: config.logger ?? this.config.logger };
+    return {
+      ...config,
+      baseUrl,
+      logger: config.logger ?? this.config.logger,
+      retry: config.retry ?? this.config.retry,
+    };
   }
 
   /**

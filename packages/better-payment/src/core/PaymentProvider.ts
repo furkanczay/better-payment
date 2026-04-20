@@ -13,6 +13,7 @@ import {
   InstallmentInfoResponse,
 } from '../types';
 import { BetterPaymentLogger } from './logger';
+import type { RetryConfig } from './retry';
 
 /**
  * Ödeme sağlayıcısı yapılandırması
@@ -23,6 +24,7 @@ export interface PaymentProviderConfig {
   baseUrl?: string;
   locale?: string;
   logger?: BetterPaymentLogger;
+  retry?: RetryConfig;
 }
 
 /**
@@ -120,6 +122,37 @@ export abstract class PaymentProvider {
         return Promise.reject(error);
       }
     );
+  }
+
+  /**
+   * Attaches retry logic to an axios instance.
+   * No-op when retry.attempts <= 1 or retry is not configured.
+   */
+  protected setupAxiosRetry(client: AxiosInstance): void {
+    const retry = this.config.retry;
+    if (!retry || retry.attempts <= 1) return;
+
+    client.interceptors.response.use(undefined, async (error) => {
+      const config = error.config as Record<string, unknown> | undefined;
+      if (!config) return Promise.reject(error);
+
+      const retryCount = (config.__retryCount as number | undefined) ?? 0;
+
+      const networkError = !error.response;
+      const statusMatch =
+        error.response &&
+        retry.statusCodes &&
+        retry.statusCodes.includes(error.response.status as number);
+
+      const shouldRetry =
+        retryCount < retry.attempts - 1 && (networkError || !!statusMatch);
+
+      if (!shouldRetry) return Promise.reject(error);
+
+      config.__retryCount = retryCount + 1;
+      await new Promise<void>((resolve) => setTimeout(resolve, retry.delay ?? 1000));
+      return client(config as any);
+    });
   }
 
   /**

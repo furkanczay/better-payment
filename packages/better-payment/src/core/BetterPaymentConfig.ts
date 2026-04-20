@@ -1,5 +1,7 @@
 import { PaymentProviderConfig } from './PaymentProvider';
 import type { BetterPaymentLogger } from './logger';
+import type { RetryConfig } from './retry';
+export type { RetryConfig } from './retry';
 import type { Iyzico } from '../providers/iyzico';
 import type { PayTR } from '../providers/paytr';
 import type { Akbank } from '../providers/akbank';
@@ -96,6 +98,7 @@ export interface BetterPaymentConfig {
   defaultProvider?: ProviderType;
   mode?: 'sandbox' | 'production';
   logger?: BetterPaymentLogger;
+  retry?: RetryConfig;
 }
 
 export const PROVIDER_DEFAULT_URLS: Record<string, Record<string, string>> = {

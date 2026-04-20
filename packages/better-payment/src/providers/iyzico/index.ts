@@ -66,6 +66,7 @@ export class Iyzico extends PaymentProvider {
       timeout: 30000,
     });
     this.setupAxiosLogging(this.client, 'iyzico');
+    this.setupAxiosRetry(this.client);
   }
 
   /**

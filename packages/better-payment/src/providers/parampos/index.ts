@@ -90,6 +90,7 @@ export class Parampos extends PaymentProvider {
       baseUrl: config.baseUrl,
       locale: config.locale,
       logger: config.logger,
+      retry: config.retry,
     });
 
     this.paramposConfig = config;
@@ -103,6 +104,7 @@ export class Parampos extends PaymentProvider {
       },
     });
     this.setupAxiosLogging(this.client, 'parampos');
+    this.setupAxiosRetry(this.client);
   }
 
   /**
