@@ -82,6 +82,24 @@ export interface PayTRCallbackData {
   currency?: string;
   payment_amount?: string;
   merchant_id?: string;
+  utoken?: string;
+}
+
+export interface PayTRTokenPaymentRequest {
+  utoken: string;
+  price: string;
+  callbackUrl: string;
+  conversationId?: string;
+  buyer: {
+    email: string;
+    name: string;
+    surname: string;
+    ip: string;
+    gsmNumber?: string;
+  };
+  basketItems: Array<{ name: string; price: string; quantity?: number }>;
+  currency?: string;
+  installment?: number;
 }
 
 export interface PayTRBinDetailResponse {

@@ -30,6 +30,7 @@ import type {
   PayTRRefundResponse,
   PayTRBasketItem,
   PayTRBinDetailResponse,
+  PayTRTokenPaymentRequest,
 } from './types';
 
 /**
@@ -136,7 +137,7 @@ export class PayTR extends PaymentProvider {
       const noInstallment = '0'; // Taksit açık
       const maxInstallment = '0'; // Maksimum taksit yok
       const currency = request.currency || 'TL';
-      const testMode = this.config.baseUrl.includes('sandbox') ? '1' : '0';
+      const testMode = this.config.baseUrl?.includes('sandbox') ? '1' : '0';
 
       const merchantOid = request.conversationId || `ORDER-${Date.now()}`;
 
@@ -352,6 +353,94 @@ export class PayTR extends PaymentProvider {
         status: PaymentStatus.FAILURE,
         errorMessage: error.message || 'Cancel failed',
         rawResponse: error,
+      };
+    }
+  }
+
+  /**
+   * Kayıtlı kart (utoken) ile ödeme
+   * utoken: PayTR callback'inden gelen token (ilk başarılı ödemeden sonra)
+   */
+  async createPaymentWithToken(request: PayTRTokenPaymentRequest): Promise<ThreeDSInitResponse> {
+    try {
+      const basketItems = request.basketItems.map((item) => ({
+        name: item.name,
+        price: convertToKurus(item.price),
+        quantity: item.quantity || 1,
+      }));
+      const userBasket = formatPayTRBasket(basketItems);
+      const paymentAmountKurus = convertToKurus(request.price);
+      const currency = request.currency || 'TL';
+      const merchantOid = request.conversationId || `ORDER-${Date.now()}`;
+      const noInstallment = request.installment && request.installment > 1 ? '0' : '1';
+      const maxInstallment = request.installment ? request.installment.toString() : '0';
+      const testMode = this.config.baseUrl?.includes('sandbox') ? '1' : '0';
+
+      const paymentHash = generatePayTRHash(
+        this.merchantId,
+        request.buyer.ip,
+        merchantOid,
+        request.buyer.email,
+        paymentAmountKurus,
+        userBasket,
+        noInstallment,
+        maxInstallment,
+        currency,
+        testMode,
+        this.merchantSalt
+      );
+
+      const params: Record<string, string> = {
+        merchant_id: this.merchantId,
+        merchant_key: this.merchantKey,
+        merchant_salt: this.merchantSalt,
+        email: request.buyer.email,
+        payment_amount: paymentAmountKurus,
+        merchant_oid: merchantOid,
+        user_name: `${request.buyer.name} ${request.buyer.surname}`,
+        user_address: 'N/A',
+        user_phone: request.buyer.gsmNumber || '05001234567',
+        merchant_ok_url: request.callbackUrl,
+        merchant_fail_url: request.callbackUrl,
+        user_basket: userBasket,
+        user_ip: request.buyer.ip,
+        timeout_limit: '30',
+        debug_on: '0',
+        test_mode: testMode,
+        no_installment: noInstallment,
+        max_installment: maxInstallment,
+        currency,
+        lang: this.config.locale || 'tr',
+        paytr_token: paymentHash,
+        utoken: request.utoken,
+      };
+
+      const formData = createPayTRFormData(params);
+      const response = await this.client.post<PayTRIframeResponse>('/odeme/api/get-token', formData);
+
+      if (response.data.status === 'success' && response.data.token) {
+        const iframeUrl = `https://www.paytr.com/odeme/guvenli/${response.data.token}`;
+        const iframeHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0}iframe{width:100%;height:100vh;border:none}</style></head><body><iframe src="${iframeUrl}"></iframe></body></html>`;
+
+        return {
+          status: PaymentStatus.PENDING,
+          threeDSHtmlContent: iframeHtml,
+          paymentId: response.data.token,
+          conversationId: merchantOid,
+          rawResponse: response.data,
+        };
+      }
+
+      return {
+        status: PaymentStatus.FAILURE,
+        errorMessage: response.data.reason || 'Token payment initialization failed',
+        rawResponse: response.data,
+      };
+    } catch (error: any) {
+      return {
+        status: PaymentStatus.FAILURE,
+        errorMessage: error.message || 'Token payment failed',
+        rawResponse: error.response?.data,
       };
     }
   }

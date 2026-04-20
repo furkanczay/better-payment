@@ -18,7 +18,7 @@ import {
 export interface PaymentProviderConfig {
   apiKey: string;
   secretKey: string;
-  baseUrl: string;
+  baseUrl?: string;
   locale?: string;
 }
 
@@ -45,9 +45,6 @@ export abstract class PaymentProvider {
     }
     if (!this.config.secretKey) {
       throw new Error('Secret Key is required');
-    }
-    if (!this.config.baseUrl) {
-      throw new Error('Base URL is required');
     }
   }
 

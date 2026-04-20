@@ -1,5 +1,6 @@
 import { PaymentProvider, PaymentProviderConfig } from './PaymentProvider';
-import { BetterPaymentConfig, ProviderType, ProviderInstances } from './BetterPaymentConfig';
+import { BetterPaymentConfig, ProviderType, ProviderInstances, PROVIDER_DEFAULT_URLS } from './BetterPaymentConfig';
+import { ProviderNotEnabledError } from './errors';
 import { Iyzico } from '../providers/iyzico';
 import { PayTR } from '../providers/paytr';
 import { Akbank } from '../providers/akbank';
@@ -83,34 +84,44 @@ export class BetterPayment {
     return this._handler;
   }
 
+  private applyDefaultBaseUrl<T extends PaymentProviderConfig>(providerType: ProviderType, config: T): T {
+    if (config.baseUrl) return config;
+    const mode = this.config.mode || 'production';
+    const defaults = PROVIDER_DEFAULT_URLS[providerType];
+    if (defaults) {
+      return { ...config, baseUrl: defaults[mode] || defaults['production'] };
+    }
+    return config;
+  }
+
   /**
    * Provider'ları başlat
    */
   private initializeProviders(): void {
     // İyzico provider'ı başlat
     if (this.config.providers[ProviderType.IYZICO]?.enabled) {
-      const iyzicoConfig = this.config.providers[ProviderType.IYZICO].config;
+      const iyzicoConfig = this.applyDefaultBaseUrl(ProviderType.IYZICO, this.config.providers[ProviderType.IYZICO].config);
       this.validateIyzicoConfig(iyzicoConfig);
       this.providers[ProviderType.IYZICO] = new Iyzico(iyzicoConfig);
     }
 
     // PayTR provider'ı başlat
     if (this.config.providers[ProviderType.PAYTR]?.enabled) {
-      const paytrConfig = this.config.providers[ProviderType.PAYTR].config;
+      const paytrConfig = this.applyDefaultBaseUrl(ProviderType.PAYTR, this.config.providers[ProviderType.PAYTR].config);
       this.validatePayTRConfig(paytrConfig);
       this.providers[ProviderType.PAYTR] = new PayTR(paytrConfig as any);
     }
 
     // Akbank provider'ı başlat
     if (this.config.providers[ProviderType.AKBANK]?.enabled) {
-      const akbankConfig = this.config.providers[ProviderType.AKBANK].config;
+      const akbankConfig = this.applyDefaultBaseUrl(ProviderType.AKBANK, this.config.providers[ProviderType.AKBANK].config);
       this.validateAkbankConfig(akbankConfig);
       this.providers[ProviderType.AKBANK] = new Akbank(akbankConfig as any);
     }
 
     // Parampos provider'ı başlat
     if (this.config.providers[ProviderType.PARAMPOS]?.enabled) {
-      const paramposConfig = this.config.providers[ProviderType.PARAMPOS].config;
+      const paramposConfig = this.applyDefaultBaseUrl(ProviderType.PARAMPOS, this.config.providers[ProviderType.PARAMPOS].config);
       this.validateParamposConfig(paramposConfig);
       this.providers[ProviderType.PARAMPOS] = new Parampos(paramposConfig as any);
     }
@@ -135,67 +146,35 @@ export class BetterPayment {
   private validateIyzicoConfig(config: PaymentProviderConfig): void {
     const missingFields: string[] = [];
 
-    if (!config.apiKey) {
-      missingFields.push('apiKey (IYZICO_API_KEY)');
-    }
-    if (!config.secretKey) {
-      missingFields.push('secretKey (IYZICO_SECRET_KEY)');
-    }
-    if (!config.baseUrl) {
-      missingFields.push('baseUrl (IYZICO_BASE_URL)');
-    }
+    if (!config.apiKey) missingFields.push('apiKey (IYZICO_API_KEY)');
+    if (!config.secretKey) missingFields.push('secretKey (IYZICO_SECRET_KEY)');
 
     if (missingFields.length > 0) {
       throw new Error(
         `Iyzico provider configuration is missing required fields:\n` +
           `  - ${missingFields.join('\n  - ')}\n\n` +
-          `Please add these environment variables to your .env file:\n` +
-          `  IYZICO_API_KEY=your-api-key\n` +
-          `  IYZICO_SECRET_KEY=your-secret-key\n` +
-          `  IYZICO_BASE_URL=https://sandbox-api.iyzipay.com\n\n` +
-          `Or configure them directly in your BetterPay config.`
+          `Please add these to your BetterPayment config or set mode: 'sandbox' | 'production' for default URLs.`
       );
     }
   }
 
-  /**
-   * PayTR config validation
-   */
   private validatePayTRConfig(
     config: PaymentProviderConfig & { merchantId: string; merchantSalt: string }
   ): void {
     const missingFields: string[] = [];
 
-    if (!config.merchantId) {
-      missingFields.push('merchantId (PAYTR_MERCHANT_ID)');
-    }
-    if (!config.secretKey) {
-      missingFields.push('merchantKey (PAYTR_MERCHANT_KEY)');
-    }
-    if (!config.merchantSalt) {
-      missingFields.push('merchantSalt (PAYTR_MERCHANT_SALT)');
-    }
-    if (!config.baseUrl) {
-      missingFields.push('baseUrl (PAYTR_BASE_URL)');
-    }
+    if (!config.merchantId) missingFields.push('merchantId (PAYTR_MERCHANT_ID)');
+    if (!config.secretKey) missingFields.push('merchantKey (PAYTR_MERCHANT_KEY)');
+    if (!config.merchantSalt) missingFields.push('merchantSalt (PAYTR_MERCHANT_SALT)');
 
     if (missingFields.length > 0) {
       throw new Error(
         `PayTR provider configuration is missing required fields:\n` +
-          `  - ${missingFields.join('\n  - ')}\n\n` +
-          `Please add these environment variables to your .env file:\n` +
-          `  PAYTR_MERCHANT_ID=your-merchant-id\n` +
-          `  PAYTR_MERCHANT_KEY=your-merchant-key\n` +
-          `  PAYTR_MERCHANT_SALT=your-merchant-salt\n` +
-          `  PAYTR_BASE_URL=https://www.paytr.com\n\n` +
-          `Or configure them directly in your BetterPay config.`
+          `  - ${missingFields.join('\n  - ')}`
       );
     }
   }
 
-  /**
-   * Akbank config validation
-   */
   private validateAkbankConfig(
     config: PaymentProviderConfig & {
       merchantId: string;
@@ -206,37 +185,18 @@ export class BetterPayment {
   ): void {
     const missingFields: string[] = [];
 
-    if (!config.merchantId) {
-      missingFields.push('merchantId (AKBANK_MERCHANT_ID)');
-    }
-    if (!config.terminalId) {
-      missingFields.push('terminalId (AKBANK_TERMINAL_ID)');
-    }
-    if (!config.storeKey) {
-      missingFields.push('storeKey (AKBANK_STORE_KEY)');
-    }
-    if (!config.baseUrl) {
-      missingFields.push('baseUrl (AKBANK_BASE_URL)');
-    }
+    if (!config.merchantId) missingFields.push('merchantId (AKBANK_MERCHANT_ID)');
+    if (!config.terminalId) missingFields.push('terminalId (AKBANK_TERMINAL_ID)');
+    if (!config.storeKey) missingFields.push('storeKey (AKBANK_STORE_KEY)');
 
     if (missingFields.length > 0) {
       throw new Error(
         `Akbank provider configuration is missing required fields:\n` +
-          `  - ${missingFields.join('\n  - ')}\n\n` +
-          `Please add these environment variables to your .env file:\n` +
-          `  AKBANK_MERCHANT_ID=your-merchant-id\n` +
-          `  AKBANK_TERMINAL_ID=your-terminal-id\n` +
-          `  AKBANK_STORE_KEY=your-store-key\n` +
-          `  AKBANK_SECURE3D_STORE_KEY=your-3d-store-key (optional, for 3DS payments)\n` +
-          `  AKBANK_BASE_URL=https://www.akbank.com/api\n\n` +
-          `Or configure them directly in your BetterPay config.`
+          `  - ${missingFields.join('\n  - ')}`
       );
     }
   }
 
-  /**
-   * Parampos config validation
-   */
   private validateParamposConfig(
     config: PaymentProviderConfig & {
       clientCode: string;
@@ -247,33 +207,15 @@ export class BetterPayment {
   ): void {
     const missingFields: string[] = [];
 
-    if (!config.clientCode) {
-      missingFields.push('clientCode (PARAMPOS_CLIENT_CODE)');
-    }
-    if (!config.clientUsername) {
-      missingFields.push('clientUsername (PARAMPOS_CLIENT_USERNAME)');
-    }
-    if (!config.clientPassword) {
-      missingFields.push('clientPassword (PARAMPOS_CLIENT_PASSWORD)');
-    }
-    if (!config.guid) {
-      missingFields.push('guid (PARAMPOS_GUID)');
-    }
-    if (!config.baseUrl) {
-      missingFields.push('baseUrl (PARAMPOS_BASE_URL)');
-    }
+    if (!config.clientCode) missingFields.push('clientCode (PARAMPOS_CLIENT_CODE)');
+    if (!config.clientUsername) missingFields.push('clientUsername (PARAMPOS_CLIENT_USERNAME)');
+    if (!config.clientPassword) missingFields.push('clientPassword (PARAMPOS_CLIENT_PASSWORD)');
+    if (!config.guid) missingFields.push('guid (PARAMPOS_GUID)');
 
     if (missingFields.length > 0) {
       throw new Error(
         `Parampos provider configuration is missing required fields:\n` +
-          `  - ${missingFields.join('\n  - ')}\n\n` +
-          `Please add these environment variables to your .env file:\n` +
-          `  PARAMPOS_CLIENT_CODE=your-client-code\n` +
-          `  PARAMPOS_CLIENT_USERNAME=your-username\n` +
-          `  PARAMPOS_CLIENT_PASSWORD=your-password\n` +
-          `  PARAMPOS_GUID=your-guid\n` +
-          `  PARAMPOS_BASE_URL=https://testposws.param.com.tr/turkpos.ws/service_turkpos_prod.asmx\n\n` +
-          `Or configure them directly in your BetterPay config.`
+          `  - ${missingFields.join('\n  - ')}`
       );
     }
   }
@@ -286,10 +228,7 @@ export class BetterPayment {
   use(providerType: ProviderType | string): PaymentProvider {
     const provider = this.providers[providerType as ProviderType];
     if (!provider) {
-      throw new Error(
-        `Provider '${providerType}' is not enabled or configured. ` +
-          `Please check your BetterPay configuration.`
-      );
+      throw new ProviderNotEnabledError(providerType);
     }
     return provider;
   }
@@ -376,26 +315,7 @@ export class BetterPayment {
    */
   get iyzico(): Iyzico {
     const provider = this.providers[ProviderType.IYZICO];
-    if (!provider) {
-      const enabledProviders = this.getEnabledProviders();
-      throw new Error(
-        `Iyzico provider is not enabled or configured.\n` +
-          `Enabled providers: ${enabledProviders.length > 0 ? enabledProviders.join(', ') : 'none'}\n` +
-          `Please add Iyzico configuration to your BetterPay config:\n` +
-          `{\n` +
-          `  providers: {\n` +
-          `    iyzico: {\n` +
-          `      enabled: true,\n` +
-          `      config: {\n` +
-          `        apiKey: process.env.IYZICO_API_KEY,\n` +
-          `        secretKey: process.env.IYZICO_SECRET_KEY,\n` +
-          `        baseUrl: 'https://sandbox-api.iyzipay.com'\n` +
-          `      }\n` +
-          `    }\n` +
-          `  }\n` +
-          `}`
-      );
-    }
+    if (!provider) throw new ProviderNotEnabledError('iyzico');
     return provider as Iyzico;
   }
 
@@ -411,27 +331,7 @@ export class BetterPayment {
    */
   get paytr(): PayTR {
     const provider = this.providers[ProviderType.PAYTR];
-    if (!provider) {
-      const enabledProviders = this.getEnabledProviders();
-      throw new Error(
-        `PayTR provider is not enabled or configured.\n` +
-          `Enabled providers: ${enabledProviders.length > 0 ? enabledProviders.join(', ') : 'none'}\n` +
-          `Please add PayTR configuration to your BetterPay config:\n` +
-          `{\n` +
-          `  providers: {\n` +
-          `    paytr: {\n` +
-          `      enabled: true,\n` +
-          `      config: {\n` +
-          `        merchantId: process.env.PAYTR_MERCHANT_ID,\n` +
-          `        merchantKey: process.env.PAYTR_MERCHANT_KEY,\n` +
-          `        merchantSalt: process.env.PAYTR_MERCHANT_SALT,\n` +
-          `        baseUrl: 'https://www.paytr.com'\n` +
-          `      }\n` +
-          `    }\n` +
-          `  }\n` +
-          `}`
-      );
-    }
+    if (!provider) throw new ProviderNotEnabledError('paytr');
     return provider as PayTR;
   }
 
@@ -448,31 +348,7 @@ export class BetterPayment {
    */
   get akbank(): Akbank {
     const provider = this.providers[ProviderType.AKBANK];
-    if (!provider) {
-      const enabledProviders = this.getEnabledProviders();
-      throw new Error(
-        `Akbank provider is not enabled or configured.\n` +
-          `Enabled providers: ${enabledProviders.length > 0 ? enabledProviders.join(', ') : 'none'}\n` +
-          `Please add Akbank configuration to your BetterPay config:\n` +
-          `{\n` +
-          `  providers: {\n` +
-          `    akbank: {\n` +
-          `      enabled: true,\n` +
-          `      config: {\n` +
-          `        merchantId: process.env.AKBANK_MERCHANT_ID,\n` +
-          `        terminalId: process.env.AKBANK_TERMINAL_ID,\n` +
-          `        storeKey: process.env.AKBANK_STORE_KEY,\n` +
-          `        secure3DStoreKey: process.env.AKBANK_SECURE3D_STORE_KEY,\n` +
-          `        apiKey: process.env.AKBANK_API_KEY,\n` +
-          `        secretKey: process.env.AKBANK_SECRET_KEY,\n` +
-          `        baseUrl: 'https://www.akbank.com/api',\n` +
-          `        testMode: true\n` +
-          `      }\n` +
-          `    }\n` +
-          `  }\n` +
-          `}`
-      );
-    }
+    if (!provider) throw new ProviderNotEnabledError('akbank');
     return provider as Akbank;
   }
 
@@ -489,31 +365,7 @@ export class BetterPayment {
    */
   get parampos(): Parampos {
     const provider = this.providers[ProviderType.PARAMPOS];
-    if (!provider) {
-      const enabledProviders = this.getEnabledProviders();
-      throw new Error(
-        `Parampos provider is not enabled or configured.\n` +
-          `Enabled providers: ${enabledProviders.length > 0 ? enabledProviders.join(', ') : 'none'}\n` +
-          `Please add Parampos configuration to your BetterPay config:\n` +
-          `{\n` +
-          `  providers: {\n` +
-          `    parampos: {\n` +
-          `      enabled: true,\n` +
-          `      config: {\n` +
-          `        clientCode: process.env.PARAMPOS_CLIENT_CODE,\n` +
-          `        clientUsername: process.env.PARAMPOS_CLIENT_USERNAME,\n` +
-          `        clientPassword: process.env.PARAMPOS_CLIENT_PASSWORD,\n` +
-          `        guid: process.env.PARAMPOS_GUID,\n` +
-          `        apiKey: process.env.PARAMPOS_GUID,\n` +
-          `        secretKey: process.env.PARAMPOS_CLIENT_PASSWORD,\n` +
-          `        baseUrl: 'https://testposws.param.com.tr/turkpos.ws/service_turkpos_prod.asmx',\n` +
-          `        testMode: true\n` +
-          `      }\n` +
-          `    }\n` +
-          `  }\n` +
-          `}`
-      );
-    }
+    if (!provider) throw new ProviderNotEnabledError('parampos');
     return provider as Parampos;
   }
 }

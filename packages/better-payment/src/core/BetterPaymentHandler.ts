@@ -175,6 +175,9 @@ export class BetterPaymentHandler {
         case 'payment/init-3ds':
           return await this.handleInitThreeDS(request, provider);
 
+        case 'payment/token':
+          return await this.handleTokenPayment(request, provider);
+
         case 'payment/complete-3ds':
         case 'callback':
           return await this.handleCompleteThreeDS(request, provider);
@@ -328,6 +331,18 @@ export class BetterPaymentHandler {
    */
   private async handleGetPayment(paymentId: string, provider: any): Promise<BetterPaymentResponse> {
     const result = await provider.getPayment(paymentId);
+    return this.successResponse(result);
+  }
+
+  private async handleTokenPayment(
+    request: BetterPaymentRequest,
+    provider: any
+  ): Promise<BetterPaymentResponse> {
+    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
+    if (typeof provider.createPaymentWithToken !== 'function') {
+      return this.errorResponse(400, 'This provider does not support token payments');
+    }
+    const result = await provider.createPaymentWithToken(request.body);
     return this.successResponse(result);
   }
 

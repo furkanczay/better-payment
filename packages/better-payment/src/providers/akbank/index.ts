@@ -10,6 +10,10 @@ import {
   CancelRequest,
   CancelResponse,
   PaymentStatus,
+  BinCheckResponse,
+  InstallmentInfoRequest,
+  InstallmentInfoResponse,
+  InstallmentPrice,
 } from '../../types';
 import {
   createAkbankHash,
@@ -386,6 +390,119 @@ export class Akbank extends PaymentProvider {
   /**
    * Ödeme sorgulama
    */
+  async binCheck(binNumber: string): Promise<BinCheckResponse> {
+    try {
+      const hash = createAkbankHash({
+        merchantId: this.merchantId,
+        terminalId: this.terminalId,
+        orderId: `BIN-${Date.now()}`,
+        amount: '0',
+        currency: '949',
+        storeKey: this.storeKey,
+        txnType: 'BINQuery',
+      });
+
+      const formData = this.createFormData({
+        MERCHANTID: this.merchantId,
+        TERMINALID: this.terminalId,
+        TXNTYPE: 'BINQuery',
+        PAN: binNumber.padEnd(16, '0'),
+        HASH: hash,
+      });
+
+      const response = await this.client.post<any>('/servlet/PaymentGateway', formData);
+      const d = response.data;
+
+      return {
+        binNumber,
+        cardType: d.CARDTYPE || d.CardType || 'UNKNOWN',
+        cardAssociation: d.CARDASSOCIATION || d.CardAssociation || 'UNKNOWN',
+        cardFamily: d.CARDFAMILY || d.CardFamily || 'UNKNOWN',
+        bankName: d.BANKNAME || d.BankName || 'Akbank',
+        bankCode: parseInt(d.BANKCODE || '46', 10),
+        commercial: d.COMMERCIAL === '1' || d.Commercial === 'true',
+        rawResponse: d,
+      };
+    } catch (error: any) {
+      throw new Error(error.message || 'Akbank BIN check failed');
+    }
+  }
+
+  async installmentInfo(request: InstallmentInfoRequest): Promise<InstallmentInfoResponse> {
+    try {
+      const amount = formatAmount(parseFloat(request.price || '0'));
+      const orderId = `INST-${Date.now()}`;
+
+      const hash = createAkbankHash({
+        merchantId: this.merchantId,
+        terminalId: this.terminalId,
+        orderId,
+        amount,
+        currency: '949',
+        storeKey: this.storeKey,
+        txnType: 'InstallmentEnquiry',
+      });
+
+      const formData = this.createFormData({
+        MERCHANTID: this.merchantId,
+        TERMINALID: this.terminalId,
+        TXNTYPE: 'InstallmentEnquiry',
+        PAN: request.binNumber.padEnd(16, '0'),
+        AMOUNT: amount,
+        CURRENCY: '949',
+        ORDERID: orderId,
+        HASH: hash,
+      });
+
+      const response = await this.client.post<any>('/servlet/PaymentGateway', formData);
+      const d = response.data;
+
+      if (d.ProcReturnCode !== '00' && d.ProcReturnCode !== 'Success') {
+        return {
+          status: PaymentStatus.FAILURE,
+          errorCode: d.ErrMsg,
+          errorMessage: d.Response,
+          rawResponse: d,
+        };
+      }
+
+      const installmentCounts: number[] = d.EXTRA?.NUMINSTALLMENT
+        ? d.EXTRA.NUMINSTALLMENT.split(',').map(Number).filter(Boolean)
+        : [1, 2, 3, 6, 9, 12];
+
+      const price = parseFloat(request.price || '0');
+      const installmentDetails: InstallmentPrice[] = [
+        {
+          binNumber: request.binNumber,
+          price,
+          cardType: d.CARDTYPE || 'CREDIT_CARD',
+          cardAssociation: d.CARDASSOCIATION || 'UNKNOWN',
+          cardFamilyName: d.CARDFAMILY || 'UNKNOWN',
+          bankCode: 46,
+          bankName: 'Akbank',
+          commercial: 0,
+          installmentPrices: installmentCounts.map((count) => ({
+            installmentNumber: count,
+            totalPrice: price,
+            installmentPrice: price / count,
+          })),
+        },
+      ];
+
+      return {
+        status: PaymentStatus.SUCCESS,
+        installmentDetails,
+        rawResponse: d,
+      };
+    } catch (error: any) {
+      return {
+        status: PaymentStatus.FAILURE,
+        errorMessage: error.message || 'Installment info failed',
+        rawResponse: error.response?.data,
+      };
+    }
+  }
+
   async getPayment(paymentId: string): Promise<PaymentResponse> {
     try {
       const hash = createAkbankHash({

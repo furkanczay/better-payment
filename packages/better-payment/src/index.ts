@@ -1,4 +1,11 @@
 export { BetterPayment } from './core/BetterPayment';
+export {
+  BetterPaymentError,
+  ProviderNotEnabledError,
+  PaymentFailedError,
+  ValidationError,
+  ConfigurationError,
+} from './core/errors';
 
 export {
   BetterPaymentConfig,
@@ -9,6 +16,7 @@ export {
   PayTRProviderConfig,
   AkbankProviderConfig,
   ParamposProviderConfig,
+  PROVIDER_DEFAULT_URLS,
 } from './core/BetterPaymentConfig';
 
 export { PaymentProvider, PaymentProviderConfig } from './core/PaymentProvider';
@@ -64,6 +72,7 @@ export {
 
 export { Iyzico } from './providers/iyzico';
 export { PayTR } from './providers/paytr';
+export type { PayTRTokenPaymentRequest } from './providers/paytr/types';
 export { Akbank } from './providers/akbank';
 export { Parampos } from './providers/parampos';
 

@@ -93,7 +93,27 @@ export interface BetterPaymentConfig {
     [ProviderType.PARAMPOS]?: ParamposProviderConfig;
   };
   defaultProvider?: ProviderType;
+  mode?: 'sandbox' | 'production';
 }
+
+export const PROVIDER_DEFAULT_URLS: Record<string, Record<string, string>> = {
+  [ProviderType.IYZICO]: {
+    sandbox: 'https://sandbox-api.iyzipay.com',
+    production: 'https://api.iyzipay.com',
+  },
+  [ProviderType.PAYTR]: {
+    sandbox: 'https://www.paytr.com',
+    production: 'https://www.paytr.com',
+  },
+  [ProviderType.AKBANK]: {
+    sandbox: 'https://entegrasyon.akbank.com',
+    production: 'https://apiprod.akbank.com',
+  },
+  [ProviderType.PARAMPOS]: {
+    sandbox: 'https://testposws.param.com.tr/turkpos.ws/service_turkpos_prod.asmx',
+    production: 'https://posws.param.com.tr/turkpos.ws/service_turkpos_prod.asmx',
+  },
+};
 
 /**
  * Provider instance map
