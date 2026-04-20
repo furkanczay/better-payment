@@ -39,10 +39,10 @@ export default function Footer() {
             <Link href="/" className="flex items-center gap-2.5 mb-4 w-fit group">
               <Image
                 src="/better-payment-logo.svg"
-                width={320}
-                height={320}
+                width={304}
+                height={64}
                 alt="better-payment"
-                className="h-6 w-auto opacity-90 group-hover:opacity-100 transition-opacity"
+                className="h-5 w-auto opacity-90 group-hover:opacity-100 transition-opacity"
               />
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-[230px]">

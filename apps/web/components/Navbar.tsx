@@ -63,10 +63,10 @@ export default function Navbar() {
         <Link href="/" className="flex items-center gap-2 group">
           <Image
             src="/better-payment-logo.svg"
-            width={320}
-            height={320}
+            width={304}
+            height={64}
             alt="better-payment logo"
-            className="h-7 w-auto"
+            className="h-6 w-auto"
           />
           <Badge
             variant="secondary"
