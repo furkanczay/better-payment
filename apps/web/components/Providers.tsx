@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { Check } from "lucide-react";
+import Image from "next/image";
 
 const providers = [
   {
     id: "iyzico",
     name: "İyzico",
+    logo: "/iyzico.svg",
     tagline: "Turkey's leading gateway",
     description:
       "Full-featured integration covering V2 auth, hosted checkout, PWI (IBAN payments), subscriptions, BIN check, and installment inquiry.",
@@ -55,6 +57,7 @@ const providers = [
   {
     id: "paytr",
     name: "PayTR",
+    logo: "/paytr.svg",
     tagline: "Competitive rates, fast payouts",
     description:
       "iframe-based 3D Secure with HMAC-SHA256 signed requests. Supports BIN detail, installment queries, partial refunds, and callback verification.",
@@ -105,6 +108,7 @@ const providers = [
   {
     id: "parampos",
     name: "Parampos",
+    logo: "/param.svg",
     tagline: "Enterprise-grade SOAP integration",
     description:
       "Full SOAP API integration with direct card charge, 3D Secure, installment support, and complete refund & cancellation flows.",
@@ -215,12 +219,15 @@ export default function Providers() {
               key={pr.id}
               onClick={() => setActive(i)}
               className={[
-                "px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
                 active === i
                   ? "bg-card shadow-sm text-foreground border border-border/60"
                   : "text-muted-foreground hover:text-foreground",
               ].join(" ")}
             >
+              <span className="w-5 h-5 rounded bg-white flex items-center justify-center overflow-hidden shrink-0 p-0.5">
+                <Image src={pr.logo} alt={pr.name} width={20} height={20} className="w-full h-full object-contain" />
+              </span>
               {pr.name}
             </button>
           ))}
@@ -239,10 +246,8 @@ export default function Providers() {
             <div className="p-8 flex flex-col gap-6">
               <div>
                 <div className="flex items-center gap-3 mb-3">
-                  <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${p.gradient} flex items-center justify-center shadow-sm`}>
-                    <span className="text-white font-bold text-sm">
-                      {p.name.slice(0, 2).toUpperCase()}
-                    </span>
+                  <div className={`w-11 h-11 rounded-xl bg-white flex items-center justify-center shadow-sm overflow-hidden p-1.5`}>
+                    <Image src={p.logo} alt={p.name} width={40} height={40} className="w-full h-full object-contain" />
                   </div>
                   <div>
                     <h3 className="font-bold text-foreground text-lg leading-tight">{p.name}</h3>

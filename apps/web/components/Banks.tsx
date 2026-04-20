@@ -1,5 +1,6 @@
 import { Shield, Zap, CreditCard, Lock, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 const highlights = [
   { icon: Lock, label: "OAuth2 Auth", desc: "Token-based authentication" },
@@ -82,8 +83,8 @@ export default function Banks() {
             <div className="p-8 lg:p-10 flex flex-col gap-7">
               {/* Bank identity */}
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center shadow-lg shadow-red-900/20 shrink-0">
-                  <span className="text-white font-black text-lg tracking-tight">AK</span>
+                <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-lg shadow-red-900/10 shrink-0 p-2 overflow-hidden">
+                  <Image src="/akbank.svg" alt="Akbank" width={48} height={48} className="w-full h-full object-contain" />
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-foreground leading-tight">Akbank</h3>
