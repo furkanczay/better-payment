@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.1
+
+### Patch Changes
+
+- Add README.md to npm package and update documentation URL to https://better-payment.czaylabs.com
+
 ## 3.0.0
 
 ### Major Changes
