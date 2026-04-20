@@ -77,6 +77,18 @@ export function generatePayTRToken(
 }
 
 /**
+ * PayTR BIN detail token oluşturur
+ */
+export function generateBinDetailToken(
+  merchantId: string,
+  binNumber: string,
+  merchantSalt: string
+): string {
+  const tokenStr = `${merchantId}${binNumber}${merchantSalt}`;
+  return crypto.createHmac('sha256', merchantSalt).update(tokenStr).digest('base64');
+}
+
+/**
  * PayTR form data oluşturur
  */
 export function createPayTRFormData(data: Record<string, string>): string {

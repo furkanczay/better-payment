@@ -1,9 +1,9 @@
 ---
 title: PayTR
-description: PayTR integration reference — iframe 3D payment and refunds.
+description: PayTR integration reference — iframe 3D payment, BIN check, installment info and refunds.
 ---
 
-PayTR uses form-urlencoded requests and HMAC-SHA256 token validation. It supports only the iframe 3D Secure flow.
+PayTR uses form-urlencoded requests and HMAC-SHA256 token validation. It supports the iframe 3D Secure flow, BIN/installment queries, and partial or full refunds.
 
 ## Configuration
 
@@ -34,28 +34,74 @@ const result = await payment.paytr.initThreeDSPayment({
   callbackUrl: 'https://yoursite.com/payment/callback',
   buyer: { id, name, surname, email, ip, /* ... */ },
   basketItems: [{ id, name, category1, itemType, price }],
-  // PayTR specific:
-  userBasket: [['Product Name', '100.00', 1]],
-  noInstallment: 0,
-  maxInstallment: 0,
 });
 
-// Embed in iframe:
-// <iframe src={`https://www.paytr.com/odeme/guvenli/${result.token}`} />
+// Render the iframe HTML returned in result.threeDSHtmlContent
+// or embed the token directly:
+// <iframe src={`https://www.paytr.com/odeme/guvenli/${result.paymentId}`} />
 ```
 
-**Callback (webhook):**
+**Handle Callback (webhook):**
 
 ```typescript
-// PayTR posts to your callbackUrl with status
-// Verify the token and update your order
+// PayTR POSTs to your callbackUrl with merchant_oid, status, total_amount, hash
+const result = await payment.paytr.completeThreeDSPayment(req.body);
+
+if (result.status === 'success') {
+  // update order in DB
+}
+
+// Must respond with "OK" to acknowledge
+res.send('OK');
+```
+
+## BIN Check
+
+Query card network, bank, and card family from the first 6–8 digits.
+
+```typescript
+const info = await payment.paytr.binCheck('552879');
+
+console.log(info.bankName);       // "GARANTİ BANKASI T.A.Ş."
+console.log(info.cardAssociation); // "VISA"
+console.log(info.cardFamily);      // "Bonus"
+console.log(info.cardType);        // "Kredi Kartı"
+```
+
+Via HTTP:
+```bash
+POST /api/pay/paytr/bin-check
+{ "binNumber": "552879" }
+```
+
+## Installment Info
+
+Query available installment options for a BIN number and amount.
+
+```typescript
+const info = await payment.paytr.installmentInfo({
+  binNumber: '552879',
+  price: '100.00',
+});
+
+if (info.status === 'success' && info.installmentDetails) {
+  info.installmentDetails[0].installmentPrices.forEach((opt) => {
+    console.log(`${opt.installmentNumber} taksit: ${opt.totalPrice} TL`);
+  });
+}
+```
+
+Via HTTP:
+```bash
+POST /api/pay/paytr/installment
+{ "binNumber": "552879", "price": "100.00" }
 ```
 
 ## Refund
 
 ```typescript
 await payment.paytr.refund({
-  paymentId: 'merchant-oid',         // your order ID
+  paymentId: 'merchant-oid',   // your order ID (merchant_oid)
   price: '50.00',
   currency: Currency.TRY,
 });
@@ -74,14 +120,4 @@ await payment.paytr.cancel({ paymentId: 'order-id' });
 
 // Correct approach:
 await payment.paytr.refund({ paymentId: 'order-id', price: originalAmount });
-```
-
-## Installment Info
-
-```typescript
-const info = await payment.paytr.getInstallmentInfo({
-  binNumber: '552879',
-  price: '100.00',
-  currency: Currency.TRY,
-});
 ```

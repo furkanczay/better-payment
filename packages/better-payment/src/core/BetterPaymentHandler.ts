@@ -384,9 +384,10 @@ export class BetterPaymentHandler {
     provider: any
   ): Promise<BetterPaymentResponse> {
     if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
-    const result = await iyzico.installmentInfo(request.body as InstallmentInfoRequest);
+    if (typeof provider.installmentInfo !== 'function') {
+      return this.errorResponse(400, 'This provider does not support installment info');
+    }
+    const result = await provider.installmentInfo(request.body as InstallmentInfoRequest);
     return this.successResponse(result);
   }
 
@@ -395,10 +396,11 @@ export class BetterPaymentHandler {
     provider: any
   ): Promise<BetterPaymentResponse> {
     if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
+    if (typeof provider.binCheck !== 'function') {
+      return this.errorResponse(400, 'This provider does not support BIN check');
+    }
     const { binNumber } = request.body;
-    const result = await iyzico.binCheck(binNumber);
+    const result = await provider.binCheck(binNumber);
     return this.successResponse(result);
   }
 

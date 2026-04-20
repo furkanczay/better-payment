@@ -84,6 +84,23 @@ export interface PayTRCallbackData {
   merchant_id?: string;
 }
 
+export interface PayTRBinDetailResponse {
+  status: string;
+  reason?: string;
+  bin_detail?: {
+    bank_adi: string;
+    bank_adi_tr?: string;
+    card_network: string;
+    card_adi: string;
+    card_tipi: string;
+    bank_logo?: string;
+  };
+  installment_count?: Array<{
+    installment_count: number;
+    price: string;
+  }>;
+}
+
 export interface PayTRRefundRequest {
   merchant_id: string;
   merchant_key: string;

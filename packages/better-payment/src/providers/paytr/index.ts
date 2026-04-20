@@ -10,6 +10,10 @@ import {
   CancelRequest,
   CancelResponse,
   PaymentStatus,
+  BinCheckResponse,
+  InstallmentInfoRequest,
+  InstallmentInfoResponse,
+  InstallmentPrice,
 } from '../../types';
 import {
   generatePayTRHash,
@@ -17,6 +21,7 @@ import {
   formatPayTRBasket,
   convertToKurus,
   generatePayTRToken,
+  generateBinDetailToken,
   createPayTRFormData,
 } from './utils';
 import type {
@@ -24,6 +29,7 @@ import type {
   PayTRCallbackData,
   PayTRRefundResponse,
   PayTRBasketItem,
+  PayTRBinDetailResponse,
 } from './types';
 
 /**
@@ -346,6 +352,116 @@ export class PayTR extends PaymentProvider {
         status: PaymentStatus.FAILURE,
         errorMessage: error.message || 'Cancel failed',
         rawResponse: error,
+      };
+    }
+  }
+
+  /**
+   * BIN sorgulama
+   */
+  async binCheck(binNumber: string): Promise<BinCheckResponse> {
+    try {
+      const token = generateBinDetailToken(this.merchantId, binNumber, this.merchantSalt);
+      const formData = createPayTRFormData({
+        merchant_id: this.merchantId,
+        merchant_key: this.merchantKey,
+        merchant_salt: this.merchantSalt,
+        bin_number: binNumber,
+        paytr_token: token,
+      });
+
+      const response = await this.client.post<PayTRBinDetailResponse>(
+        '/odeme/api/bin-detail/v2',
+        formData
+      );
+
+      if (response.data.status === 'success' && response.data.bin_detail) {
+        const detail = response.data.bin_detail;
+        return {
+          binNumber,
+          cardType: detail.card_tipi,
+          cardAssociation: detail.card_network,
+          cardFamily: detail.card_adi,
+          bankName: detail.bank_adi,
+          bankCode: 0,
+          commercial: false,
+          rawResponse: response.data,
+        };
+      }
+
+      throw new Error(response.data.reason || 'BIN check failed');
+    } catch (error: any) {
+      throw new Error(error.message || 'BIN check failed');
+    }
+  }
+
+  /**
+   * Taksit sorgulama
+   */
+  async installmentInfo(request: InstallmentInfoRequest): Promise<InstallmentInfoResponse> {
+    try {
+      const token = generateBinDetailToken(this.merchantId, request.binNumber, this.merchantSalt);
+      const params: Record<string, string> = {
+        merchant_id: this.merchantId,
+        merchant_key: this.merchantKey,
+        merchant_salt: this.merchantSalt,
+        bin_number: request.binNumber,
+        paytr_token: token,
+      };
+
+      if (request.price) {
+        params.amount = convertToKurus(request.price);
+      }
+
+      const formData = createPayTRFormData(params);
+
+      const response = await this.client.post<PayTRBinDetailResponse>(
+        '/odeme/api/bin-detail/v2',
+        formData
+      );
+
+      if (response.data.status === 'success') {
+        const detail = response.data.bin_detail;
+        const installmentDetails: InstallmentPrice[] = detail
+          ? [
+              {
+                binNumber: request.binNumber,
+                price: parseFloat(request.price || '0'),
+                cardType: detail.card_tipi,
+                cardAssociation: detail.card_network,
+                cardFamilyName: detail.card_adi,
+                force3ds: 0,
+                bankCode: 0,
+                bankName: detail.bank_adi,
+                forceCvc: 0,
+                commercial: 0,
+                installmentPrices: (response.data.installment_count || []).map((item) => ({
+                  installmentNumber: item.installment_count,
+                  totalPrice: parseFloat(item.price),
+                  installmentPrice:
+                    parseFloat(item.price) / (item.installment_count || 1),
+                })),
+              },
+            ]
+          : [];
+
+        return {
+          status: PaymentStatus.SUCCESS,
+          installmentDetails,
+          rawResponse: response.data,
+        };
+      }
+
+      return {
+        status: PaymentStatus.FAILURE,
+        errorMessage: response.data.reason || 'Installment info failed',
+        rawResponse: response.data,
+      };
+    } catch (error: any) {
+      return {
+        status: PaymentStatus.FAILURE,
+        errorMessage: error.message || 'Installment info failed',
+        rawResponse: error.response?.data,
       };
     }
   }
