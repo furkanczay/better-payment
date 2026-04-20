@@ -1,0 +1,4 @@
+{
+  "buildCommand": "cd ../.. && pnpm --filter better-payment build && pnpm --filter web build",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile"
+}
