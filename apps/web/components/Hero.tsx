@@ -1,113 +1,72 @@
 import { buttonVariants } from "@/lib/button-variants";
-import { ArrowRight, ExternalLink } from "lucide-react";
+import { ArrowRight, Star, Terminal } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-const terminalLines = [
-  { type: "comment", text: "// Configure once, use everywhere" },
-  { type: "keyword", text: "const", rest: " payment = ", accent: "new BetterPayment", end: "({" },
-  { type: "indent", text: "  defaultProvider:", value: ' "iyzico",' },
-  { type: "indent", text: "  providers: {" },
-  { type: "indent2", text: "    iyzico: {", dim: " enabled: true }" },
-  { type: "indent2", text: "    paytr: {", dim: " enabled: true }" },
-  { type: "indent", text: "  }" },
-  { type: "bracket", text: "});" },
-  { type: "blank" },
-  { type: "comment", text: "// Switch providers on the fly" },
-  {
-    type: "call",
-    pre: "await payment.",
-    method: "use",
-    args: '("paytr")',
-    chain: ".",
-    method2: "createPayment",
-    args2: "({ ... })",
-  },
+const codeLines = [
+  { ln: 1, tokens: [{ c: "dim", v: "import" }, { c: "", v: " { " }, { c: "sky", v: "BetterPayment" }, { c: "", v: " } " }, { c: "dim", v: "from" }, { c: "green", v: ' "better-payment"' }] },
+  { ln: 2, tokens: [] },
+  { ln: 3, tokens: [{ c: "dim", v: "const" }, { c: "", v: " payment = " }, { c: "dim", v: "new" }, { c: "", v: " " }, { c: "sky", v: "BetterPayment" }, { c: "", v: "({" }] },
+  { ln: 4, tokens: [{ c: "purple", v: "  defaultProvider" }, { c: "dim", v: ": " }, { c: "green", v: '"iyzico"' }, { c: "", v: "," }] },
+  { ln: 5, tokens: [{ c: "purple", v: "  providers" }, { c: "dim", v: ": " }, { c: "", v: "{ iyzico: " }, { c: "dim", v: "{ enabled: " }, { c: "orange", v: "true" }, { c: "dim", v: " }" }, { c: "", v: ", paytr: " }, { c: "dim", v: "{ enabled: " }, { c: "orange", v: "true" }, { c: "dim", v: " }" }, { c: "", v: " }," }] },
+  { ln: 6, tokens: [{ c: "", v: "});" }] },
+  { ln: 7, tokens: [] },
+  { ln: 8, tokens: [{ c: "muted", v: "// Switch providers on demand — same API" }] },
+  { ln: 9, tokens: [{ c: "dim", v: "await" }, { c: "", v: " payment." }, { c: "sky", v: "use" }, { c: "dim", v: "(" }, { c: "green", v: '"paytr"' }, { c: "dim", v: ")." }, { c: "yellow", v: "initThreeDSPayment" }, { c: "dim", v: "(" }, { c: "", v: "opts" }, { c: "dim", v: ");" }] },
+  { ln: 10, tokens: [{ c: "dim", v: "await" }, { c: "", v: " payment." }, { c: "sky", v: "use" }, { c: "dim", v: "(" }, { c: "green", v: '"iyzico"' }, { c: "dim", v: ")." }, { c: "yellow", v: "initThreeDSPayment" }, { c: "dim", v: "(" }, { c: "", v: "opts" }, { c: "dim", v: ");" }, { c: "primary", v: "▋" }] },
 ];
 
-function TerminalWindow() {
-  return (
-    <div className="relative w-full max-w-[520px] rounded-xl overflow-hidden border border-border/80 shadow-2xl shadow-black/20">
-      {/* Title bar */}
-      <div className="flex items-center gap-2 px-4 py-3 bg-card border-b border-border/60">
-        <div className="flex gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
-          <span className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
-          <span className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
-        </div>
-        <span className="ml-2 text-[11px] font-mono text-muted-foreground/70 tracking-wide">
-          lib/payment.ts
-        </span>
-      </div>
+const colorMap: Record<string, string> = {
+  dim: "text-muted-foreground/60",
+  sky: "text-sky-400",
+  green: "text-emerald-400",
+  purple: "text-violet-400",
+  orange: "text-orange-400",
+  yellow: "text-amber-400",
+  muted: "text-muted-foreground/40 italic",
+  primary: "text-primary animate-[blink_1.1s_step-end_infinite]",
+  "": "text-foreground/85",
+};
 
-      {/* Code area */}
-      <div className="relative bg-card/50 scanlines overflow-hidden">
-        <div className="p-5 font-mono text-[12.5px] leading-[1.8] overflow-x-auto">
+function CodeWindow() {
+  return (
+    <div className="w-full max-w-[540px] rounded-2xl overflow-hidden border border-border/60 shadow-2xl shadow-black/30 bg-card">
+      {/* Window chrome */}
+      <div className="flex items-center gap-3 px-4 py-3 bg-muted/30 border-b border-border/40">
+        <div className="flex gap-1.5">
+          <span className="w-3 h-3 rounded-full bg-red-500/70" />
+          <span className="w-3 h-3 rounded-full bg-yellow-500/70" />
+          <span className="w-3 h-3 rounded-full bg-green-500/70" />
+        </div>
+        <div className="flex items-center gap-2 ml-2">
+          <Terminal className="w-3 h-3 text-muted-foreground/50" />
+          <span className="text-[11px] font-mono text-muted-foreground/60 tracking-wide">
+            lib/payment.ts
+          </span>
+        </div>
+      </div>
+      {/* Code */}
+      <div className="p-6 font-mono text-[12.5px] leading-[1.9] overflow-x-auto">
+        <div className="flex gap-5">
           {/* Line numbers */}
-          <div className="flex gap-4">
-            <div className="select-none text-right text-muted-foreground/25 shrink-0 leading-[1.8]">
-              {terminalLines.map((_, i) => (
-                <div key={i}>{i + 1}</div>
-              ))}
-            </div>
-            <div className="flex-1 min-w-0">
-              {terminalLines.map((line, i) => {
-                if (line.type === "blank") return <div key={i}>&nbsp;</div>;
-                if (line.type === "comment")
-                  return (
-                    <div key={i} className="text-muted-foreground/40 italic">
-                      {line.text}
-                    </div>
-                  );
-                if (line.type === "keyword")
-                  return (
-                    <div key={i}>
-                      <span className="text-primary/70">{line.text}</span>
-                      <span className="text-foreground/80">{line.rest}</span>
-                      <span className="text-primary">{line.accent}</span>
-                      <span className="text-muted-foreground/60">{line.end}</span>
-                    </div>
-                  );
-                if (line.type === "bracket")
-                  return (
-                    <div key={i} className="text-muted-foreground/60">
-                      {line.text}
-                    </div>
-                  );
-                if (line.type === "indent")
-                  return (
-                    <div key={i}>
-                      <span className="text-foreground/50">{line.text}</span>
-                      {line.value && (
-                        <span className="text-primary/60">{line.value}</span>
-                      )}
-                    </div>
-                  );
-                if (line.type === "indent2")
-                  return (
-                    <div key={i}>
-                      <span className="text-foreground/40">{line.text}</span>
-                      {line.dim && (
-                        <span className="text-muted-foreground/30">{line.dim}</span>
-                      )}
-                    </div>
-                  );
-                if (line.type === "call")
-                  return (
-                    <div key={i}>
-                      <span className="text-muted-foreground/50">{"await "}</span>
-                      <span className="text-foreground/70">{line.pre}</span>
-                      <span className="text-primary">{line.method}</span>
-                      <span className="text-muted-foreground/60">{line.args}</span>
-                      <span className="text-foreground/50">{line.chain}</span>
-                      <span className="text-primary">{line.method2}</span>
-                      <span className="text-muted-foreground/60">{line.args2}</span>
-                      <span className="cursor-blink text-primary ml-0.5">▋</span>
-                    </div>
-                  );
-                return null;
-              })}
-            </div>
+          <div className="select-none text-right text-muted-foreground/20 shrink-0 leading-[1.9] tabular-nums text-[11px]">
+            {codeLines.map((l) => <div key={l.ln}>{l.ln}</div>)}
+          </div>
+          {/* Code content */}
+          <div className="flex-1 min-w-0">
+            {codeLines.map((line, i) => (
+              <div key={i}>
+                {line.tokens.length === 0 ? (
+                  <span>&nbsp;</span>
+                ) : (
+                  line.tokens.map((tok, j) => (
+                    <span key={j} className={colorMap[tok.c] ?? "text-foreground/85"}>
+                      {tok.v}
+                    </span>
+                  ))
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -117,52 +76,58 @@ function TerminalWindow() {
 
 export default function Hero() {
   return (
-    <section className="relative min-h-screen flex items-center pt-14 overflow-hidden">
-      {/* Background */}
-      <div className="absolute inset-0 noise">
-        {/* Dot grid */}
-        <div className="absolute inset-0 [background-image:radial-gradient(oklch(var(--foreground-oklch,0.5)_/_0.07)_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_70%_60%_at_50%_40%,#000_40%,transparent_100%)]" />
-        {/* Glow orbs */}
-        <div className="absolute top-1/3 left-1/4 w-[500px] h-[500px] bg-primary/8 rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute top-1/2 right-1/4 w-[300px] h-[300px] bg-primary/5 rounded-full blur-[80px] pointer-events-none" />
+    <section className="relative min-h-screen flex items-center pt-16 overflow-hidden">
+      {/* Background layers */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 [background-image:radial-gradient(oklch(0.5_0.1_270_/_0.06)_1px,transparent_1px)] [background-size:28px_28px] [mask-image:radial-gradient(ellipse_80%_70%_at_50%_40%,#000_30%,transparent_100%)]" />
+        <div className="absolute -top-20 left-[15%] w-[600px] h-[600px] rounded-full bg-primary/6 blur-[140px]" />
+        <div className="absolute top-1/2 right-[10%] w-[400px] h-[400px] rounded-full bg-violet-500/4 blur-[100px]" />
       </div>
 
-      <div className="relative max-w-6xl mx-auto px-5 sm:px-8 w-full py-20 lg:py-0">
-        <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-20">
-          {/* Left — Copy */}
-          <div className="flex-1 flex flex-col items-start gap-6 min-w-0">
-            {/* Eyebrow */}
-            <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground border border-border/60 rounded-full px-3 py-1.5 bg-card/50 backdrop-blur-sm">
+      <div className="relative max-w-6xl mx-auto px-5 sm:px-8 w-full py-20 lg:py-10">
+        <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-12">
+          {/* Left */}
+          <div className="flex-1 flex flex-col items-start gap-7 min-w-0 max-w-xl">
+            {/* Announcement badge */}
+            <a
+              href="https://github.com/furkanczay/better-payment/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/8 hover:bg-primary/12 px-3.5 py-1.5 text-xs font-mono text-primary transition-colors"
+            >
               <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              Open Source &nbsp;·&nbsp; TypeScript &nbsp;·&nbsp; Node.js 20+
-            </div>
+              v3 Released — BetterPayment API
+              <ArrowRight className="w-3 h-3 opacity-60 group-hover:translate-x-0.5 transition-transform" />
+            </a>
 
             {/* Heading */}
-            <h1 className="text-[2.8rem] sm:text-[3.6rem] lg:text-[4rem] font-extrabold tracking-[-0.03em] leading-[1.02] text-foreground">
-              One API for{" "}
-              <br />
-              <span className="gradient-text">all payment</span>
-              <br />
-              <span className="gradient-text">gateways</span>
-            </h1>
+            <div>
+              <h1 className="text-[3rem] sm:text-[3.8rem] lg:text-[4.2rem] font-extrabold tracking-[-0.035em] leading-[1.0] text-foreground">
+                One API.
+                <br />
+                <span className="gradient-text">Three providers.</span>
+                <br />
+                Zero repetition.
+              </h1>
+            </div>
 
             {/* Subtext */}
-            <p className="text-base sm:text-lg text-muted-foreground max-w-md leading-relaxed">
-              <span className="text-foreground font-medium">better-payment</span> unifies İyzico,
-              PayTR, and Parampos under a single type-safe interface.{" "}
-              <span className="text-foreground/80">Stop rewriting payment logic.</span>
+            <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-[440px]">
+              <strong className="text-foreground font-semibold">better-payment</strong> unifies
+              İyzico, PayTR, and Parampos under a single type-safe interface. Switch providers
+              without rewriting your integration.
             </p>
 
             {/* CTAs */}
-            <div className="flex flex-col sm:flex-row gap-3 mt-1">
+            <div className="flex flex-col sm:flex-row gap-3">
               <Link
                 href="/docs"
                 className={cn(
                   buttonVariants({ size: "lg" }),
-                  "gap-2 h-11 px-6 text-sm font-semibold",
+                  "gap-2 h-12 px-7 text-sm font-semibold shadow-lg shadow-primary/20",
                 )}
               >
-                Read the Docs <ArrowRight className="w-3.5 h-3.5" />
+                Get Started <ArrowRight className="w-3.5 h-3.5" />
               </Link>
               <a
                 href="https://github.com/furkanczay/better-payment"
@@ -170,41 +135,47 @@ export default function Hero() {
                 rel="noopener noreferrer"
                 className={cn(
                   buttonVariants({ variant: "outline", size: "lg" }),
-                  "gap-2 h-11 px-6 text-sm font-medium",
+                  "gap-2 h-12 px-7 text-sm font-medium",
                 )}
               >
-                <ExternalLink className="w-3.5 h-3.5" /> GitHub
+                <Star className="w-3.5 h-3.5" />
+                Star on GitHub
               </a>
             </div>
 
-            {/* Install */}
-            <div className="flex items-center gap-3 font-mono text-sm text-muted-foreground bg-card/60 border border-border/60 backdrop-blur-sm rounded-lg px-4 py-3 w-full max-w-xs">
-              <span className="text-primary select-none">$</span>
-              <span className="text-foreground/80">npm install better-payment</span>
+            {/* Install command */}
+            <div className="flex items-center gap-3 font-mono text-sm text-muted-foreground bg-muted/40 border border-border/60 rounded-xl px-5 py-3.5 w-full max-w-[340px]">
+              <span className="text-primary select-none font-bold">$</span>
+              <span className="text-foreground/75">npm install better-payment</span>
             </div>
 
             {/* Stats */}
-            <div className="flex items-center gap-6 pt-2 text-sm">
+            <div className="flex items-center gap-8 pt-1">
               <div>
-                <span className="text-2xl font-bold tabular-nums text-foreground">3</span>
-                <p className="text-xs text-muted-foreground mt-0.5">Providers</p>
+                <div className="text-2xl font-bold tabular-nums text-foreground">3</div>
+                <div className="text-xs text-muted-foreground mt-0.5">Providers</div>
               </div>
-              <div className="w-px h-8 bg-border" />
+              <div className="w-px h-10 bg-border" />
               <div>
-                <span className="text-2xl font-bold tabular-nums text-foreground">1</span>
-                <p className="text-xs text-muted-foreground mt-0.5">Dependency</p>
+                <div className="text-2xl font-bold tabular-nums text-foreground">1</div>
+                <div className="text-xs text-muted-foreground mt-0.5">Dependency</div>
               </div>
-              <div className="w-px h-8 bg-border" />
+              <div className="w-px h-10 bg-border" />
               <div>
-                <span className="text-2xl font-bold tabular-nums text-foreground">100%</span>
-                <p className="text-xs text-muted-foreground mt-0.5">TypeScript</p>
+                <div className="text-2xl font-bold tabular-nums text-foreground">100%</div>
+                <div className="text-xs text-muted-foreground mt-0.5">TypeScript</div>
+              </div>
+              <div className="w-px h-10 bg-border" />
+              <div>
+                <div className="text-2xl font-bold tabular-nums text-foreground">MIT</div>
+                <div className="text-xs text-muted-foreground mt-0.5">License</div>
               </div>
             </div>
           </div>
 
-          {/* Right — Terminal */}
-          <div className="flex-1 flex justify-center lg:justify-end w-full max-w-[520px]">
-            <TerminalWindow />
+          {/* Right */}
+          <div className="flex-1 flex justify-center lg:justify-end w-full">
+            <CodeWindow />
           </div>
         </div>
       </div>
