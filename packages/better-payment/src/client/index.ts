@@ -7,6 +7,9 @@ import {
   RefundResponse,
   CancelRequest,
   CancelResponse,
+  BinCheckResponse,
+  InstallmentInfoRequest,
+  InstallmentInfoResponse,
 } from '../types';
 import { ProviderType } from '../core/BetterPaymentConfig';
 
@@ -183,6 +186,14 @@ class ProviderClient {
   async getPayment(paymentId: string): Promise<PaymentResponse> {
     return this.request<PaymentResponse>('GET', `payment/${paymentId}`);
   }
+
+  async binCheck(binNumber: string): Promise<BinCheckResponse> {
+    return this.request<BinCheckResponse>('POST', 'bin-check', { binNumber });
+  }
+
+  async installmentInfo(request: InstallmentInfoRequest): Promise<InstallmentInfoResponse> {
+    return this.request<InstallmentInfoResponse>('POST', 'installment', request);
+  }
 }
 
 /**
@@ -261,19 +272,16 @@ class ProviderClient {
  * ```
  */
 export class BetterPaymentClient {
-  /**
-   * İyzico provider client
-   */
   readonly iyzico: ProviderClient;
-
-  /**
-   * PayTR provider client
-   */
   readonly paytr: ProviderClient;
+  readonly akbank: ProviderClient;
+  readonly parampos: ProviderClient;
 
   constructor(private config: BetterPaymentClientConfig) {
     this.iyzico = new ProviderClient(ProviderType.IYZICO, config);
     this.paytr = new ProviderClient(ProviderType.PAYTR, config);
+    this.akbank = new ProviderClient(ProviderType.AKBANK, config);
+    this.parampos = new ProviderClient(ProviderType.PARAMPOS, config);
   }
 
   /**

@@ -8,6 +8,8 @@ import {
   CancelRequest,
   CancelResponse,
   BinCheckResponse,
+  InstallmentInfoRequest,
+  InstallmentInfoResponse,
 } from '../types';
 
 /**
@@ -84,5 +86,12 @@ export abstract class PaymentProvider {
    */
   async binCheck(binNumber: string): Promise<BinCheckResponse> {
     throw new Error(`BIN check for ${binNumber} not supported by this provider`);
+  }
+
+  /**
+   * Taksit sorgulama
+   */
+  async installmentInfo(_request: InstallmentInfoRequest): Promise<InstallmentInfoResponse> {
+    throw new Error(`Installment info not supported by this provider`);
   }
 }

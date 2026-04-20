@@ -278,11 +278,13 @@ export class BetterPayment {
     }
   }
 
-  /**
-   * Belirli bir provider kullan
-   */
-  use(providerType: ProviderType): PaymentProvider {
-    const provider = this.providers[providerType];
+  use(provider: ProviderType.IYZICO | 'iyzico'): Iyzico;
+  use(provider: ProviderType.PAYTR | 'paytr'): PayTR;
+  use(provider: ProviderType.AKBANK | 'akbank'): Akbank;
+  use(provider: ProviderType.PARAMPOS | 'parampos'): Parampos;
+  use(provider: ProviderType | string): PaymentProvider;
+  use(providerType: ProviderType | string): PaymentProvider {
+    const provider = this.providers[providerType as ProviderType];
     if (!provider) {
       throw new Error(
         `Provider '${providerType}' is not enabled or configured. ` +

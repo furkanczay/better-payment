@@ -1,3 +1,10 @@
+export enum PaymentStatus {
+  SUCCESS = 'success',
+  FAILURE = 'failure',
+  PENDING = 'pending',
+  CANCELLED = 'cancelled',
+}
+
 export interface PaymentCard {
   cardHolderName: string;
   cardNumber: string;

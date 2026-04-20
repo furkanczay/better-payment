@@ -544,7 +544,7 @@ export class Iyzico extends PaymentProvider {
       return response;
     } catch (error: any) {
       return {
-        status: 'failure',
+        status: PaymentStatus.FAILURE,
         errorMessage: error.message || 'Subscription initialization failed',
         errorCode: error.response?.data?.errorCode,
       };
@@ -563,7 +563,7 @@ export class Iyzico extends PaymentProvider {
       return response;
     } catch (error: any) {
       return {
-        status: 'failure',
+        status: PaymentStatus.FAILURE,
         errorMessage: error.message || 'Subscription cancellation failed',
         errorCode: error.response?.data?.errorCode,
       };
@@ -588,7 +588,7 @@ export class Iyzico extends PaymentProvider {
       return response;
     } catch (error: any) {
       return {
-        status: 'failure',
+        status: PaymentStatus.FAILURE,
         errorMessage: error.message || 'Subscription upgrade failed',
         errorCode: error.response?.data?.errorCode,
       };
@@ -607,7 +607,7 @@ export class Iyzico extends PaymentProvider {
       return response;
     } catch (error: any) {
       return {
-        status: 'failure',
+        status: PaymentStatus.FAILURE,
         errorMessage: error.message || 'Subscription retrieve failed',
         errorCode: error.response?.data?.errorCode,
       };
@@ -633,7 +633,7 @@ export class Iyzico extends PaymentProvider {
       return response;
     } catch (error: any) {
       return {
-        status: 'failure',
+        status: PaymentStatus.FAILURE,
         errorMessage: error.message || 'Card update initialization failed',
         errorCode: error.response?.data?.errorCode,
       };
@@ -656,7 +656,7 @@ export class Iyzico extends PaymentProvider {
       return response;
     } catch (error: any) {
       return {
-        status: 'failure',
+        status: PaymentStatus.FAILURE,
         errorMessage: error.message || 'Product creation failed',
         errorCode: error.response?.data?.errorCode,
       };
@@ -688,7 +688,7 @@ export class Iyzico extends PaymentProvider {
       return response;
     } catch (error: any) {
       return {
-        status: 'failure',
+        status: PaymentStatus.FAILURE,
         errorMessage: error.message || 'Pricing plan creation failed',
         errorCode: error.response?.data?.errorCode,
       };

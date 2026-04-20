@@ -1,12 +1,5 @@
-/**
- * Ödeme durumu enum'u
- */
-export enum PaymentStatus {
-  SUCCESS = 'success',
-  FAILURE = 'failure',
-  PENDING = 'pending',
-  CANCELLED = 'cancelled',
-}
+export { PaymentStatus } from './common';
+import { PaymentStatus } from './common';
 
 /**
  * Para birimi
@@ -171,7 +164,7 @@ export interface CancelResponse {
   conversationId?: string;
   errorCode?: string;
   errorMessage?: string;
-  rawResponse: unknown;
+  rawResponse?: unknown;
 }
 
 /**

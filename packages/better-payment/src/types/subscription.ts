@@ -4,7 +4,7 @@
  * İyzico abonelik ödeme sistemi için type tanımları
  */
 
-import { Address, PaymentCard } from './common';
+import { Address, PaymentCard, PaymentStatus } from './common';
 
 /**
  * Abonelik durumları
@@ -56,7 +56,7 @@ export interface SubscriptionInitializeRequest {
  * Abonelik başlatma yanıtı
  */
 export interface SubscriptionInitializeResponse {
-  status: 'success' | 'failure';
+  status: PaymentStatus;
   systemTime?: number;
   errorCode?: string;
   errorMessage?: string;
@@ -86,7 +86,7 @@ export interface SubscriptionCancelRequest {
  * Abonelik iptal yanıtı
  */
 export interface SubscriptionCancelResponse {
-  status: 'success' | 'failure';
+  status: PaymentStatus;
   systemTime?: number;
   errorCode?: string;
   errorMessage?: string;
@@ -110,7 +110,7 @@ export interface SubscriptionUpgradeRequest {
  * Abonelik yükseltme yanıtı
  */
 export interface SubscriptionUpgradeResponse {
-  status: 'success' | 'failure';
+  status: PaymentStatus;
   systemTime?: number;
   errorCode?: string;
   errorMessage?: string;
@@ -132,7 +132,7 @@ export interface SubscriptionRetrieveRequest {
  * Abonelik detay sorgulama yanıtı
  */
 export interface SubscriptionRetrieveResponse {
-  status: 'success' | 'failure';
+  status: PaymentStatus;
   systemTime?: number;
   errorCode?: string;
   errorMessage?: string;
@@ -166,7 +166,7 @@ export interface SubscriptionCardUpdateRequest {
  * Kart güncelleme yanıtı
  */
 export interface SubscriptionCardUpdateResponse {
-  status: 'success' | 'failure';
+  status: PaymentStatus;
   systemTime?: number;
   errorCode?: string;
   errorMessage?: string;
@@ -190,7 +190,7 @@ export interface SubscriptionProductCreateRequest {
  * Abonelik ürünü yanıtı
  */
 export interface SubscriptionProductResponse {
-  status: 'success' | 'failure';
+  status: PaymentStatus;
   systemTime?: number;
   errorCode?: string;
   errorMessage?: string;
@@ -210,7 +210,7 @@ export interface PricingPlanCreateRequest {
   conversationId?: string;
   productReferenceCode: string;
   name: string;
-  price: number;
+  price: string;
   currency?: string;
   paymentInterval: PaymentInterval;
   paymentIntervalCount: number;
@@ -222,7 +222,7 @@ export interface PricingPlanCreateRequest {
  * Fiyatlandırma planı yanıtı
  */
 export interface PricingPlanResponse {
-  status: 'success' | 'failure';
+  status: PaymentStatus;
   systemTime?: number;
   errorCode?: string;
   errorMessage?: string;
@@ -230,7 +230,7 @@ export interface PricingPlanResponse {
     referenceCode: string;
     productReferenceCode: string;
     name: string;
-    price: number;
+    price: string;
     currency: string;
     paymentInterval: PaymentInterval;
     paymentIntervalCount: number;

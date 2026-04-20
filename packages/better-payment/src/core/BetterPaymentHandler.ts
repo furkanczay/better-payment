@@ -284,7 +284,12 @@ export class BetterPaymentHandler {
       return this.errorResponse(405, 'Method not allowed');
     }
 
-    const callbackData = request.body;
+    let callbackData = request.body;
+    const contentType = (request.headers['content-type'] || request.headers['Content-Type'] || '').toLowerCase();
+    if (contentType.includes('application/x-www-form-urlencoded') && typeof callbackData === 'string') {
+      callbackData = Object.fromEntries(new URLSearchParams(callbackData));
+    }
+
     const result = await provider.completeThreeDSPayment(callbackData);
 
     return this.successResponse(result);
