@@ -18,7 +18,11 @@ export const docsNav = [
   {
     group: "Configuration",
     items: [
-      { label: "BetterPay Options", href: "/docs#configuration", id: "configuration" },
+      {
+        label: "BetterPay Options",
+        href: "/docs#configuration",
+        id: "configuration",
+      },
       { label: "İyzico", href: "/docs#iyzico", id: "iyzico" },
       { label: "PayTR", href: "/docs#paytr", id: "paytr" },
       { label: "Akbank", href: "/docs#akbank", id: "akbank" },
@@ -30,16 +34,44 @@ export const docsNav = [
     group: "API Reference",
     items: [
       { label: "use()", href: "/docs#use", id: "use" },
-      { label: "Named accessors", href: "/docs#named-accessors", id: "named-accessors" },
-      { label: "createPayment()", href: "/docs#createpayment", id: "createpayment" },
-      { label: "initThreeDSPayment()", href: "/docs#initthreedsPayment", id: "initthreedsPayment" },
-      { label: "completeThreeDSPayment()", href: "/docs#completethreedsPayment", id: "completethreedsPayment" },
-      { label: "initCheckoutForm()", href: "/docs#checkoutform", id: "checkoutform" },
-      { label: "installmentInfo()", href: "/docs#installments", id: "installments" },
+      {
+        label: "Named accessors",
+        href: "/docs#named-accessors",
+        id: "named-accessors",
+      },
+      {
+        label: "createPayment()",
+        href: "/docs#createpayment",
+        id: "createpayment",
+      },
+      {
+        label: "initThreeDSPayment()",
+        href: "/docs#initthreedsPayment",
+        id: "initthreedsPayment",
+      },
+      {
+        label: "completeThreeDSPayment()",
+        href: "/docs#completethreedsPayment",
+        id: "completethreedsPayment",
+      },
+      {
+        label: "initCheckoutForm()",
+        href: "/docs#checkoutform",
+        id: "checkoutform",
+      },
+      {
+        label: "installmentInfo()",
+        href: "/docs#installments",
+        id: "installments",
+      },
       { label: "binCheck()", href: "/docs#bincheck", id: "bincheck" },
       { label: "refund()", href: "/docs#refund", id: "refund" },
       { label: "cancel()", href: "/docs#cancel", id: "cancel" },
-      { label: "initializeSubscription()", href: "/docs#subscription", id: "subscription" },
+      {
+        label: "initializeSubscription()",
+        href: "/docs#subscription",
+        id: "subscription",
+      },
       { label: "initPWIPayment()", href: "/docs#pwi", id: "pwi" },
       { label: "handler", href: "/docs#handler", id: "handler" },
     ],
@@ -48,9 +80,21 @@ export const docsNav = [
     group: "Guides",
     items: [
       { label: "3D Secure Payments", href: "/docs#guide-3d", id: "guide-3d" },
-      { label: "Subscription Billing", href: "/docs#guide-subscription", id: "guide-subscription" },
-      { label: "Protected Wire Transfer", href: "/docs#guide-eft", id: "guide-eft" },
-      { label: "Error Handling", href: "/docs#guide-errors", id: "guide-errors" },
+      {
+        label: "Subscription Billing",
+        href: "/docs#guide-subscription",
+        id: "guide-subscription",
+      },
+      {
+        label: "Protected Wire Transfer",
+        href: "/docs#guide-eft",
+        id: "guide-eft",
+      },
+      {
+        label: "Error Handling",
+        href: "/docs#guide-errors",
+        id: "guide-errors",
+      },
     ],
   },
 ];
@@ -67,9 +111,12 @@ export default function DocsSidebar() {
           width={320}
           height={320}
           alt="better-payment logo"
-          className="h-6 w-auto"
+          className="h-16 w-auto"
         />
-        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-mono">
+        <Badge
+          variant="secondary"
+          className="text-[10px] px-1.5 py-0 font-mono"
+        >
           docs
         </Badge>
       </Link>

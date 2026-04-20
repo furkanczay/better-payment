@@ -2,10 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(rm D:/projects/better-payment/packages/better-payment/src/adapters/next-js.ts D:/projects/better-payment/packages/better-payment/src/adapters/node.ts)",
-      "Bash(rmdir D:/projects/better-payment/packages/better-payment/src/adapters)",
       "Bash(pnpm build *)",
       "Bash(pnpm test *)",
-      "Bash(awk -F: '{print $1}')"
+      "Bash(awk -F: '{print $1}')",
+      "Bash(pnpm list *)",
+      "Bash(npm info *)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm --filter web add fumadocs-ui fumadocs-core fumadocs-mdx)",
+      "Bash(pnpm --filter web list zod)",
+      "Bash(pnpm --filter web add zod@^4)",
+      "Bash(find /d/projects/better-payment/node_modules/.pnpm/fumadocs-ui@16.8.0*/node_modules/fumadocs-ui -name \"*.md\" -maxdepth 2)"
     ]
   }
 }
