@@ -70,6 +70,7 @@ export class Akbank extends PaymentProvider {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
     });
+    this.setupAxiosLogging(this.client, 'akbank');
   }
 
   /**

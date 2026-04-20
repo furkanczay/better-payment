@@ -65,6 +65,7 @@ export class Iyzico extends PaymentProvider {
       baseURL: this.config.baseUrl,
       timeout: 30000,
     });
+    this.setupAxiosLogging(this.client, 'iyzico');
   }
 
   /**

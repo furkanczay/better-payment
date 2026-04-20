@@ -1,4 +1,5 @@
 export { BetterPayment } from './core/BetterPayment';
+export type { BetterPaymentLogger } from './core/logger';
 export {
   BetterPaymentError,
   ProviderNotEnabledError,

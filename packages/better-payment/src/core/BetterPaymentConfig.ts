@@ -1,4 +1,5 @@
 import { PaymentProviderConfig } from './PaymentProvider';
+import type { BetterPaymentLogger } from './logger';
 import type { Iyzico } from '../providers/iyzico';
 import type { PayTR } from '../providers/paytr';
 import type { Akbank } from '../providers/akbank';
@@ -94,6 +95,7 @@ export interface BetterPaymentConfig {
   };
   defaultProvider?: ProviderType;
   mode?: 'sandbox' | 'production';
+  logger?: BetterPaymentLogger;
 }
 
 export const PROVIDER_DEFAULT_URLS: Record<string, Record<string, string>> = {

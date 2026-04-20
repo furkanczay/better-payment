@@ -89,6 +89,7 @@ export class Parampos extends PaymentProvider {
       secretKey: config.clientPassword,
       baseUrl: config.baseUrl,
       locale: config.locale,
+      logger: config.logger,
     });
 
     this.paramposConfig = config;
@@ -101,6 +102,7 @@ export class Parampos extends PaymentProvider {
         'Content-Type': 'text/xml; charset=utf-8',
       },
     });
+    this.setupAxiosLogging(this.client, 'parampos');
   }
 
   /**

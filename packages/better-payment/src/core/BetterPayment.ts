@@ -85,13 +85,10 @@ export class BetterPayment {
   }
 
   private applyDefaultBaseUrl<T extends PaymentProviderConfig>(providerType: ProviderType, config: T): T {
-    if (config.baseUrl) return config;
     const mode = this.config.mode || 'production';
     const defaults = PROVIDER_DEFAULT_URLS[providerType];
-    if (defaults) {
-      return { ...config, baseUrl: defaults[mode] || defaults['production'] };
-    }
-    return config;
+    const baseUrl = config.baseUrl ?? (defaults ? (defaults[mode] ?? defaults['production']) : undefined);
+    return { ...config, baseUrl, logger: config.logger ?? this.config.logger };
   }
 
   /**

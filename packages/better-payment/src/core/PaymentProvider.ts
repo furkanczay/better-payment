@@ -1,3 +1,4 @@
+import type { AxiosInstance } from 'axios';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -11,6 +12,7 @@ import {
   InstallmentInfoRequest,
   InstallmentInfoResponse,
 } from '../types';
+import { BetterPaymentLogger } from './logger';
 
 /**
  * Ödeme sağlayıcısı yapılandırması
@@ -20,6 +22,7 @@ export interface PaymentProviderConfig {
   secretKey: string;
   baseUrl?: string;
   locale?: string;
+  logger?: BetterPaymentLogger;
 }
 
 /**
@@ -77,6 +80,47 @@ export abstract class PaymentProvider {
    * Ödeme sorgulama
    */
   abstract getPayment(paymentId: string): Promise<PaymentResponse>;
+
+  /**
+   * Attaches request/response logging interceptors to an axios instance.
+   * No-op when no logger is configured.
+   */
+  protected setupAxiosLogging(client: AxiosInstance, provider: string): void {
+    const logger = this.config.logger;
+    if (!logger) return;
+
+    client.interceptors.request.use((config) => {
+      logger.debug(`[${provider}] ${config.method?.toUpperCase()} ${config.url}`, {
+        provider,
+        method: config.method,
+        url: config.url,
+      });
+      return config;
+    });
+
+    client.interceptors.response.use(
+      (response) => {
+        logger.debug(`[${provider}] ${response.status} ${response.config.url}`, {
+          provider,
+          status: response.status,
+          url: response.config.url,
+        });
+        return response;
+      },
+      (error) => {
+        logger.error(
+          `[${provider}] Request failed: ${error?.message}`,
+          error instanceof Error ? error : new Error(String(error)),
+          {
+            provider,
+            url: error?.config?.url,
+            status: error?.response?.status,
+          }
+        );
+        return Promise.reject(error);
+      }
+    );
+  }
 
   /**
    * BIN sorgulama

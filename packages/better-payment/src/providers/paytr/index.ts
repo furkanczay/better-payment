@@ -66,6 +66,7 @@ export class PayTR extends PaymentProvider {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
     });
+    this.setupAxiosLogging(this.client, 'paytr');
   }
 
   /**
