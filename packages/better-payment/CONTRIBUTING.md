@@ -1,6 +1,6 @@
-# Better Pay Projesine Katkı Rehberi
+# better-payment Katkı Rehberi
 
-Better Pay projesine katkıda bulunmayı düşündüğünüz için teşekkür ederiz! Bu doküman, projeye nasıl katkıda bulunabileceğinizi açıklar.
+better-payment projesine katkıda bulunmayı düşündüğünüz için teşekkür ederiz! Bu doküman, projeye nasıl katkıda bulunabileceğinizi açıklar.
 
 ## İçindekiler
 
@@ -12,6 +12,7 @@ Better Pay projesine katkıda bulunmayı düşündüğünüz için teşekkür ed
 - [Commit Mesajları](#commit-mesajları)
 - [Yeni Provider Ekleme](#yeni-provider-ekleme)
 - [Test Yazma](#test-yazma)
+- [Sürüm ve Yayın](#sürüm-ve-yayın)
 
 ## Davranış Kuralları
 
@@ -51,8 +52,8 @@ Dokümantasyon iyileştirmeleri her zaman değerlidir:
 
 ### Gereksinimler
 
-- Node.js 18.x veya üzeri
-- pnpm 8.x veya üzeri
+- Node.js 20.x veya üzeri
+- pnpm 10.x (sürüm kök `package.json` içindeki `packageManager` alanıyla sabitlenmiştir; `corepack enable` yeterlidir)
 
 ### Kurulum Adımları
 
@@ -74,22 +75,21 @@ git remote add upstream https://github.com/furkanczay/better-payment.git
 pnpm install
 ```
 
-5. Environment değişkenlerini ayarlayın:
+5. Paketi derleyin ve kontrolleri çalıştırın (CI'ın çalıştırdığı komutların aynısı):
 ```bash
-# .env.local dosyası oluşturun
-cp .env.example .env.local
-# Gerekli API key'leri ekleyin
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
 ```
 
-6. Geliştirme modunda çalıştırın:
+6. Doküman sitesini yerelde açmak için (`apps/web`):
 ```bash
 pnpm dev
 ```
 
-7. Testleri çalıştırın:
-```bash
-pnpm test
-```
+Testler provider'lara gerçek istek atmaz. Sandbox'ta denemek isterseniz kendi
+test hesabı bilgilerinizi ortam değişkenleriyle verin ve `mode: 'sandbox'` kullanın.
 
 ## Pull Request Süreci
 
@@ -122,8 +122,8 @@ git commit -m "feat: Add amazing feature"
 4. **Pull Request Açın**
 - Branch'inizi fork'unuza push edin
 - GitHub'da Pull Request açın
-- PR şablonunu doldurun
-- Test sonuçlarını ve değişiklikleri açıklayın
+- Değişiklikleri ve test sonuçlarını açıklayın
+- Kullanıcıyı etkileyen her değişiklik için `pnpm changeset` ile bir changeset ekleyin
 
 5. **Code Review**
 - Geri bildirimlere yanıt verin
@@ -251,132 +251,79 @@ Commit mesajları otomatik olarak doğrulanır. Hatalı commit mesajları redded
 
 ## Yeni Provider Ekleme
 
-### 1. Klasör Yapısı Oluşturun
+### 1. Klasör Yapısı
 
 ```
-src/providers/
-└── your-provider/
-    ├── index.ts
-    ├── types.ts
-    ├── mappers.ts
-    └── __tests__/
-        └── your-provider.test.ts
+src/providers/your-provider/
+├── index.ts   # Provider sınıfı ve config tipi
+├── types.ts   # Provider'a özgü istek/yanıt tipleri
+└── utils.ts   # İmza, format ve eşleme yardımcıları
+tests/unit/providers/your-provider/
+├── index.test.ts
+└── utils.test.ts
 ```
 
-### 2. PaymentProvider Abstract Sınıfını Extend Edin
+### 2. Config Tipi ve Doğrulama
+
+Her provider yalnızca gerçekten kullandığı kimlik bilgilerini ister. Eksik alanlar
+constructor'da `ConfigurationError` ile bildirilir.
 
 ```typescript
 // src/providers/your-provider/index.ts
-import { PaymentProvider } from '../base/payment-provider';
-import type { PaymentRequest, PaymentResponse } from '../../types';
+import { PaymentProvider, PaymentProviderConfig } from '../../core/PaymentProvider';
+import { ConfigurationError } from '../../core/errors';
 
-export class YourProvider extends PaymentProvider {
-  async createPayment(request: PaymentRequest): Promise<PaymentResponse> {
-    // Implementasyon
-  }
-
-  async initThreeDSPayment(request: PaymentRequest): Promise<PaymentResponse> {
-    // Implementasyon
-  }
-
-  async completeThreeDSPayment(callbackData: unknown): Promise<PaymentResponse> {
-    // Implementasyon
-  }
-
-  async refund(request: RefundRequest): Promise<RefundResponse> {
-    // Implementasyon
-  }
-
-  async cancel(request: CancelRequest): Promise<CancelResponse> {
-    // Implementasyon
-  }
-
-  async getPayment(paymentId: string): Promise<PaymentResponse> {
-    // Implementasyon
-  }
-}
-```
-
-### 3. Tipler Tanımlayın
-
-```typescript
-// src/providers/your-provider/types.ts
-export interface YourProviderConfig {
-  apiKey: string;
+export interface YourProviderConfig extends PaymentProviderConfig {
+  merchantId: string;
   secretKey: string;
-  baseUrl: string;
 }
 
-export interface YourProviderRequest {
-  // Provider-specific fields
-}
+export class YourProvider extends PaymentProvider<YourProviderConfig> {
+  protected validateConfig(): void {
+    const missing = (['merchantId', 'secretKey'] as const).filter((k) => !this.config[k]);
+    if (missing.length > 0) {
+      throw new ConfigurationError(`YourProvider configuration is missing: ${missing.join(', ')}`, 'your-provider');
+    }
+  }
 
-export interface YourProviderResponse {
-  // Provider-specific fields
-}
-```
-
-### 4. Mapper Fonksiyonları Yazın
-
-```typescript
-// src/providers/your-provider/mappers.ts
-import type { PaymentRequest } from '../../types';
-import type { YourProviderRequest } from './types';
-
-export function mapToProviderRequest(
-  request: PaymentRequest
-): YourProviderRequest {
-  return {
-    // Map unified request to provider-specific request
-  };
-}
-
-export function mapFromProviderResponse(
-  response: YourProviderResponse
-): PaymentResponse {
-  return {
-    // Map provider-specific response to unified response
-  };
+  // createPayment, initThreeDSPayment, completeThreeDSPayment,
+  // refund, cancel, getPayment
 }
 ```
 
-### 5. Testler Yazın
+### 3. Uyulması Gereken Kurallar
 
-```typescript
-// src/providers/your-provider/__tests__/your-provider.test.ts
-import { describe, it, expect } from 'vitest';
-import { YourProvider } from '../index';
+- **Callback'lere güvenmeyin.** `completeThreeDSPayment` imzayı yalnızca config'teki
+  gizli anahtarla doğrulamalı (`safeEqual` ile, sabit zamanlı), eksik alanlarda
+  asla başarı dönmemeli ve provider bir kesinleştirme/provizyon adımı istiyorsa onu çağırmalı.
+- **Durumlar:** `success` yalnızca provider onayladığında; ağ hatası ve timeout
+  `pending` + `errorCode: 'NETWORK_ERROR'` (bkz. `isNetworkError`).
+- **Retry:** ödeme/iade/iptal istekleri asla tekrar edilmez; salt-okunur sorgular
+  `retryable: true` ile işaretlenebilir.
+- **Kimlikler:** `paymentId` iade/iptal/sorguda kullanılabilecek değer olmalı
+  (genelde sipariş no; yoksa `generateOrderId()`).
+- **Tutarlar:** `formatDecimal` / `toMinorUnits` kullanın, float çarpımı yapmayın.
+  Desteklenmeyen para birimini sessizce TRY'ye çevirmeyin, hata verin.
+- **Loglama:** istek/yanıt gövdesi (kart, anahtar) asla loglanmaz.
 
-describe('YourProvider', () => {
-  it('should create payment successfully', async () => {
-    const provider = new YourProvider({
-      apiKey: 'test',
-      secretKey: 'test',
-      baseUrl: 'https://test.com',
-    });
+### 4. Testler
 
-    const result = await provider.createPayment({
-      // Test data
-    });
+- İmza fonksiyonlarını mümkünse provider dokümanındaki ya da güvenilir bir
+  referans implementasyondaki **test vektörleriyle** doğrulayın.
+- HTTP istemcisini mock'layıp gönderilen isteğin alanlarını ve imzasını kontrol edin.
+- Sahte/değiştirilmiş callback'lerin reddedildiğini test edin.
 
-    expect(result.status).toBe('success');
-  });
-});
-```
+### 5. Kayıt
 
-### 6. BetterPay Ana Sınıfına Ekleyin
+- `src/core/BetterPaymentConfig.ts`: `ProviderType`, provider config tipi ve
+  `PROVIDER_DEFAULT_URLS` (sandbox/production)
+- `src/core/BetterPayment.ts`: `initializeProviders` ve erişim getter'ı
+- `src/index.ts`: sınıf ve tip export'ları
 
-```typescript
-// src/index.ts
-export { YourProvider } from './providers/your-provider';
-```
+### 6. Dokümantasyon
 
-### 7. Dokümantasyon Ekleyin
-
-README.md dosyasını güncelleyin:
-- Desteklenen provider listesine ekleyin
-- Kullanım örneği ekleyin
-- Konfigürasyon detaylarını ekleyin
+- `apps/web/content/docs/` altına provider sayfası ekleyin ve `meta.json`'a kaydedin
+- README'deki provider tablosunu güncelleyin
 
 ## Test Yazma
 
@@ -416,7 +363,7 @@ describe('Feature Name', () => {
 pnpm test
 
 # Watch mode
-pnpm test --watch
+pnpm test:watch
 
 # UI ile
 pnpm test:ui
@@ -432,9 +379,24 @@ Minimum %80 test coverage hedefleyin:
 - Error case'ler test edilmeli
 - Edge case'ler test edilmeli
 
+## Sürüm ve Yayın
+
+Proje [Changesets](https://github.com/changesets/changesets) kullanır.
+
+1. Kullanıcıyı etkileyen her PR bir changeset içerir: `pnpm changeset`.
+2. Sürüm hazırlanırken `pnpm run version` changeset'leri `package.json` sürümüne ve
+   `CHANGELOG.md`'ye işler; bu değişiklik bir PR ile main'e alınır.
+3. Yayın, GitHub Actions'taki **Publish to NPM** workflow'u ile elle başlatılır
+   (`npm_tag` genelde `latest`). Workflow lint, typecheck ve testleri çalıştırır,
+   ardından npm **trusted publishing** (OIDC) ile yayınlar; npm token gerekmez ve
+   paket provenance kaydıyla yayınlanır.
+
+Sürüm geçmişi `0.0.1` ile sıfırlandı; `0.x` boyunca kırıcı değişiklikler minor
+sürümle yayınlanır ve changelog'da geçiş notuyla belirtilir.
+
 ## Sorular ve Destek
 
-- 📖 [Dokümantasyon](README.md)
+- 📖 [Dokümantasyon](https://better-payment.czaylabs.com)
 - 🐛 [Issues](https://github.com/furkanczay/better-payment/issues)
 - 💬 [Discussions](https://github.com/furkanczay/better-payment/discussions)
 
@@ -444,4 +406,4 @@ Katkıda bulunarak, değişikliklerinizin MIT Lisansı altında lisanslanmasın�
 
 ---
 
-Tekrar teşekkürler! Katkılarınız Better Pay'i daha iyi hale getiriyor. ❤️
+Tekrar teşekkürler! Katkılarınız better-payment'ı daha iyi hale getiriyor. ❤️

@@ -3,6 +3,9 @@
 Version history was reset. `0.0.1` is the first release of the reworked package;
 earlier `1.x`–`3.x` releases are superseded and should not be used (see "Why the reset").
 
+Upgrading from `3.x`? Read the migration guide:
+https://better-payment.czaylabs.com/docs/whats-new
+
 ## 0.0.1
 
 ### Why the reset
