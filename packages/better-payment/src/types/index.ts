@@ -1,5 +1,6 @@
 export { PaymentStatus } from './common';
-import { PaymentStatus } from './common';
+export type { PaymentCard, Address } from './common';
+import { PaymentStatus, PaymentCard, Address } from './common';
 
 /**
  * Para birimi
@@ -9,18 +10,6 @@ export enum Currency {
   USD = 'USD',
   EUR = 'EUR',
   GBP = 'GBP',
-}
-
-/**
- * Ödeme kartı bilgileri
- */
-export interface PaymentCard {
-  cardHolderName: string;
-  cardNumber: string;
-  expireMonth: string;
-  expireYear: string;
-  cvc: string;
-  registerCard?: boolean;
 }
 
 /**
@@ -38,17 +27,6 @@ export interface Buyer {
   zipCode?: string;
   ip: string;
   gsmNumber: string;
-}
-
-/**
- * Adres bilgileri
- */
-export interface Address {
-  contactName: string;
-  city: string;
-  country: string;
-  address: string;
-  zipCode?: string;
 }
 
 /**
@@ -85,7 +63,13 @@ export interface PaymentRequest {
   billingAddress: Address;
   basketItems: BasketItem[];
   callbackUrl?: string;
+  /**
+   * Sipariş/işlem numarası. Banka ve PayTR entegrasyonlarında sipariş numarası
+   * olarak kullanılır; verilmezse otomatik (alfanümerik) üretilir ve yanıtta döner.
+   */
   conversationId?: string;
+  /** Taksit sayısı (1 = tek çekim) */
+  installment?: number;
 }
 
 /**
@@ -106,7 +90,6 @@ export interface PaymentResponse {
  */
 export interface ThreeDSPaymentRequest extends PaymentRequest {
   callbackUrl: string;
-  installment?: number;
 }
 
 /**
@@ -114,7 +97,10 @@ export interface ThreeDSPaymentRequest extends PaymentRequest {
  */
 export interface ThreeDSInitResponse {
   status: PaymentStatus;
+  /** HTML to render in the customer's browser (3D form, iframe page or auto-submit form) */
   threeDSHtmlContent?: string;
+  /** Payment page URL when the provider supports redirecting instead of rendering HTML */
+  redirectUrl?: string;
   paymentId?: string;
   conversationId?: string;
   errorCode?: string;
@@ -152,6 +138,12 @@ export interface CancelRequest {
   paymentId: string;
   ip: string;
   conversationId?: string;
+  /**
+   * İşlemin toplam tutarı. İptal için tutar isteyen sağlayıcılarda (Parampos,
+   * Akbank) kullanılır; verilmezse mümkünse sorgulanır.
+   */
+  price?: string;
+  currency?: Currency | string;
 }
 
 /**
