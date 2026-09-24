@@ -8,7 +8,9 @@
     "test": "pnpm --filter better-payment test",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "pnpm build && changeset publish"
+    "release": "pnpm build && changeset publish",
+    "lint": "pnpm --filter better-payment lint",
+    "typecheck": "pnpm --filter better-payment typecheck"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
@@ -20,5 +22,6 @@
       "sharp",
       "unrs-resolver"
     ]
-  }
+  },
+  "packageManager": "pnpm@10.33.0"
 }
