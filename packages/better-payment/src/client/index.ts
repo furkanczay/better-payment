@@ -64,33 +64,29 @@ class ProviderClient {
   /**
    * Make HTTP request
    */
-  private async request<T>(method: string, path: string, body?: any): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const url = this.buildUrl(path);
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...this.config.headers,
-    };
+    const headers: Record<string, string> = { ...this.config.headers };
+    const options: RequestInit = { method, headers };
 
-    const options: RequestInit = {
-      method,
-      headers,
-    };
-
-    if (body && method !== 'GET') {
+    if (body !== undefined && method !== 'GET') {
+      headers['Content-Type'] = 'application/json';
       options.body = JSON.stringify(body);
     }
 
     const response = await this.fetch(url, options);
+    const data: any = await response.json().catch(() => undefined);
 
-    if (!response.ok) {
-      const error: any = await response.json().catch(() => ({
-        message: `HTTP ${response.status}: ${response.statusText}`,
-      }));
-      throw new Error(error.message || 'Request failed');
+    // 422 = the provider rejected the operation; the body is the unified result
+    if (
+      response.ok ||
+      (response.status === 422 && data && typeof data === 'object' && 'status' in data)
+    ) {
+      return data as T;
     }
 
-    return response.json() as Promise<T>;
+    throw new Error(data?.message || `HTTP ${response.status}: ${response.statusText}`);
   }
 
   /**
@@ -184,7 +180,7 @@ class ProviderClient {
    * ```
    */
   async getPayment(paymentId: string): Promise<PaymentResponse> {
-    return this.request<PaymentResponse>('GET', `payment/${paymentId}`);
+    return this.request<PaymentResponse>('GET', `payment/${encodeURIComponent(paymentId)}`);
   }
 
   async binCheck(binNumber: string): Promise<BinCheckResponse> {
@@ -204,9 +200,9 @@ class ProviderClient {
  *
  * @example
  * ```typescript
- * import { createBetterPayClient } from 'better-pay/client';
+ * import { createBetterPaymentClient } from 'better-payment/client';
  *
- * const client = createBetterPayClient({
+ * const client = createBetterPaymentClient({
  *   baseUrl: '/api/pay',
  * });
  *
@@ -291,14 +287,12 @@ export class BetterPaymentClient {
    * ```typescript
    * const health = await client.health();
    * console.log(health.status); // 'ok'
-   * console.log(health.providers); // ['iyzico', 'paytr']
    * ```
    */
   async health(): Promise<{
     status: string;
     service: string;
     version: string;
-    providers: string[];
     timestamp: string;
   }> {
     const fetch = this.config.fetch || globalThis.fetch;
@@ -306,10 +300,7 @@ export class BetterPaymentClient {
 
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.config.headers,
-      },
+      headers: { ...this.config.headers },
     });
 
     if (!response.ok) {
@@ -320,7 +311,6 @@ export class BetterPaymentClient {
       status: string;
       service: string;
       version: string;
-      providers: string[];
       timestamp: string;
     }>;
   }
@@ -334,7 +324,7 @@ export class BetterPaymentClient {
  *
  * @example
  * ```typescript
- * const client = createBetterPayClient({
+ * const client = createBetterPaymentClient({
  *   baseUrl: '/api/pay',
  * });
  * ```
