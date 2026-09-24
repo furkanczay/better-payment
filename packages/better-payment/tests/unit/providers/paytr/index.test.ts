@@ -1,400 +1,295 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { PayTR } from '../../../../src/providers/paytr';
 import { PaymentStatus } from '../../../../src/types';
+import { generatePayTRRefundToken, generatePayTRStatusToken } from '../../../../src/providers/paytr/utils';
+import { mockThreeDSPaymentRequest, mockPaymentRequest } from '../../../fixtures/payment-data';
 
-vi.mock('axios', () => ({
-  default: {
-    create: vi.fn(() => mockClient),
-  },
-}));
-
-const mockClient = {
-  interceptors: {
-    request: { use: vi.fn() },
-    response: { use: vi.fn() },
-  },
-  post: vi.fn(),
-  get: vi.fn(),
-};
+const SALT = 'YEUaNcdHXqyt7hjt';
+const KEY = 'wWwU8buJp6jo1r25';
 
 const baseConfig = {
-  apiKey: 'merchant-key',
-  secretKey: 'merchant-key',
-  merchantId: 'MERCHANT123',
-  merchantSalt: 'test-salt',
+  merchantId: '123456',
+  merchantKey: KEY,
+  merchantSalt: SALT,
   baseUrl: 'https://www.paytr.com',
 };
 
-const mockBuyer = {
-  id: 'USR-1',
-  name: 'John',
-  surname: 'Doe',
-  email: 'john@example.com',
-  gsmNumber: '+905001234567',
-  identityNumber: '11111111111',
-  registrationAddress: 'Test Address',
-  ip: '127.0.0.1',
-  city: 'Istanbul',
-  country: 'Turkey',
-};
+function parseForm(body: string): Record<string, string> {
+  return Object.fromEntries(new URLSearchParams(body));
+}
 
-const mockAddress = {
-  contactName: 'John Doe',
-  city: 'Istanbul',
-  country: 'Turkey',
-  address: 'Test Address',
-};
-
-const mockBasketItem = {
-  id: 'ITEM-1',
-  name: 'Test Product',
-  category1: 'Electronics',
-  itemType: 'PHYSICAL' as const,
-  price: '100.00',
-};
-
-describe('PayTR Provider - Unit Tests', () => {
+describe('PayTR provider', () => {
   let paytr: PayTR;
+  let post: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    paytr = new PayTR(baseConfig);
+    paytr = new PayTR({ ...baseConfig, testMode: true });
+    post = vi.fn();
+    (paytr as any).client.post = post;
   });
 
-  describe('constructor validation', () => {
-    it('should throw when merchantId is missing', () => {
-      expect(() => new PayTR({ ...baseConfig, merchantId: '' })).toThrow('Merchant ID is required');
-    });
-
-    it('should throw when merchantSalt is missing', () => {
-      expect(() => new PayTR({ ...baseConfig, merchantSalt: '' })).toThrow('Merchant Salt is required');
-    });
+  const sent = (call = 0) => ({
+    url: post.mock.calls[call][0] as string,
+    form: parseForm(post.mock.calls[call][1]),
+    config: post.mock.calls[call][2],
   });
 
-  describe('mapStatus', () => {
-    it('should map success to SUCCESS', () => {
-      const mapStatus = (paytr as any).mapStatus.bind(paytr);
-      expect(mapStatus('success')).toBe(PaymentStatus.SUCCESS);
+  describe('configuration', () => {
+    it.each(['merchantId', 'merchantKey', 'merchantSalt'])('requires %s', (field) => {
+      expect(() => new PayTR({ ...baseConfig, [field]: '' })).toThrow(field);
     });
 
-    it('should map failed to FAILURE', () => {
-      const mapStatus = (paytr as any).mapStatus.bind(paytr);
-      expect(mapStatus('failed')).toBe(PaymentStatus.FAILURE);
-    });
-
-    it('should map unknown to PENDING', () => {
-      const mapStatus = (paytr as any).mapStatus.bind(paytr);
-      expect(mapStatus('processing')).toBe(PaymentStatus.PENDING);
+    it('does not require apiKey/secretKey', () => {
+      expect(() => new PayTR(baseConfig)).not.toThrow();
     });
   });
 
-  describe('initThreeDSPayment', () => {
-    it('should return PENDING status with threeDSHtmlContent on success', async () => {
-      mockClient.post.mockResolvedValue({
-        data: { status: 'success', token: 'PAYTR_TOKEN_123' },
-      });
+  describe('initThreeDSPayment (iFrame)', () => {
+    it('sends a correctly signed get-token request without secrets in the body', async () => {
+      post.mockResolvedValue({ data: { status: 'success', token: 'TOKEN123' } });
 
-      const result = await paytr.initThreeDSPayment({
-        price: '100.00',
-        paidPrice: '100.00',
-        currency: 'TRY',
-        callbackUrl: 'https://example.com/callback',
-        basketId: 'BASKET-1',
-        conversationId: 'CONV-1',
-        buyer: mockBuyer,
-        shippingAddress: mockAddress,
-        billingAddress: mockAddress,
-        basketItems: [mockBasketItem],
-      });
+      const result = await paytr.initThreeDSPayment({ ...mockThreeDSPaymentRequest, conversationId: 'ORDER1' });
+
+      const { url, form } = sent();
+      expect(url).toBe('/odeme/api/get-token');
+      expect(form.merchant_key).toBeUndefined();
+      expect(form.merchant_salt).toBeUndefined();
+      expect(form.test_mode).toBe('1');
+      expect(form.currency).toBe('TL');
+      expect(form.payment_amount).toBe('120'); // paidPrice 1.2 TL in kuruş
+      expect(form.merchant_oid).toBe('ORDER1');
+      expect(JSON.parse(Buffer.from(form.user_basket, 'base64').toString())).toEqual([
+        ['Binocular', '0.30', 1],
+        ['Game code', '0.50', 1],
+        ['Usb', '0.20', 1],
+      ]);
+
+      const { generatePayTRIframeToken } = await import('../../../../src/providers/paytr/utils');
+      expect(form.paytr_token).toBe(
+        generatePayTRIframeToken(
+          {
+            merchantId: form.merchant_id,
+            userIp: form.user_ip,
+            merchantOid: form.merchant_oid,
+            email: form.email,
+            paymentAmount: form.payment_amount,
+            userBasket: form.user_basket,
+            noInstallment: form.no_installment,
+            maxInstallment: form.max_installment,
+            currency: form.currency,
+            testMode: form.test_mode,
+          },
+          SALT,
+          KEY
+        )
+      );
 
       expect(result.status).toBe(PaymentStatus.PENDING);
-      expect(result.paymentId).toBe('PAYTR_TOKEN_123');
-      expect(result.threeDSHtmlContent).toContain('PAYTR_TOKEN_123');
+      expect(result.paymentId).toBe('ORDER1');
+      expect(result.redirectUrl).toBe('https://www.paytr.com/odeme/guvenli/TOKEN123');
+      expect(result.threeDSHtmlContent).toContain('https://www.paytr.com/odeme/guvenli/TOKEN123');
     });
 
-    it('should return FAILURE when API returns failure', async () => {
-      mockClient.post.mockResolvedValue({
-        data: { status: 'failed', reason: 'Invalid merchant' },
-      });
-
-      const result = await paytr.initThreeDSPayment({
-        price: '100.00',
-        paidPrice: '100.00',
-        currency: 'TRY',
-        callbackUrl: 'https://example.com/callback',
-        basketId: 'BASKET-1',
-        buyer: mockBuyer,
-        shippingAddress: mockAddress,
-        billingAddress: mockAddress,
-        basketItems: [mockBasketItem],
-      });
-
-      expect(result.status).toBe(PaymentStatus.FAILURE);
-      expect(result.errorMessage).toBe('Invalid merchant');
+    it('generates an alphanumeric merchant_oid when none is given', async () => {
+      post.mockResolvedValue({ data: { status: 'success', token: 'T' } });
+      const result = await paytr.initThreeDSPayment({ ...mockThreeDSPaymentRequest, conversationId: undefined });
+      expect(result.paymentId).toMatch(/^[A-Za-z0-9]+$/);
+      expect(sent().form.merchant_oid).toBe(result.paymentId);
     });
 
-    it('should return FAILURE when request throws', async () => {
-      mockClient.post.mockRejectedValue(new Error('Network error'));
-
-      const result = await paytr.initThreeDSPayment({
-        price: '100.00',
-        paidPrice: '100.00',
-        currency: 'TRY',
-        callbackUrl: 'https://example.com/callback',
-        basketId: 'B1',
-        buyer: mockBuyer,
-        shippingAddress: mockAddress,
-        billingAddress: mockAddress,
-        basketItems: [mockBasketItem],
-      });
-
+    it('rejects a non-alphanumeric merchant_oid before calling PayTR', async () => {
+      const result = await paytr.initThreeDSPayment({ ...mockThreeDSPaymentRequest, conversationId: 'ORDER-1' });
       expect(result.status).toBe(PaymentStatus.FAILURE);
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it('uses test_mode=0 when testMode is off', async () => {
+      const live = new PayTR(baseConfig);
+      const livePost = vi.fn().mockResolvedValue({ data: { status: 'success', token: 'T' } });
+      (live as any).client.post = livePost;
+      await live.initThreeDSPayment(mockThreeDSPaymentRequest);
+      expect(parseForm(livePost.mock.calls[0][1]).test_mode).toBe('0');
+    });
+
+    it('installment options', async () => {
+      post.mockResolvedValue({ data: { status: 'success', token: 'T' } });
+      await paytr.initThreeDSPayment({ ...mockThreeDSPaymentRequest, installment: 1 });
+      expect(sent(0).form).toMatchObject({ no_installment: '1', max_installment: '0' });
+      await paytr.initThreeDSPayment({ ...mockThreeDSPaymentRequest, installment: 6 });
+      expect(sent(1).form).toMatchObject({ no_installment: '0', max_installment: '6' });
+    });
+
+    it('returns the PayTR reason on failure', async () => {
+      post.mockResolvedValue({ data: { status: 'failed', reason: 'paytr_token gecersiz' } });
+      const result = await paytr.initThreeDSPayment(mockThreeDSPaymentRequest);
+      expect(result.status).toBe(PaymentStatus.FAILURE);
+      expect(result.errorMessage).toBe('paytr_token gecersiz');
     });
   });
 
-  describe('createPayment', () => {
-    it('should delegate to initThreeDSPayment and return response', async () => {
-      mockClient.post.mockResolvedValue({
-        data: { status: 'success', token: 'TOKEN-ABC' },
-      });
+  describe('completeThreeDSPayment (notification)', () => {
+    const genuine = {
+      merchant_oid: '202606234E4E',
+      status: 'success',
+      total_amount: '1001',
+      hash: 'ZDVOQUw4aDJhNR5dWYBC5bD95bLtSOtj9DzzSQ9sUHs=',
+    };
 
-      const result = await paytr.createPayment({
-        price: '50.00',
-        paidPrice: '50.00',
-        currency: 'TRY',
-        basketId: 'B1',
-        buyer: mockBuyer,
-        shippingAddress: mockAddress,
-        billingAddress: mockAddress,
-        basketItems: [mockBasketItem],
-      });
-
-      expect(result.paymentId).toBe('TOKEN-ABC');
-      expect(mockClient.post).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('completeThreeDSPayment', () => {
-    it('should map success callback to SUCCESS', async () => {
-      const result = await paytr.completeThreeDSPayment({
-        merchant_oid: 'ORD-1',
-        merchant_salt: 'test-salt',
-        status: 'success',
-        total_amount: '10000',
-        hash: 'valid',
-        failed_reason_code: '',
-        failed_reason_msg: '',
-        test_mode: '0',
-        payment_type: 'card',
-        currency: 'TL',
-        payment_amount: '10000',
-      });
-
-      // Hash won't match test data, but we just check it doesn't throw
-      expect(result).toHaveProperty('status');
+    it('accepts a genuine success notification', async () => {
+      const result = await paytr.completeThreeDSPayment(genuine);
+      expect(result.status).toBe(PaymentStatus.SUCCESS);
+      expect(result.paymentId).toBe('202606234E4E');
     });
 
-    it('should return FAILURE for failed callback', async () => {
-      const result = await paytr.completeThreeDSPayment({
-        status: 'failed',
-        merchant_oid: 'ORD-1',
-        failed_reason_msg: 'Card declined',
-        total_amount: '10000',
-        hash: 'x',
-      });
-
+    it('rejects a notification with an invalid hash', async () => {
+      const result = await paytr.completeThreeDSPayment({ ...genuine, status: 'failed' });
       expect(result.status).toBe(PaymentStatus.FAILURE);
+      expect(result.errorCode).toBe('INVALID_HASH');
     });
   });
 
   describe('refund', () => {
-    it('should return SUCCESS on successful refund', async () => {
-      mockClient.post.mockResolvedValue({
-        data: { status: 'success' },
-      });
+    it('sends return_amount in TL and signs with the merchant key', async () => {
+      post.mockResolvedValue({ data: { status: 'success', merchant_oid: 'ORDER1', reference_no: 'R1' } });
 
-      const result = await paytr.refund({
-        paymentId: 'PMT-1',
-        paymentTransactionId: 'TXN-1',
-        price: '50.00',
-        currency: 'TRY',
-        ip: '127.0.0.1',
-      });
+      const result = await paytr.refund({ paymentId: 'ORDER1', price: '50', currency: 'TRY', ip: '1.1.1.1' });
 
+      const { url, form } = sent();
+      expect(url).toBe('/odeme/iade');
+      expect(form.return_amount).toBe('50.00');
+      expect(form.paytr_token).toBe(generatePayTRRefundToken('123456', 'ORDER1', '50.00', SALT, KEY));
+      expect(form.merchant_key).toBeUndefined();
       expect(result.status).toBe(PaymentStatus.SUCCESS);
+      expect(result.refundId).toBe('R1');
     });
 
-    it('should return FAILURE on refund error', async () => {
-      mockClient.post.mockResolvedValue({
-        data: { status: 'failed', err_no: 'E001', err_str: 'Already refunded' },
-      });
-
-      const result = await paytr.refund({
-        paymentId: 'PMT-1',
-        paymentTransactionId: 'TXN-1',
-        price: '50.00',
-        currency: 'TRY',
-        ip: '127.0.0.1',
-      });
-
+    it('maps err_no/err_msg on failure', async () => {
+      post.mockResolvedValue({ data: { status: 'error', err_no: '004', err_msg: 'Tutar hatali' } });
+      const result = await paytr.refund({ paymentId: 'ORDER1', price: '50', currency: 'TRY', ip: '1.1.1.1' });
       expect(result.status).toBe(PaymentStatus.FAILURE);
+      expect(result.errorCode).toBe('004');
+      expect(result.errorMessage).toBe('Tutar hatali');
+    });
+
+    it('is never retried', async () => {
+      post.mockResolvedValue({ data: { status: 'success' } });
+      await paytr.refund({ paymentId: 'ORDER1', price: '50', currency: 'TRY', ip: '1.1.1.1' });
+      expect(sent().config.retryable).toBe(false);
     });
   });
 
   describe('cancel', () => {
-    it('should always return FAILURE (PayTR has no void endpoint)', async () => {
-      const result = await paytr.cancel({ paymentId: 'PMT-1', ip: '127.0.0.1' });
-      expect(result.status).toBe(PaymentStatus.FAILURE);
-    });
-  });
+    it('fully refunds the amount returned by the status query', async () => {
+      post
+        .mockResolvedValueOnce({ data: { status: 'success', payment_amount: '10,01', payment_total: '10,01' } })
+        .mockResolvedValueOnce({ data: { status: 'success', merchant_oid: 'ORDER1' } });
 
-  describe('createPaymentWithToken', () => {
-    it('should return PENDING with HTML when token payment succeeds', async () => {
-      mockClient.post.mockResolvedValue({
-        data: { status: 'success', token: 'TOKEN-XYZ' },
-      });
+      const result = await paytr.cancel({ paymentId: 'ORDER1', ip: '1.1.1.1' });
 
-      const result = await paytr.createPaymentWithToken({
-        utoken: 'SAVED_TOKEN',
-        price: '100.00',
-        paidPrice: '100.00',
-        currency: 'TRY',
-        callbackUrl: 'https://example.com/callback',
-        basketId: 'B1',
-        conversationId: 'CONV-1',
-        buyer: mockBuyer,
-        shippingAddress: mockAddress,
-        billingAddress: mockAddress,
-        basketItems: [mockBasketItem],
-      });
-
-      expect(result.status).toBe(PaymentStatus.PENDING);
-      expect(result.paymentId).toBe('TOKEN-XYZ');
-    });
-
-    it('should return FAILURE when token payment API fails', async () => {
-      mockClient.post.mockResolvedValue({
-        data: { status: 'failed', reason: 'Invalid utoken' },
-      });
-
-      const result = await paytr.createPaymentWithToken({
-        utoken: 'INVALID',
-        price: '100.00',
-        paidPrice: '100.00',
-        currency: 'TRY',
-        callbackUrl: 'https://example.com/callback',
-        basketId: 'B1',
-        buyer: mockBuyer,
-        shippingAddress: mockAddress,
-        billingAddress: mockAddress,
-        basketItems: [mockBasketItem],
-      });
-
-      expect(result.status).toBe(PaymentStatus.FAILURE);
-      expect(result.errorMessage).toBe('Invalid utoken');
-    });
-
-    it('should handle installment parameter', async () => {
-      mockClient.post.mockResolvedValue({
-        data: { status: 'success', token: 'TOK-1' },
-      });
-
-      const result = await paytr.createPaymentWithToken({
-        utoken: 'SAVED',
-        price: '300.00',
-        paidPrice: '300.00',
-        currency: 'TRY',
-        callbackUrl: 'https://example.com/callback',
-        basketId: 'B1',
-        installment: 3,
-        buyer: mockBuyer,
-        shippingAddress: mockAddress,
-        billingAddress: mockAddress,
-        basketItems: [mockBasketItem],
-      });
-
-      expect(result.status).toBe(PaymentStatus.PENDING);
+      expect(sent(0).url).toBe('/odeme/durum-sorgu');
+      expect(sent(1).form.return_amount).toBe('10.01');
+      expect(result.status).toBe(PaymentStatus.SUCCESS);
     });
   });
 
   describe('getPayment', () => {
-    it('should return PENDING with note (no API endpoint available)', async () => {
-      const result = await paytr.getPayment('PMT-123');
-      expect(result.status).toBe(PaymentStatus.PENDING);
-      expect(result.paymentId).toBe('PMT-123');
-    });
-  });
-
-  describe('installmentInfo', () => {
-    it('should return SUCCESS with installment details', async () => {
-      mockClient.post.mockResolvedValue({
-        data: {
-          status: 'success',
-          bin_detail: {
-            card_tipi: 'CREDIT_CARD',
-            card_network: 'VISA',
-            card_adi: 'Classic',
-            bank_adi: 'Test Bank',
-          },
-          installment_count: [
-            { installment_count: 3, price: '105.00' },
-            { installment_count: 6, price: '112.00' },
-          ],
-        },
-      });
-
-      const result = await paytr.installmentInfo({ binNumber: '454360', price: '100.00' });
+    it('queries /odeme/durum-sorgu with a valid token', async () => {
+      post.mockResolvedValue({ data: { status: 'success', payment_amount: '10.01', payment_total: '10.01' } });
+      const result = await paytr.getPayment('ORDER1');
+      expect(sent().url).toBe('/odeme/durum-sorgu');
+      expect(sent().form.paytr_token).toBe(generatePayTRStatusToken('123456', 'ORDER1', SALT, KEY));
+      expect(sent().config.retryable).toBe(true);
       expect(result.status).toBe(PaymentStatus.SUCCESS);
-      expect(result.installmentDetails).toHaveLength(1);
-      expect(result.installmentDetails![0].installmentPrices).toHaveLength(2);
     });
 
-    it('should return FAILURE when API returns error', async () => {
-      mockClient.post.mockResolvedValue({
-        data: { status: 'failed', reason: 'BIN not found' },
+    it('reports fully refunded payments as cancelled', async () => {
+      post.mockResolvedValue({
+        data: { status: 'success', payment_amount: '10.01', returns: [{ return_amount: '10.01' }] },
       });
+      expect((await paytr.getPayment('ORDER1')).status).toBe(PaymentStatus.CANCELLED);
+    });
 
-      const result = await paytr.installmentInfo({ binNumber: '000000', price: '100.00' });
+    it('maps query errors', async () => {
+      post.mockResolvedValue({ data: { status: 'error', err_no: '001', err_msg: 'Siparis bulunamadi' } });
+      const result = await paytr.getPayment('ORDER1');
       expect(result.status).toBe(PaymentStatus.FAILURE);
-    });
-
-    it('should handle missing bin_detail gracefully', async () => {
-      mockClient.post.mockResolvedValue({
-        data: { status: 'success', bin_detail: null, installment_count: [] },
-      });
-
-      const result = await paytr.installmentInfo({ binNumber: '454360' });
-      expect(result.status).toBe(PaymentStatus.SUCCESS);
-      expect(result.installmentDetails).toHaveLength(0);
+      expect(result.errorMessage).toBe('Siparis bulunamadi');
     });
   });
 
-  describe('binCheck', () => {
-    it('should return BIN info on success', async () => {
-      mockClient.post.mockResolvedValue({
-        data: {
-          status: 'success',
-          bin_detail: {
-            card_tipi: 'CREDIT_CARD',
-            banka_adi: 'Test Bank',
-            card_ailesi: 'Visa',
-            issuer_card_tipi: 'VISA',
-            uluslararasi: '0',
-          },
-        },
+  describe('createPayment (Direct API, non-3D)', () => {
+    it('posts card data to /odeme with sync_mode', async () => {
+      post.mockResolvedValue({ data: { status: 'success', merchant_oid: 'ORDER1' } });
+      const result = await paytr.createPayment({ ...mockPaymentRequest, conversationId: 'ORDER1' });
+      const { url, form } = sent();
+      expect(url).toBe('/odeme');
+      expect(form).toMatchObject({
+        non_3d: '1',
+        sync_mode: '1',
+        payment_amount: '1.20',
+        payment_type: 'card',
+        expiry_month: '12',
+        expiry_year: '30',
       });
-
-      const result = await paytr.binCheck('454360');
-      expect(result.binNumber).toBe('454360');
-      expect(result.cardType).toBe('CREDIT_CARD');
+      expect(result.status).toBe(PaymentStatus.SUCCESS);
     });
 
-    it('should throw when BIN check fails', async () => {
-      mockClient.post.mockResolvedValue({
-        data: { status: 'failed', reason: 'BIN not found' },
-      });
+    it('maps failed payments', async () => {
+      post.mockResolvedValue({ data: { status: 'failed', failed_reason_code: '6', failed_reason_msg: 'Yetersiz bakiye' } });
+      const result = await paytr.createPayment(mockPaymentRequest);
+      expect(result.status).toBe(PaymentStatus.FAILURE);
+      expect(result.errorMessage).toBe('Yetersiz bakiye');
+    });
 
-      await expect(paytr.binCheck('000000')).rejects.toThrow();
+    it('reports timeouts as PENDING (outcome unknown)', async () => {
+      post.mockRejectedValue({ isAxiosError: true, code: 'ECONNABORTED', request: {} });
+      const result = await paytr.createPayment(mockPaymentRequest);
+      expect(result.status).toBe(PaymentStatus.PENDING);
+      expect(result.errorCode).toBe('NETWORK_ERROR');
+    });
+  });
+
+  describe('createPaymentWithToken', () => {
+    it('returns an auto-submit form for the Direct API with utoken/ctoken', async () => {
+      const result = await paytr.createPaymentWithToken({
+        utoken: 'U1',
+        ctoken: 'C1',
+        price: '10',
+        callbackUrl: 'https://shop/return',
+        conversationId: 'ORDER9',
+        buyer: { email: 'a@b.c', name: 'A', surname: 'B', ip: '1.1.1.1', gsmNumber: '5350000000' },
+        basketItems: [{ name: 'X', price: '10', quantity: 1 }],
+      });
+      expect(result.status).toBe(PaymentStatus.PENDING);
+      expect(result.threeDSHtmlContent).toContain('action="https://www.paytr.com/odeme"');
+      expect(result.threeDSHtmlContent).toContain('name="utoken" value="U1"');
+      expect(result.threeDSHtmlContent).toContain('name="ctoken" value="C1"');
+      expect(post).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('binCheck / installmentInfo', () => {
+    it('binCheck maps the bin-detail response', async () => {
+      post.mockResolvedValue({ data: { status: 'success', bank: 'Garanti', brand: 'bonus', cardType: 'credit', schema: 'MASTERCARD' } });
+      const result = await paytr.binCheck('415956');
+      expect(sent().url).toBe('/odeme/api/bin-detail');
+      expect(result).toMatchObject({ bankName: 'Garanti', cardFamily: 'bonus', cardAssociation: 'MASTERCARD' });
+    });
+
+    it('installmentInfo computes totals from account commission rates', async () => {
+      post
+        .mockResolvedValueOnce({ data: { status: 'success', bank: 'Garanti', brand: 'bonus', cardType: 'credit' } })
+        .mockResolvedValueOnce({ data: { status: 'success', oranlar: { bonus: { taksit_2: 2, taksit_3: '3.5' } } } });
+
+      const result = await paytr.installmentInfo({ binNumber: '415956', price: '100' });
+
+      expect(sent(1).url).toBe('/odeme/taksit-oranlari');
+      expect(result.status).toBe(PaymentStatus.SUCCESS);
+      expect(result.installmentDetails![0].installmentPrices).toEqual([
+        { installmentNumber: 1, totalPrice: 100, installmentPrice: 100 },
+        { installmentNumber: 2, totalPrice: 102, installmentPrice: 51 },
+        { installmentNumber: 3, totalPrice: 103.5, installmentPrice: 34.5 },
+      ]);
     });
   });
 });
