@@ -5,10 +5,10 @@
  * Kullanıcılar havale/EFT ile ödeme yapar ve ödeme onaylandığında satıcıya aktarılır.
  */
 
-import { BetterPay, ProviderType, Currency, BasketItemType, PWIPaymentStatus } from 'better-payment';
+import { BetterPayment, ProviderType, Currency, BasketItemType, PWIPaymentStatus } from 'better-payment';
 
-// 1. BetterPay'i yapılandır
-const betterPay = new BetterPay({
+// 1. BetterPayment'ı yapılandır
+const betterPay = new BetterPayment({
   providers: {
     iyzico: {
       enabled: true,
@@ -102,7 +102,8 @@ async function checkPWIPaymentStatus(token: string) {
   try {
     const result = await betterPay.iyzico.retrievePWIPayment(token);
 
-    if (result.status === 'success') {
+    // result.status: 'pending' (WAITING), 'success' (SUCCESS) veya 'failure'
+    if (result.paymentStatus) {
       console.log('\nÖdeme Durumu:', result.paymentStatus);
 
       if (result.paymentStatus === PWIPaymentStatus.WAITING) {

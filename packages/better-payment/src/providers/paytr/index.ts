@@ -1,5 +1,8 @@
 import axios, { AxiosInstance } from 'axios';
-import { PaymentProvider, PaymentProviderConfig } from '../../core/PaymentProvider';
+import crypto from 'crypto';
+import { PaymentProvider, RetryableRequestConfig } from '../../core/PaymentProvider';
+import { ConfigurationError } from '../../core/errors';
+import { generateOrderId, errorMessage, isNetworkError, parseAmount } from '../../core/utils';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -16,48 +19,53 @@ import {
   InstallmentPrice,
 } from '../../types';
 import {
-  generatePayTRHash,
+  generatePayTRIframeToken,
+  generatePayTRDirectToken,
+  generatePayTRRefundToken,
+  generatePayTRStatusToken,
+  generatePayTRBinToken,
+  generatePayTRInstallmentRatesToken,
   verifyPayTRCallback,
   formatPayTRBasket,
   convertToKurus,
-  generatePayTRToken,
-  generateBinDetailToken,
+  formatPayTRAmount,
+  mapPayTRCurrency,
+  assertPayTRMerchantOid,
   createPayTRFormData,
+  buildAutoSubmitForm,
+  buildIframeHtml,
 } from './utils';
 import type {
+  PayTRConfig,
   PayTRIframeResponse,
   PayTRCallbackData,
   PayTRRefundResponse,
   PayTRBasketItem,
   PayTRBinDetailResponse,
   PayTRTokenPaymentRequest,
+  PayTRDirectPaymentResponse,
+  PayTRStatusResponse,
+  PayTRInstallmentRatesResponse,
 } from './types';
+
+const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
+const NETWORK_ERROR_MESSAGE =
+  'No response from PayTR. The transaction may have been processed; verify it with getPayment() before retrying.';
 
 /**
  * PayTR ödeme sağlayıcısı
+ *
+ * - initThreeDSPayment(): iFrame API. The payment result is delivered to the
+ *   notification (Bildirim) URL configured in the PayTR panel; pass that POST
+ *   body to completeThreeDSPayment() and respond with plain text "OK".
+ * - createPayment(): Direct API, non-3D, synchronous (requires the "Non-3D"
+ *   permission on the PayTR account).
  */
-export class PayTR extends PaymentProvider {
+export class PayTR extends PaymentProvider<PayTRConfig> {
   private client: AxiosInstance;
-  private merchantId: string;
-  private merchantKey: string;
-  private merchantSalt: string;
 
-  constructor(config: PaymentProviderConfig & { merchantId: string; merchantSalt: string }) {
-    // Önce merchant bilgilerini validate et
-    if (!config.merchantId) {
-      throw new Error('Merchant ID is required');
-    }
-    if (!config.merchantSalt) {
-      throw new Error('Merchant Salt is required');
-    }
-
-    // Parent constructor'ı çağır
+  constructor(config: PayTRConfig) {
     super(config);
-
-    // Merchant bilgilerini ata
-    this.merchantId = config.merchantId;
-    this.merchantKey = config.apiKey; // apiKey = merchant_key
-    this.merchantSalt = config.merchantSalt;
 
     this.client = axios.create({
       baseURL: this.config.baseUrl,
@@ -70,507 +78,618 @@ export class PayTR extends PaymentProvider {
     this.setupAxiosRetry(this.client);
   }
 
-  /**
-   * PayTR status'ünü PaymentStatus'e çevir
-   */
-  private mapStatus(paytrStatus: string): PaymentStatus {
-    switch (paytrStatus) {
-      case 'success':
-        return PaymentStatus.SUCCESS;
-      case 'failed':
-        return PaymentStatus.FAILURE;
-      default:
-        return PaymentStatus.PENDING;
-    }
-  }
-
-  /**
-   * Sepet itemlerini PayTR formatına çevir
-   */
-  private convertBasketItems(basketItems: any[]): PayTRBasketItem[] {
-    return basketItems.map((item) => ({
-      name: item.name,
-      price: convertToKurus(item.price),
-      quantity: 1,
-    }));
-  }
-
-  /**
-   * Direkt ödeme (PayTR'da iframe ile)
-   * NOT: PayTR direkt ödeme yerine iframe kullanır
-   */
-  async createPayment(request: PaymentRequest): Promise<PaymentResponse> {
-    try {
-      // PayTR direkt ödeme desteklemiyor, 3DS başlatıyoruz
-      const threeDSResponse = await this.initThreeDSPayment({
-        ...request,
-        callbackUrl: request.callbackUrl || 'https://example.com/callback',
-      });
-
-      return {
-        status: threeDSResponse.status,
-        paymentId: threeDSResponse.paymentId,
-        conversationId: threeDSResponse.conversationId,
-        errorCode: threeDSResponse.errorCode,
-        errorMessage: threeDSResponse.errorMessage,
-        rawResponse: {
-          ...threeDSResponse.rawResponse,
-          note: 'PayTR does not support direct payment, initiated 3DS payment instead',
-        },
-      };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Payment failed',
-        rawResponse: error.response?.data,
-      };
-    }
-  }
-
-  /**
-   * 3D Secure ödeme başlat (iframe)
-   */
-  async initThreeDSPayment(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
-    try {
-      const basketItems = this.convertBasketItems(request.basketItems);
-      const userBasket = formatPayTRBasket(basketItems);
-      const paymentAmountKurus = convertToKurus(request.price);
-
-      const noInstallment = '0'; // Taksit açık
-      const maxInstallment = '0'; // Maksimum taksit yok
-      const currency = request.currency || 'TL';
-      const testMode = this.config.baseUrl?.includes('sandbox') ? '1' : '0';
-
-      const merchantOid = request.conversationId || `ORDER-${Date.now()}`;
-
-      // Hash oluştur
-      const paymentHash = generatePayTRHash(
-        this.merchantId,
-        request.buyer.ip,
-        merchantOid,
-        request.buyer.email,
-        paymentAmountKurus,
-        userBasket,
-        noInstallment,
-        maxInstallment,
-        currency,
-        testMode,
-        this.merchantSalt
+  protected validateConfig(): void {
+    const missing = (['merchantId', 'merchantKey', 'merchantSalt'] as const).filter(
+      (key) => !this.config[key]
+    );
+    if (missing.length > 0) {
+      throw new ConfigurationError(
+        `PayTR configuration is missing: ${missing.join(', ')}`,
+        'paytr'
       );
-
-      const paytrRequest: Record<string, string> = {
-        merchant_id: this.merchantId,
-        merchant_key: this.merchantKey,
-        merchant_salt: this.merchantSalt,
-        email: request.buyer.email,
-        payment_amount: paymentAmountKurus,
-        merchant_oid: merchantOid,
-        user_name: `${request.buyer.name} ${request.buyer.surname}`,
-        user_address: request.shippingAddress.address,
-        user_phone: request.buyer.gsmNumber || '05001234567',
-        merchant_ok_url: request.callbackUrl,
-        merchant_fail_url: request.callbackUrl,
-        user_basket: userBasket,
-        user_ip: request.buyer.ip,
-        timeout_limit: '30',
-        debug_on: '0',
-        test_mode: testMode,
-        no_installment: noInstallment,
-        max_installment: maxInstallment,
-        currency: currency,
-        lang: this.config.locale || 'tr',
-        paytr_token: paymentHash,
-      };
-
-      const formData = createPayTRFormData(paytrRequest);
-
-      const response = await this.client.post<PayTRIframeResponse>(
-        '/odeme/api/get-token',
-        formData
-      );
-
-      if (response.data.status === 'success' && response.data.token) {
-        const iframeUrl = `https://www.paytr.com/odeme/guvenli/${response.data.token}`;
-
-        // HTML iframe oluştur
-        const iframeHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PayTR Ödeme</title>
-    <style>
-        body { margin: 0; padding: 0; overflow: hidden; }
-        iframe { width: 100%; height: 100vh; border: none; }
-    </style>
-</head>
-<body>
-    <iframe src="${iframeUrl}"></iframe>
-</body>
-</html>`;
-
-        return {
-          status: PaymentStatus.PENDING,
-          threeDSHtmlContent: iframeHtml,
-          paymentId: response.data.token,
-          conversationId: merchantOid,
-          rawResponse: response.data,
-        };
-      } else {
-        return {
-          status: PaymentStatus.FAILURE,
-          errorMessage: response.data.reason || 'Payment initialization failed',
-          rawResponse: response.data,
-        };
-      }
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || '3DS initialization failed',
-        rawResponse: error.response?.data,
-      };
+    }
+    if (!this.config.baseUrl) {
+      this.config.baseUrl = 'https://www.paytr.com';
     }
   }
 
-  /**
-   * 3D Secure ödeme tamamla
-   */
-  async completeThreeDSPayment(callbackData: PayTRCallbackData): Promise<PaymentResponse> {
-    try {
-      // Hash doğrulama
-      const isValid = verifyPayTRCallback(
-        callbackData.merchant_oid,
-        this.merchantSalt,
-        callbackData.status,
-        callbackData.total_amount,
-        callbackData.hash
-      );
-
-      if (!isValid) {
-        return {
-          status: PaymentStatus.FAILURE,
-          errorMessage: 'Invalid callback signature',
-          rawResponse: callbackData,
-        };
-      }
-
-      return {
-        status: this.mapStatus(callbackData.status),
-        paymentId: callbackData.merchant_oid,
-        conversationId: callbackData.merchant_oid,
-        errorCode: callbackData.failed_reason_code,
-        errorMessage: callbackData.failed_reason_msg,
-        rawResponse: callbackData,
-      };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || '3DS completion failed',
-        rawResponse: error,
-      };
-    }
+  private get testMode(): string {
+    return this.config.testMode ? '1' : '0';
   }
 
-  /**
-   * İade işlemi
-   */
-  async refund(request: RefundRequest): Promise<RefundResponse> {
-    try {
-      const returnAmount = convertToKurus(request.price);
-
-      const refundToken = generatePayTRToken(
-        this.merchantId,
-        request.paymentId,
-        returnAmount,
-        this.merchantSalt
-      );
-
-      const refundRequest: Record<string, string> = {
-        merchant_id: this.merchantId,
-        merchant_oid: request.paymentId,
-        return_amount: returnAmount,
-        merchant_key: this.merchantKey,
-        merchant_salt: this.merchantSalt,
-        paytr_token: refundToken,
-      };
-
-      const formData = createPayTRFormData(refundRequest);
-
-      const response = await this.client.post<PayTRRefundResponse>('/odeme/iade', formData);
-
-      if (response.data.status === 'success') {
-        return {
-          status: PaymentStatus.SUCCESS,
-          refundId: response.data.merchant_oid,
-          conversationId: request.conversationId,
-          rawResponse: response.data,
-        };
-      } else {
-        return {
-          status: PaymentStatus.FAILURE,
-          errorCode: response.data.error_no,
-          errorMessage: response.data.error_message,
-          rawResponse: response.data,
-        };
-      }
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Refund failed',
-        rawResponse: error.response?.data,
-      };
-    }
+  private get lang(): string {
+    return (this.config.locale || 'tr').toLowerCase().startsWith('en') ? 'en' : 'tr';
   }
 
-  async cancel(_request: CancelRequest): Promise<CancelResponse> {
-    // PayTR void endpoint yok. Tam iptal için refund() kullanılmalı.
+  private failure<
+    T extends {
+      status: PaymentStatus;
+      errorCode?: string;
+      errorMessage?: string;
+      rawResponse?: any;
+    },
+  >(error: unknown, fallback: string, extra: Partial<T> = {}): T {
+    if (isNetworkError(error)) {
+      return {
+        status: PaymentStatus.PENDING,
+        errorCode: NETWORK_ERROR_CODE,
+        errorMessage: NETWORK_ERROR_MESSAGE,
+        ...extra,
+      } as T;
+    }
     return {
       status: PaymentStatus.FAILURE,
-      errorMessage:
-        'PayTR cancel requires the full payment amount. Use refund() with the original price instead.',
-      rawResponse: { note: 'PayTR does not support void; issue a full refund via refund()' },
+      errorMessage: errorMessage(error, fallback),
+      rawResponse: (error as any)?.response?.data,
+      ...extra,
+    } as T;
+  }
+
+  private post<T>(path: string, data: Record<string, string>, retryable = false): Promise<T> {
+    const config: RetryableRequestConfig = { retryable };
+    return this.client.post<T>(path, createPayTRFormData(data), config).then((res) => res.data);
+  }
+
+  private buildBasket(items: Array<{ name: string; price: string; quantity?: number }>): string {
+    const basket: PayTRBasketItem[] = items.map((item) => ({
+      name: item.name,
+      price: formatPayTRAmount(item.price),
+      quantity: item.quantity && item.quantity > 0 ? item.quantity : 1,
+    }));
+    return formatPayTRBasket(basket);
+  }
+
+  private resolveMerchantOid(conversationId?: string): string {
+    const merchantOid = conversationId || generateOrderId();
+    assertPayTRMerchantOid(merchantOid);
+    return merchantOid;
+  }
+
+  /**
+   * Non-3D direct payment (Direct API, sync_mode=1)
+   *
+   * Requires the PayTR account to be authorized for non-3D payments.
+   */
+  async createPayment(request: PaymentRequest): Promise<PaymentResponse> {
+    let merchantOid: string | undefined;
+    try {
+      merchantOid = this.resolveMerchantOid(request.conversationId);
+      const installmentCount =
+        request.installment && request.installment > 1 ? String(request.installment) : '0';
+      const paymentAmount = formatPayTRAmount(request.paidPrice ?? request.price);
+      const currency = mapPayTRCurrency(request.currency);
+
+      const params: Record<string, string> = {
+        merchant_id: this.config.merchantId,
+        user_ip: request.buyer.ip,
+        merchant_oid: merchantOid,
+        email: request.buyer.email,
+        payment_amount: paymentAmount,
+        payment_type: 'card',
+        installment_count: installmentCount,
+        currency,
+        test_mode: this.testMode,
+        non_3d: '1',
+      };
+
+      const body: Record<string, string> = {
+        ...params,
+        paytr_token: generatePayTRDirectToken(
+          {
+            merchantId: params.merchant_id,
+            userIp: params.user_ip,
+            merchantOid,
+            email: params.email,
+            paymentAmount,
+            paymentType: 'card',
+            installmentCount,
+            currency,
+            testMode: params.test_mode,
+            non3d: '1',
+          },
+          this.config.merchantSalt,
+          this.config.merchantKey
+        ),
+        sync_mode: '1',
+        debug_on: this.testMode,
+        client_lang: this.lang,
+        user_name: `${request.buyer.name} ${request.buyer.surname}`,
+        user_address: request.billingAddress?.address || request.shippingAddress?.address || '',
+        user_phone: request.buyer.gsmNumber,
+        user_basket: this.buildBasket(request.basketItems),
+        cc_owner: request.paymentCard.cardHolderName,
+        card_number: request.paymentCard.cardNumber,
+        expiry_month: request.paymentCard.expireMonth.padStart(2, '0'),
+        expiry_year: request.paymentCard.expireYear.slice(-2),
+        cvv: request.paymentCard.cvc,
+      };
+
+      const data = await this.post<PayTRDirectPaymentResponse>('/odeme', body);
+      const approved = data.status === 'success';
+
+      return {
+        status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        paymentId: merchantOid,
+        conversationId: merchantOid,
+        errorCode: approved ? undefined : String(data.failed_reason_code ?? data.err_no ?? ''),
+        errorMessage: approved
+          ? undefined
+          : String(data.failed_reason_msg ?? data.err_msg ?? data.msg ?? data.reason ?? ''),
+        rawResponse: data,
+      };
+    } catch (error) {
+      return this.failure<PaymentResponse>(error, 'Payment failed', {
+        paymentId: merchantOid,
+        conversationId: merchantOid,
+      });
+    }
+  }
+
+  /**
+   * iFrame payment (3D Secure handled by PayTR)
+   *
+   * `callbackUrl` is where the customer's browser is redirected (merchant_ok_url /
+   * merchant_fail_url). It does NOT carry the payment result: the result is sent
+   * server-to-server to the notification URL configured in the PayTR panel.
+   *
+   * `installment`: undefined = customer can choose any installment, 1 = single
+   * payment only, n > 1 = up to n installments.
+   */
+  async initThreeDSPayment(
+    request: ThreeDSPaymentRequest & { failUrl?: string }
+  ): Promise<ThreeDSInitResponse> {
+    let merchantOid: string | undefined;
+    try {
+      merchantOid = this.resolveMerchantOid(request.conversationId);
+      if (!request.callbackUrl) {
+        throw new Error('callbackUrl is required');
+      }
+
+      const userBasket = this.buildBasket(request.basketItems);
+      const paymentAmount = convertToKurus(request.paidPrice ?? request.price);
+      const currency = mapPayTRCurrency(request.currency);
+      const noInstallment = request.installment === 1 ? '1' : '0';
+      const maxInstallment =
+        request.installment && request.installment > 1 ? String(request.installment) : '0';
+
+      const paytrToken = generatePayTRIframeToken(
+        {
+          merchantId: this.config.merchantId,
+          userIp: request.buyer.ip,
+          merchantOid,
+          email: request.buyer.email,
+          paymentAmount,
+          userBasket,
+          noInstallment,
+          maxInstallment,
+          currency,
+          testMode: this.testMode,
+        },
+        this.config.merchantSalt,
+        this.config.merchantKey
+      );
+
+      const body: Record<string, string> = {
+        merchant_id: this.config.merchantId,
+        user_ip: request.buyer.ip,
+        merchant_oid: merchantOid,
+        email: request.buyer.email,
+        payment_amount: paymentAmount,
+        paytr_token: paytrToken,
+        user_basket: userBasket,
+        debug_on: this.testMode,
+        no_installment: noInstallment,
+        max_installment: maxInstallment,
+        user_name: `${request.buyer.name} ${request.buyer.surname}`,
+        user_address: request.billingAddress?.address || request.shippingAddress?.address || '',
+        user_phone: request.buyer.gsmNumber,
+        merchant_ok_url: request.callbackUrl,
+        merchant_fail_url: request.failUrl || request.callbackUrl,
+        timeout_limit: String(this.config.timeoutLimit ?? 30),
+        currency,
+        test_mode: this.testMode,
+        lang: this.lang,
+      };
+
+      const data = await this.post<PayTRIframeResponse>('/odeme/api/get-token', body);
+
+      if (data.status === 'success' && data.token) {
+        const iframeUrl = `${this.config.baseUrl!.replace(/\/$/, '')}/odeme/guvenli/${data.token}`;
+        return {
+          status: PaymentStatus.PENDING,
+          threeDSHtmlContent: buildIframeHtml(iframeUrl),
+          redirectUrl: iframeUrl,
+          paymentId: merchantOid,
+          conversationId: merchantOid,
+          rawResponse: data,
+        };
+      }
+
+      return {
+        status: PaymentStatus.FAILURE,
+        paymentId: merchantOid,
+        conversationId: merchantOid,
+        errorMessage: data.reason || 'Payment initialization failed',
+        rawResponse: data,
+      };
+    } catch (error) {
+      return this.failure<ThreeDSInitResponse>(error, '3DS initialization failed', {
+        paymentId: merchantOid,
+        conversationId: merchantOid,
+      });
+    }
+  }
+
+  /**
+   * Verifies and maps the notification (Bildirim URL) POST.
+   *
+   * After processing, the endpoint MUST respond with plain text "OK"; otherwise
+   * PayTR keeps re-sending the notification. The built-in handler does this.
+   * PayTR may send the same notification more than once: make order updates idempotent.
+   */
+  async completeThreeDSPayment(callbackData: PayTRCallbackData): Promise<PaymentResponse> {
+    if (
+      !verifyPayTRCallback(
+        callbackData ?? ({} as PayTRCallbackData),
+        this.config.merchantSalt,
+        this.config.merchantKey
+      )
+    ) {
+      return {
+        status: PaymentStatus.FAILURE,
+        paymentId: callbackData?.merchant_oid,
+        conversationId: callbackData?.merchant_oid,
+        errorCode: 'INVALID_HASH',
+        errorMessage: 'Invalid callback signature',
+        rawResponse: callbackData,
+      };
+    }
+
+    const approved = callbackData.status === 'success';
+
+    return {
+      status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+      paymentId: callbackData.merchant_oid,
+      conversationId: callbackData.merchant_oid,
+      errorCode: approved ? undefined : callbackData.failed_reason_code,
+      errorMessage: approved ? undefined : callbackData.failed_reason_msg,
+      rawResponse: callbackData,
     };
   }
 
-  async _cancelWithAmount(request: CancelRequest & { price: string }): Promise<CancelResponse> {
+  /**
+   * Refund (full or partial). `paymentId` is the merchant_oid; `price` is in TL.
+   */
+  async refund(request: RefundRequest): Promise<RefundResponse> {
     try {
-      const refundResult = await this.refund({
+      const returnAmount = formatPayTRAmount(request.price);
+
+      const body: Record<string, string> = {
+        merchant_id: this.config.merchantId,
+        merchant_oid: request.paymentId,
+        return_amount: returnAmount,
+        paytr_token: generatePayTRRefundToken(
+          this.config.merchantId,
+          request.paymentId,
+          returnAmount,
+          this.config.merchantSalt,
+          this.config.merchantKey
+        ),
+      };
+
+      const data = await this.post<PayTRRefundResponse>('/odeme/iade', body);
+
+      if (data.status === 'success') {
+        return {
+          status: PaymentStatus.SUCCESS,
+          refundId: data.reference_no || data.merchant_oid,
+          conversationId: request.conversationId,
+          rawResponse: data,
+        };
+      }
+
+      return {
+        status: PaymentStatus.FAILURE,
+        conversationId: request.conversationId,
+        errorCode: data.err_no,
+        errorMessage: data.err_msg,
+        rawResponse: data,
+      };
+    } catch (error) {
+      return this.failure<RefundResponse>(error, 'Refund failed', {
+        conversationId: request.conversationId,
+      });
+    }
+  }
+
+  /**
+   * PayTR has no void endpoint; a cancel is a full refund.
+   * When `price` is not given, the paid amount is read with a status query.
+   */
+  async cancel(request: CancelRequest): Promise<CancelResponse> {
+    try {
+      let amount = request.price;
+      if (!amount) {
+        const status = await this.queryStatus(request.paymentId);
+        if (status.status !== 'success' || !status.payment_amount) {
+          return {
+            status: PaymentStatus.FAILURE,
+            conversationId: request.conversationId,
+            errorMessage:
+              status.err_msg || 'Could not determine payment amount for cancellation; pass price',
+            rawResponse: status,
+          };
+        }
+        amount = String(status.payment_amount).replace(',', '.');
+      }
+
+      const refund = await this.refund({
         paymentId: request.paymentId,
-        price: request.price,
-        currency: 'TRY',
+        price: amount,
+        currency: request.currency || 'TRY',
         ip: request.ip,
         conversationId: request.conversationId,
       });
 
       return {
-        status: refundResult.status,
-        conversationId: refundResult.conversationId,
-        errorCode: refundResult.errorCode,
-        errorMessage: refundResult.errorMessage,
-        rawResponse: refundResult.rawResponse,
+        status: refund.status,
+        transactionId: refund.refundId,
+        conversationId: refund.conversationId,
+        errorCode: refund.errorCode,
+        errorMessage: refund.errorMessage,
+        rawResponse: refund.rawResponse,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Cancel failed',
-        rawResponse: error,
-      };
+    } catch (error) {
+      return this.failure<CancelResponse>(error, 'Cancel failed', {
+        conversationId: request.conversationId,
+      });
     }
   }
 
   /**
-   * Kayıtlı kart (utoken) ile ödeme
-   * utoken: PayTR callback'inden gelen token (ilk başarılı ödemeden sonra)
+   * Payment with a stored card (utoken + ctoken)
+   *
+   * Returns an auto-submitting HTML form that posts to the PayTR Direct API from
+   * the customer's browser (3D Secure). The result is delivered to the
+   * notification URL like any other payment.
    */
   async createPaymentWithToken(request: PayTRTokenPaymentRequest): Promise<ThreeDSInitResponse> {
+    let merchantOid: string | undefined;
     try {
-      const basketItems = request.basketItems.map((item) => ({
-        name: item.name,
-        price: convertToKurus(item.price),
-        quantity: item.quantity || 1,
-      }));
-      const userBasket = formatPayTRBasket(basketItems);
-      const paymentAmountKurus = convertToKurus(request.price);
-      const currency = request.currency || 'TL';
-      const merchantOid = request.conversationId || `ORDER-${Date.now()}`;
-      const noInstallment = request.installment && request.installment > 1 ? '0' : '1';
-      const maxInstallment = request.installment ? request.installment.toString() : '0';
-      const testMode = this.config.baseUrl?.includes('sandbox') ? '1' : '0';
+      merchantOid = this.resolveMerchantOid(request.conversationId);
+      const paymentAmount = formatPayTRAmount(request.price);
+      const currency = mapPayTRCurrency(request.currency);
+      const installmentCount =
+        request.installment && request.installment > 1 ? String(request.installment) : '0';
 
-      const paymentHash = generatePayTRHash(
-        this.merchantId,
-        request.buyer.ip,
-        merchantOid,
-        request.buyer.email,
-        paymentAmountKurus,
-        userBasket,
-        noInstallment,
-        maxInstallment,
+      const fields: Record<string, string> = {
+        merchant_id: this.config.merchantId,
+        user_ip: request.buyer.ip,
+        merchant_oid: merchantOid,
+        email: request.buyer.email,
+        payment_amount: paymentAmount,
+        payment_type: 'card',
+        installment_count: installmentCount,
         currency,
-        testMode,
-        this.merchantSalt
+        test_mode: this.testMode,
+        non_3d: '0',
+      };
+
+      fields.paytr_token = generatePayTRDirectToken(
+        {
+          merchantId: fields.merchant_id,
+          userIp: fields.user_ip,
+          merchantOid,
+          email: fields.email,
+          paymentAmount,
+          paymentType: 'card',
+          installmentCount,
+          currency,
+          testMode: fields.test_mode,
+          non3d: '0',
+        },
+        this.config.merchantSalt,
+        this.config.merchantKey
       );
 
-      const params: Record<string, string> = {
-        merchant_id: this.merchantId,
-        merchant_key: this.merchantKey,
-        merchant_salt: this.merchantSalt,
-        email: request.buyer.email,
-        payment_amount: paymentAmountKurus,
-        merchant_oid: merchantOid,
-        user_name: `${request.buyer.name} ${request.buyer.surname}`,
-        user_address: 'N/A',
-        user_phone: request.buyer.gsmNumber || '05001234567',
-        merchant_ok_url: request.callbackUrl,
-        merchant_fail_url: request.callbackUrl,
-        user_basket: userBasket,
-        user_ip: request.buyer.ip,
-        timeout_limit: '30',
-        debug_on: '0',
-        test_mode: testMode,
-        no_installment: noInstallment,
-        max_installment: maxInstallment,
-        currency,
-        lang: this.config.locale || 'tr',
-        paytr_token: paymentHash,
+      Object.assign(fields, {
         utoken: request.utoken,
-      };
-
-      const formData = createPayTRFormData(params);
-      const response = await this.client.post<PayTRIframeResponse>('/odeme/api/get-token', formData);
-
-      if (response.data.status === 'success' && response.data.token) {
-        const iframeUrl = `https://www.paytr.com/odeme/guvenli/${response.data.token}`;
-        const iframeHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{margin:0}iframe{width:100%;height:100vh;border:none}</style></head><body><iframe src="${iframeUrl}"></iframe></body></html>`;
-
-        return {
-          status: PaymentStatus.PENDING,
-          threeDSHtmlContent: iframeHtml,
-          paymentId: response.data.token,
-          conversationId: merchantOid,
-          rawResponse: response.data,
-        };
-      }
-
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: response.data.reason || 'Token payment initialization failed',
-        rawResponse: response.data,
-      };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Token payment failed',
-        rawResponse: error.response?.data,
-      };
-    }
-  }
-
-  /**
-   * BIN sorgulama
-   */
-  async binCheck(binNumber: string): Promise<BinCheckResponse> {
-    try {
-      const token = generateBinDetailToken(this.merchantId, binNumber, this.merchantSalt);
-      const formData = createPayTRFormData({
-        merchant_id: this.merchantId,
-        merchant_key: this.merchantKey,
-        merchant_salt: this.merchantSalt,
-        bin_number: binNumber,
-        paytr_token: token,
+        ctoken: request.ctoken,
+        require_cvv: request.cvv ? '1' : '0',
+        ...(request.cvv ? { cvv: request.cvv } : {}),
+        client_lang: this.lang,
+        debug_on: this.testMode,
+        user_name: `${request.buyer.name} ${request.buyer.surname}`,
+        user_address: request.buyer.address || '',
+        user_phone: request.buyer.gsmNumber,
+        user_basket: this.buildBasket(request.basketItems),
+        merchant_ok_url: request.callbackUrl,
+        merchant_fail_url: request.failUrl || request.callbackUrl,
       });
 
-      const response = await this.client.post<PayTRBinDetailResponse>(
-        '/odeme/api/bin-detail/v2',
-        formData
-      );
+      const action = `${this.config.baseUrl!.replace(/\/$/, '')}/odeme`;
 
-      if (response.data.status === 'success' && response.data.bin_detail) {
-        const detail = response.data.bin_detail;
+      return {
+        status: PaymentStatus.PENDING,
+        threeDSHtmlContent: buildAutoSubmitForm(action, fields),
+        paymentId: merchantOid,
+        conversationId: merchantOid,
+      };
+    } catch (error) {
+      return this.failure<ThreeDSInitResponse>(error, 'Token payment failed', {
+        paymentId: merchantOid,
+        conversationId: merchantOid,
+      });
+    }
+  }
+
+  private queryStatus(merchantOid: string): Promise<PayTRStatusResponse> {
+    return this.post<PayTRStatusResponse>(
+      '/odeme/durum-sorgu',
+      {
+        merchant_id: this.config.merchantId,
+        merchant_oid: merchantOid,
+        paytr_token: generatePayTRStatusToken(
+          this.config.merchantId,
+          merchantOid,
+          this.config.merchantSalt,
+          this.config.merchantKey
+        ),
+      },
+      true
+    );
+  }
+
+  /**
+   * Payment status query (/odeme/durum-sorgu). `paymentId` is the merchant_oid.
+   */
+  async getPayment(paymentId: string): Promise<PaymentResponse> {
+    try {
+      const data = await this.queryStatus(paymentId);
+
+      if (data.status !== 'success') {
         return {
-          binNumber,
-          cardType: detail.card_tipi,
-          cardAssociation: detail.card_network,
-          cardFamily: detail.card_adi,
-          bankName: detail.bank_adi,
-          bankCode: 0,
-          commercial: false,
-          rawResponse: response.data,
+          status: PaymentStatus.FAILURE,
+          paymentId,
+          conversationId: paymentId,
+          errorCode: data.err_no,
+          errorMessage: data.err_msg,
+          rawResponse: data,
         };
       }
 
-      throw new Error(response.data.reason || 'BIN check failed');
-    } catch (error: any) {
-      throw new Error(error.message || 'BIN check failed');
+      // Status query amounts are in TL and may use a decimal comma ("1,16")
+      const toNumber = (v: unknown) => Number(String(v ?? 0).replace(',', '.')) || 0;
+      const paid = toNumber(data.payment_amount ?? data.payment_total);
+      const refunded = (data.returns ?? []).reduce(
+        (sum, r) => sum + toNumber(r.return_amount ?? r.refund_amount),
+        0
+      );
+      const fullyRefunded = paid > 0 && refunded >= paid;
+
+      return {
+        status: fullyRefunded ? PaymentStatus.CANCELLED : PaymentStatus.SUCCESS,
+        paymentId,
+        conversationId: paymentId,
+        rawResponse: data,
+      };
+    } catch (error) {
+      return this.failure<PaymentResponse>(error, 'Get payment failed', {
+        paymentId,
+        conversationId: paymentId,
+      });
     }
   }
 
   /**
-   * Taksit sorgulama
+   * BIN query (/odeme/api/bin-detail)
+   */
+  async binCheck(binNumber: string): Promise<BinCheckResponse> {
+    const data = await this.post<PayTRBinDetailResponse>(
+      '/odeme/api/bin-detail',
+      {
+        merchant_id: this.config.merchantId,
+        bin_number: binNumber,
+        paytr_token: generatePayTRBinToken(
+          binNumber,
+          this.config.merchantId,
+          this.config.merchantSalt,
+          this.config.merchantKey
+        ),
+      },
+      true
+    );
+
+    if (data.status !== 'success') {
+      throw new Error(data.err_msg || `BIN check failed (${data.status})`);
+    }
+
+    return {
+      binNumber,
+      cardType: data.cardType || '',
+      cardAssociation: data.schema || '',
+      cardFamily: data.brand || '',
+      bankName: data.bank || '',
+      bankCode: Number(data.bankCode) || 0,
+      commercial: data.businessCard === 'y' || data.businessCard === '1',
+      rawResponse: data,
+    };
+  }
+
+  /**
+   * Installment options for a card, computed from the commission rates defined
+   * on the PayTR account (/odeme/taksit-oranlari) and the card family (BIN query).
    */
   async installmentInfo(request: InstallmentInfoRequest): Promise<InstallmentInfoResponse> {
     try {
-      const token = generateBinDetailToken(this.merchantId, request.binNumber, this.merchantSalt);
-      const params: Record<string, string> = {
-        merchant_id: this.merchantId,
-        merchant_key: this.merchantKey,
-        merchant_salt: this.merchantSalt,
-        bin_number: request.binNumber,
-        paytr_token: token,
-      };
+      const price = parseAmount(request.price, 'price');
+      const bin = await this.binCheck(request.binNumber);
 
-      if (request.price) {
-        params.amount = convertToKurus(request.price);
-      }
-
-      const formData = createPayTRFormData(params);
-
-      const response = await this.client.post<PayTRBinDetailResponse>(
-        '/odeme/api/bin-detail/v2',
-        formData
+      const requestId = crypto.randomBytes(8).toString('hex');
+      const rates = await this.post<PayTRInstallmentRatesResponse>(
+        '/odeme/taksit-oranlari',
+        {
+          merchant_id: this.config.merchantId,
+          request_id: requestId,
+          paytr_token: generatePayTRInstallmentRatesToken(
+            this.config.merchantId,
+            requestId,
+            this.config.merchantSalt,
+            this.config.merchantKey
+          ),
+        },
+        true
       );
 
-      if (response.data.status === 'success') {
-        const detail = response.data.bin_detail;
-        const installmentDetails: InstallmentPrice[] = detail
-          ? [
-              {
-                binNumber: request.binNumber,
-                price: parseFloat(request.price || '0'),
-                cardType: detail.card_tipi,
-                cardAssociation: detail.card_network,
-                cardFamilyName: detail.card_adi,
-                force3ds: 0,
-                bankCode: 0,
-                bankName: detail.bank_adi,
-                forceCvc: 0,
-                commercial: 0,
-                installmentPrices: (response.data.installment_count || []).map((item) => ({
-                  installmentNumber: item.installment_count,
-                  totalPrice: parseFloat(item.price),
-                  installmentPrice:
-                    parseFloat(item.price) / (item.installment_count || 1),
-                })),
-              },
-            ]
-          : [];
-
+      if (rates.status !== 'success') {
         return {
-          status: PaymentStatus.SUCCESS,
-          installmentDetails,
-          rawResponse: response.data,
+          status: PaymentStatus.FAILURE,
+          errorMessage: rates.err_msg || 'Installment rates query failed',
+          rawResponse: rates,
         };
       }
 
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: response.data.reason || 'Installment info failed',
-        rawResponse: response.data,
-      };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Installment info failed',
-        rawResponse: error.response?.data,
-      };
-    }
-  }
+      const family = (bin.cardFamily || '').toLowerCase();
+      const familyRates = (rates.oranlar ?? {})[family] ?? {};
+      const round = (n: number) => Math.round(n * 100) / 100;
 
-  /**
-   * Ödeme sorgulama
-   * NOT: PayTR API'si ödeme sorgulama endpoint'i sunmuyor
-   * Callback data'yı kullanarak durum kontrol edilmeli
-   */
-  async getPayment(paymentId: string): Promise<PaymentResponse> {
-    return {
-      status: PaymentStatus.PENDING,
-      paymentId: paymentId,
-      errorMessage:
-        'PayTR does not provide payment query endpoint. Use callback data to verify payment status.',
-      rawResponse: {
-        note: 'Use completeThreeDSPayment with callback data to get payment status',
-      },
-    };
+      const installmentPrices = [
+        { installmentNumber: 1, totalPrice: round(price), installmentPrice: round(price) },
+      ];
+      for (const [key, rate] of Object.entries(familyRates)) {
+        const count = parseInt(key.replace('taksit_', ''), 10);
+        const percent = Number(rate);
+        if (!Number.isFinite(count) || count < 2 || !Number.isFinite(percent) || percent < 0)
+          continue;
+        const total = price * (1 + percent / 100);
+        installmentPrices.push({
+          installmentNumber: count,
+          totalPrice: round(total),
+          installmentPrice: round(total / count),
+        });
+      }
+      installmentPrices.sort((a, b) => a.installmentNumber - b.installmentNumber);
+
+      const detail: InstallmentPrice = {
+        binNumber: request.binNumber,
+        price,
+        cardType: bin.cardType,
+        cardAssociation: bin.cardAssociation,
+        cardFamilyName: bin.cardFamily,
+        bankCode: bin.bankCode,
+        bankName: bin.bankName,
+        commercial: bin.commercial ? 1 : 0,
+        installmentPrices,
+      };
+
+      return {
+        status: PaymentStatus.SUCCESS,
+        installmentDetails: [detail],
+        conversationId: request.conversationId,
+        rawResponse: { bin: bin.rawResponse, rates },
+      };
+    } catch (error) {
+      return this.failure<InstallmentInfoResponse>(error, 'Installment info failed');
+    }
   }
 }

@@ -1,78 +1,83 @@
+import type { PaymentProviderConfig } from '../../core/PaymentProvider';
+
 /**
- * PayTR API yanıt tipleri
+ * PayTR configuration (Mağaza Paneli > Bilgi)
  */
-
-export interface PayTRResponse {
-  status: string;
-  reason?: string;
-  token?: string;
-}
-
-export interface PayTRPaymentResponse extends PayTRResponse {
-  merchant_oid?: string;
-  payment_amount?: string;
-  payment_type?: string;
-  installment_count?: string;
-  hash?: string;
-  failed_reason_code?: string;
-  failed_reason_msg?: string;
-  test_mode?: string;
-  payment_status?: string;
+export interface PayTRConfig extends PaymentProviderConfig {
+  merchantId: string;
+  merchantKey: string;
+  merchantSalt: string;
+  /** Sends test_mode=1. BetterPayment sets this automatically when mode is 'sandbox'. */
+  testMode?: boolean;
+  /** iFrame timeout in minutes (default 30) */
+  timeoutLimit?: number;
 }
 
 export interface PayTRIframeResponse {
   status: string;
   reason?: string;
   token?: string;
-  iframe_url?: string;
 }
 
 export interface PayTRRefundResponse {
   status: string;
-  error_no?: string;
-  error_message?: string;
+  is_test?: string | number;
   merchant_oid?: string;
   return_amount?: string;
+  reference_no?: string;
+  err_no?: string;
+  err_msg?: string;
 }
 
-/**
- * PayTR API istek tipleri
- */
+export interface PayTRDirectPaymentResponse {
+  status: string;
+  msg?: string;
+  reason?: string;
+  merchant_oid?: string;
+  total_amount?: string;
+  failed_reason_code?: string;
+  failed_reason_msg?: string;
+  err_no?: string;
+  err_msg?: string;
+  [key: string]: unknown;
+}
 
-export interface PayTRPaymentRequest {
-  merchant_id: string;
-  merchant_key: string;
-  merchant_salt: string;
-  email: string;
-  payment_amount: string; // Kuruş cinsinden (örn: 10000 = 100 TL)
-  merchant_oid: string; // Sipariş numarası
-  user_name: string;
-  user_address: string;
-  user_phone: string;
-  merchant_ok_url: string;
-  merchant_fail_url: string;
-  user_basket: string; // JSON string
-  user_ip: string;
-  timeout_limit?: string; // Dakika cinsinden, default 30
-  debug_on?: string; // "1" veya "0"
-  test_mode?: string; // "1" veya "0"
-  no_installment?: string; // "1" = taksit kapalı
-  max_installment?: string; // Maksimum taksit sayısı
-  currency?: string; // TL, USD, EUR
-  lang?: string; // tr, en
-  payment_type?: string; // card, eft
-  client_lang?: string; // tr, en
+export interface PayTRStatusResponse {
+  status: string;
+  payment_amount?: string;
+  payment_total?: string;
+  payment_date?: string;
+  currency?: string;
+  taksit?: string;
+  kart_marka?: string;
+  masked_pan?: string;
+  odeme_tipi?: string;
+  test_mode?: string;
+  returns?: Array<{
+    return_amount?: string;
+    refund_amount?: string;
+    return_date?: string;
+    [key: string]: unknown;
+  }>;
+  err_no?: string;
+  err_msg?: string;
+  [key: string]: unknown;
 }
 
 export interface PayTRBasketItem {
   name: string;
-  price: string; // Kuruş cinsinden
+  /** Unit price in TL (e.g. "18.00") */
+  price: string;
   quantity: number;
 }
 
+/**
+ * Data PayTR POSTs to the notification (Bildirim) URL
+ */
 export interface PayTRCallbackData {
   merchant_oid: string;
   status: string;
+  /** Total charged amount in kuruş */
   total_amount: string;
   hash: string;
   failed_reason_code?: string;
@@ -80,22 +85,37 @@ export interface PayTRCallbackData {
   test_mode?: string;
   payment_type?: string;
   currency?: string;
+  /** Order amount in kuruş */
   payment_amount?: string;
+  installment_count?: string;
   merchant_id?: string;
   utoken?: string;
+  [key: string]: string | undefined;
 }
 
+/**
+ * Payment with a stored card (Kart Saklama). Requires the feature to be enabled
+ * on the PayTR account.
+ */
 export interface PayTRTokenPaymentRequest {
+  /** User token returned in the first successful payment's notification */
   utoken: string;
+  /** Card token from the stored card list */
+  ctoken: string;
+  /** CVV, when the stored card requires it (require_cvv = 1) */
+  cvv?: string;
   price: string;
   callbackUrl: string;
+  /** Redirect URL on failure (defaults to callbackUrl) */
+  failUrl?: string;
   conversationId?: string;
   buyer: {
     email: string;
     name: string;
     surname: string;
     ip: string;
-    gsmNumber?: string;
+    gsmNumber: string;
+    address?: string;
   };
   basketItems: Array<{ name: string; price: string; quantity?: number }>;
   currency?: string;
@@ -104,26 +124,21 @@ export interface PayTRTokenPaymentRequest {
 
 export interface PayTRBinDetailResponse {
   status: string;
-  reason?: string;
-  bin_detail?: {
-    bank_adi: string;
-    bank_adi_tr?: string;
-    card_network: string;
-    card_adi: string;
-    card_tipi: string;
-    bank_logo?: string;
-  };
-  installment_count?: Array<{
-    installment_count: number;
-    price: string;
-  }>;
+  err_msg?: string;
+  bank?: string;
+  bankCode?: string | number;
+  brand?: string;
+  cardType?: string;
+  schema?: string;
+  businessCard?: string;
+  [key: string]: unknown;
 }
 
-export interface PayTRRefundRequest {
-  merchant_id: string;
-  merchant_key: string;
-  merchant_salt: string;
-  merchant_oid: string;
-  return_amount: string; // Kuruş cinsinden
-  reference_no?: string;
+export interface PayTRInstallmentRatesResponse {
+  status: string;
+  err_msg?: string;
+  /** { world: { taksit_2: 3.5, ... }, bonus: {...} } — commission percentages */
+  oranlar?: Record<string, Record<string, number | string>>;
+  max_inst_non_bus?: number;
+  [key: string]: unknown;
 }

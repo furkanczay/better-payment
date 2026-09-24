@@ -12,11 +12,7 @@ export class BetterPaymentError extends Error {
 
 export class ProviderNotEnabledError extends BetterPaymentError {
   constructor(provider: string) {
-    super(
-      `Provider '${provider}' is not enabled or configured`,
-      'PROVIDER_NOT_ENABLED',
-      provider
-    );
+    super(`Provider '${provider}' is not enabled or configured`, 'PROVIDER_NOT_ENABLED', provider);
     this.name = 'ProviderNotEnabledError';
   }
 }

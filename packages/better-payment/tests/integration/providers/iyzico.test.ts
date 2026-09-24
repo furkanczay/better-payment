@@ -43,8 +43,10 @@ describe('Iyzico Provider - Integration Tests', () => {
 
     // Spy on the internal axios client's post method
     const client = (iyzico as any).client;
-    vi.spyOn(client, 'post').mockImplementation(async (...args: unknown[]) => {
-      const [url, data, config] = args as [string, any, any];
+    vi.spyOn(client, 'request').mockImplementation(async (...args: unknown[]) => {
+      const [config] = args as [any];
+      const url: string = config.url;
+      const data = config.data ?? '{}';
 
       // Capture the request
       capturedRequests.push({
@@ -560,8 +562,10 @@ describe('Iyzico Provider - Integration Tests', () => {
   describe('PWI (Payment With IBAN - Korumalı Havale/EFT)', () => {
     beforeEach(() => {
       const client = (iyzico as any).client;
-      vi.spyOn(client, 'post').mockImplementation(async (...args: unknown[]) => {
-        const [url, data, config] = args as [string, any, any];
+      vi.spyOn(client, 'request').mockImplementation(async (...args: unknown[]) => {
+        const [config] = args as [any];
+        const url: string = config.url;
+        const data = config.data ?? '{}';
 
         capturedRequests.push({
           url,
@@ -757,7 +761,8 @@ describe('Iyzico Provider - Integration Tests', () => {
     it('should retrieve PWI payment with IBAN details', async () => {
       const result = await iyzico.retrievePWIPayment('pwi-token-123');
 
-      expect(result.status).toBe('success');
+      // Transfer not received yet: the payment is pending, not successful
+      expect(result.status).toBe('pending');
       expect(result.paymentStatus).toBe('WAITING');
       expect(result.iban).toBe('TR123456789012345678901234');
       expect(result.bankName).toBe('Test Bank');

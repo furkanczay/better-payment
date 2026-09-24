@@ -1,5 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
-import { PaymentProvider, PaymentProviderConfig } from '../../core/PaymentProvider';
+import { PaymentProvider, RetryableRequestConfig } from '../../core/PaymentProvider';
+import { ConfigurationError } from '../../core/errors';
+import { generateOrderId, errorMessage, isNetworkError } from '../../core/utils';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -10,538 +12,448 @@ import {
   CancelRequest,
   CancelResponse,
   PaymentStatus,
-  BinCheckResponse,
-  InstallmentInfoRequest,
-  InstallmentInfoResponse,
-  InstallmentPrice,
 } from '../../types';
 import {
-  createAkbankHash,
-  createAkbank3DHash,
-  verifyAkbank3DHash,
-  formatAmount,
-  formatExpiry,
-  getCurrencyCode,
+  AKBANK_API_VERSION,
+  AKBANK_SUCCESS_CODE,
+  AKBANK_TXN_CODES,
+  AKBANK_3D_GATEWAYS,
+  akbankSign,
+  createAkbank3DFormHash,
+  verifyAkbank3DCallback,
+  generateAkbankRandomNumber,
+  formatAkbankDateTime,
+  formatAkbankAmount,
+  formatAkbankExpiry,
+  getAkbankCurrencyCode,
 } from './utils';
-import {
+import type {
   AkbankConfig,
-  AkbankResponse,
-  Akbank3DSInitResponse,
-  Akbank3DSCallbackRequest,
-  AkbankRefundResponse,
-  AkbankCancelResponse,
+  AkbankApiResponse,
+  Akbank3DCallbackData,
+  AkbankTxnDetail,
 } from './types';
 
+const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
+const NETWORK_ERROR_MESSAGE =
+  'No response from Akbank. The transaction may have been processed; verify it with getPayment() before retrying.';
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /**
- * Akbank Sanal POS sağlayıcısı
+ * Akbank Sanal POS (JSON API, "yeni nesil" sanal POS)
+ *
+ * - createPayment():      txnCode 1000 (non-3D sale)
+ * - initThreeDSPayment(): 3D_PAY model; returns an auto-submitting form to the
+ *                         Akbank securepay gateway. Akbank authenticates and
+ *                         charges, then POSTs the signed result to callbackUrl.
+ * - completeThreeDSPayment(): verifies the callback signature and result.
+ * - refund() 1002, cancel() 1003, getPayment() 1010 (order history)
  */
-export class Akbank extends PaymentProvider {
+export class Akbank extends PaymentProvider<AkbankConfig> {
   private client: AxiosInstance;
-  private merchantId: string;
-  private terminalId: string;
-  private storeKey: string;
-  private secure3DStoreKey?: string;
 
-  constructor(config: PaymentProviderConfig & AkbankConfig) {
-    // Önce Akbank özel alanlarını validate et
-    if (!config.merchantId) {
-      throw new Error('Merchant ID is required');
-    }
-    if (!config.terminalId) {
-      throw new Error('Terminal ID is required');
-    }
-    if (!config.storeKey) {
-      throw new Error('Store Key is required');
-    }
-
-    // Parent constructor'ı çağır
+  constructor(config: AkbankConfig) {
     super(config);
-
-    // Akbank bilgilerini ata
-    this.merchantId = config.merchantId;
-    this.terminalId = config.terminalId;
-    this.storeKey = config.storeKey;
-    this.secure3DStoreKey = config.secure3DStoreKey;
 
     this.client = axios.create({
       baseURL: this.config.baseUrl,
       timeout: 30000,
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
     });
     this.setupAxiosLogging(this.client, 'akbank');
     this.setupAxiosRetry(this.client);
   }
 
-  /**
-   * Akbank status'ünü PaymentStatus'e çevir
-   */
-  private mapStatus(akbankCode: string): PaymentStatus {
-    // Akbank için: 00 = başarılı, diğerleri hata
-    if (akbankCode === '00' || akbankCode === 'Success') {
-      return PaymentStatus.SUCCESS;
-    } else if (akbankCode === 'Declined' || akbankCode === 'Error') {
-      return PaymentStatus.FAILURE;
+  protected validateConfig(): void {
+    const missing = (['merchantSafeId', 'terminalSafeId', 'secretKey'] as const).filter(
+      (key) => !this.config[key]
+    );
+    if (missing.length > 0) {
+      throw new ConfigurationError(
+        `Akbank configuration is missing: ${missing.join(', ')}`,
+        'akbank'
+      );
     }
-    return PaymentStatus.PENDING;
+    if (!this.config.baseUrl) {
+      throw new ConfigurationError('Akbank baseUrl is required', 'akbank');
+    }
+  }
+
+  private get gateway3dUrl(): string {
+    return (
+      this.config.gateway3dUrl ||
+      (this.config.testMode ? AKBANK_3D_GATEWAYS.test : AKBANK_3D_GATEWAYS.production)
+    );
+  }
+
+  private get lang(): string {
+    return (this.config.locale || 'tr').toLowerCase().startsWith('en') ? 'EN' : 'TR';
+  }
+
+  private baseRequest(txnCode: string): Record<string, unknown> {
+    const request: Record<string, unknown> = {
+      version: AKBANK_API_VERSION,
+      txnCode,
+      requestDateTime: formatAkbankDateTime(),
+      randomNumber: generateAkbankRandomNumber(),
+      terminal: {
+        merchantSafeId: this.config.merchantSafeId,
+        terminalSafeId: this.config.terminalSafeId,
+      },
+    };
+    if (this.config.subMerchantId) {
+      request.subMerchant = { subMerchantId: this.config.subMerchantId };
+    }
+    return request;
   }
 
   /**
-   * Form data oluştur
+   * POST /transaction/process with the auth-hash header
+   * (base64(HMAC-SHA512(body, secretKey)))
    */
-  private createFormData(data: Record<string, string>): string {
-    return Object.entries(data)
-      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-      .join('&');
+  private async process(
+    body: Record<string, unknown>,
+    retryable = false
+  ): Promise<AkbankApiResponse> {
+    const json = JSON.stringify(body);
+    const config: RetryableRequestConfig = {
+      headers: {
+        'Content-Type': 'application/json',
+        'auth-hash': akbankSign(json, this.config.secretKey),
+      },
+      retryable,
+      // Akbank returns 4xx with a JSON body for validation errors
+      validateStatus: (status) => status < 500,
+    };
+    const response = await this.client.post<AkbankApiResponse>(
+      '/transaction/process',
+      json,
+      config
+    );
+    return response.data ?? {};
+  }
+
+  private failure<
+    T extends {
+      status: PaymentStatus;
+      errorCode?: string;
+      errorMessage?: string;
+      rawResponse?: any;
+    },
+  >(error: unknown, fallback: string, extra: Partial<T> = {}): T {
+    if (isNetworkError(error)) {
+      return {
+        status: PaymentStatus.PENDING,
+        errorCode: NETWORK_ERROR_CODE,
+        errorMessage: NETWORK_ERROR_MESSAGE,
+        ...extra,
+      } as T;
+    }
+    return {
+      status: PaymentStatus.FAILURE,
+      errorMessage: errorMessage(error, fallback),
+      rawResponse: (error as any)?.response?.data,
+      ...extra,
+    } as T;
+  }
+
+  private static errorOf(data: AkbankApiResponse): { errorCode?: string; errorMessage?: string } {
+    return {
+      errorCode: data.responseCode ?? (data.code !== undefined ? String(data.code) : undefined),
+      errorMessage: data.hostMessage || data.responseMessage || data.message,
+    };
   }
 
   /**
-   * Direkt ödeme (3D Secure olmadan)
+   * Non-3D sale (txnCode 1000)
    */
   async createPayment(request: PaymentRequest): Promise<PaymentResponse> {
+    const orderId = request.conversationId || generateOrderId();
     try {
-      const amount = formatAmount(parseFloat(request.price));
-      const currency = getCurrencyCode(request.currency || 'TRY');
-      const orderId = request.conversationId || `ORDER-${Date.now()}`;
-
-      // Hash oluştur
-      const hash = createAkbankHash({
-        merchantId: this.merchantId,
-        terminalId: this.terminalId,
-        orderId,
-        amount,
-        currency,
-        storeKey: this.storeKey,
-        txnType: 'Auth',
-      });
-
-      const akbankRequest: Record<string, string> = {
-        MERCHANTID: this.merchantId,
-        TERMINALID: this.terminalId,
-        AMOUNT: amount,
-        CURRENCY: currency,
-        ORDERID: orderId,
-        TXNTYPE: 'Auth',
-        PAN: request.paymentCard.cardNumber,
-        EXPIRY: formatExpiry(request.paymentCard.expireMonth, request.paymentCard.expireYear),
-        CVV: request.paymentCard.cvc,
-        CARDOWNER: request.paymentCard.cardHolderName,
-        HASH: hash,
+      const body = {
+        ...this.baseRequest(AKBANK_TXN_CODES.SALE),
+        card: {
+          cardNumber: request.paymentCard.cardNumber,
+          cvv2: request.paymentCard.cvc,
+          expireDate: formatAkbankExpiry(
+            request.paymentCard.expireMonth,
+            request.paymentCard.expireYear
+          ),
+        },
+        transaction: {
+          amount: formatAkbankAmount(request.paidPrice ?? request.price),
+          currencyCode: getAkbankCurrencyCode(request.currency),
+          motoInd: 0,
+          installCount: Math.max(1, request.installment ?? 1),
+        },
+        customer: {
+          ipAddress: request.buyer.ip,
+        },
+        order: { orderId },
       };
 
-      const formData = this.createFormData(akbankRequest);
-      const response = await this.client.post<AkbankResponse>('/servlet/PaymentGateway', formData);
+      const data = await this.process(body);
+      const approved = data.responseCode === AKBANK_SUCCESS_CODE;
 
       return {
-        status: this.mapStatus(response.data.ProcReturnCode),
-        paymentId: response.data.OrderId,
+        status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        paymentId: orderId,
         conversationId: orderId,
-        errorCode: response.data.ErrMsg,
-        errorMessage: response.data.Response,
-        rawResponse: response.data,
+        ...(approved ? {} : Akbank.errorOf(data)),
+        rawResponse: data,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Payment failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure<PaymentResponse>(error, 'Payment failed', {
+        paymentId: orderId,
+        conversationId: orderId,
+      });
     }
   }
 
   /**
-   * 3D Secure ödeme başlat
+   * 3D Secure payment (3D_PAY model)
+   *
+   * Returns an auto-submitting HTML form to the Akbank gateway. Card data is
+   * posted from the customer's browser directly to Akbank.
    */
-  async initThreeDSPayment(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
+  async initThreeDSPayment(
+    request: ThreeDSPaymentRequest & { failUrl?: string }
+  ): Promise<ThreeDSInitResponse> {
+    const orderId = request.conversationId || generateOrderId();
     try {
-      if (!this.secure3DStoreKey) {
-        throw new Error('3D Secure Store Key is required for 3DS payments');
+      if (!request.callbackUrl) {
+        throw new Error('callbackUrl is required for 3D Secure payments');
       }
 
-      const amount = formatAmount(parseFloat(request.price));
-      const currency = getCurrencyCode(request.currency || 'TRY');
-      const orderId = request.conversationId || `ORDER-${Date.now()}`;
-
-      // 3D Hash oluştur
-      const hash = createAkbank3DHash({
-        merchantId: this.merchantId,
-        terminalId: this.terminalId,
+      const fields: Record<string, string> = {
+        paymentModel: '3D_PAY',
+        txnCode: AKBANK_TXN_CODES.SECURE_SALE,
+        merchantSafeId: this.config.merchantSafeId,
+        terminalSafeId: this.config.terminalSafeId,
         orderId,
-        amount,
-        currency,
-        successUrl: request.callbackUrl,
-        errorUrl: request.callbackUrl,
-        secure3DStoreKey: this.secure3DStoreKey,
-        txnType: 'Auth',
-      });
-
-      const akbankRequest: Record<string, string> = {
-        MERCHANTID: this.merchantId,
-        TERMINALID: this.terminalId,
-        AMOUNT: amount,
-        CURRENCY: currency,
-        ORDERID: orderId,
-        TXNTYPE: 'Auth',
-        SUCCESSURL: request.callbackUrl,
-        ERRORURL: request.callbackUrl,
-        PAN: request.paymentCard.cardNumber,
-        EXPIRY: formatExpiry(request.paymentCard.expireMonth, request.paymentCard.expireYear),
-        CVV: request.paymentCard.cvc,
-        CARDOWNER: request.paymentCard.cardHolderName,
-        EMAIL: request.buyer.email,
-        HASH: hash,
+        lang: this.lang,
+        amount: formatAkbankAmount(request.paidPrice ?? request.price),
+        currencyCode: String(getAkbankCurrencyCode(request.currency)),
+        installCount: String(Math.max(1, request.installment ?? 1)),
+        okUrl: request.callbackUrl,
+        failUrl: request.failUrl || request.callbackUrl,
+        emailAddress: request.buyer?.email ?? '',
+        creditCard: request.paymentCard.cardNumber,
+        expiredDate: formatAkbankExpiry(
+          request.paymentCard.expireMonth,
+          request.paymentCard.expireYear
+        ),
+        cvv: request.paymentCard.cvc,
+        randomNumber: generateAkbankRandomNumber(),
+        requestDateTime: formatAkbankDateTime(),
       };
-
-      if (request.installment && request.installment > 1) {
-        akbankRequest.INSTALLMENT_COUNT = request.installment.toString();
+      if (this.config.subMerchantId) {
+        fields.subMerchantId = this.config.subMerchantId;
       }
+      fields.hash = createAkbank3DFormHash(fields, this.config.secretKey);
 
-      const formData = this.createFormData(akbankRequest);
-      const response = await this.client.post<Akbank3DSInitResponse>('/servlet/3DGate', formData);
+      const inputs = Object.entries(fields)
+        .map(
+          ([name, value]) =>
+            `<input type="hidden" name="${escapeHtml(name)}" value="${escapeHtml(value)}">`
+        )
+        .join('');
 
-      if (response.data.ProcReturnCode === 'Success' && response.data.Message) {
-        return {
-          status: PaymentStatus.PENDING,
-          threeDSHtmlContent: response.data.Message,
-          paymentId: response.data.OrderId,
-          conversationId: orderId,
-          rawResponse: response.data,
-        };
-      } else {
-        return {
-          status: PaymentStatus.FAILURE,
-          errorCode: response.data.ErrMsg,
-          errorMessage: response.data.Response,
-          rawResponse: response.data,
-        };
-      }
-    } catch (error: any) {
+      const html =
+        '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>' +
+        `<form id="akbank-3d-form" method="POST" action="${escapeHtml(this.gateway3dUrl)}">${inputs}</form>` +
+        '<script>document.getElementById("akbank-3d-form").submit();</script>' +
+        '</body></html>';
+
       return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || '3DS initialization failed',
-        rawResponse: error.response?.data,
+        status: PaymentStatus.PENDING,
+        threeDSHtmlContent: html,
+        paymentId: orderId,
+        conversationId: orderId,
       };
+    } catch (error) {
+      return this.failure<ThreeDSInitResponse>(error, '3DS initialization failed', {
+        paymentId: orderId,
+        conversationId: orderId,
+      });
     }
   }
 
   /**
-   * 3D Secure ödeme tamamla
+   * Verifies the okUrl/failUrl POST from Akbank.
+   *
+   * The result is trusted only when the HMAC signature is valid and covers
+   * responseCode, orderId and the terminal ids. Payment succeeded only when
+   * responseCode is VPS-0000.
    */
-  async completeThreeDSPayment(callbackData: Akbank3DSCallbackRequest): Promise<PaymentResponse> {
-    try {
-      if (!this.secure3DStoreKey) {
-        throw new Error('3D Secure Store Key is required for 3DS payments');
-      }
+  async completeThreeDSPayment(callbackData: Akbank3DCallbackData): Promise<PaymentResponse> {
+    const orderId = callbackData?.orderId;
 
-      // Hash doğrulama
-      const isValid = verifyAkbank3DHash({
-        merchantId: callbackData.MERCHANTID,
-        terminalId: callbackData.TERMINALID,
-        orderId: callbackData.ORDERID,
-        secure3DHash: callbackData.SECURE3DHASH,
-        secure3DStoreKey: this.secure3DStoreKey,
-        amount: callbackData.AMOUNT,
-        currency: callbackData.CURRENCY,
-      });
-
-      if (!isValid) {
-        return {
-          status: PaymentStatus.FAILURE,
-          errorMessage: 'Invalid 3D Secure hash',
-          rawResponse: callbackData,
-        };
-      }
-
-      // mdStatus kontrolü (1, 2, 3, 4 başarılı sayılır)
-      const successMdStatuses = ['1', '2', '3', '4'];
-      if (callbackData.mdStatus && !successMdStatuses.includes(callbackData.mdStatus)) {
-        return {
-          status: PaymentStatus.FAILURE,
-          errorMessage: `3D Authentication failed with mdStatus: ${callbackData.mdStatus}`,
-          rawResponse: callbackData,
-        };
-      }
-
+    if (!verifyAkbank3DCallback(callbackData ?? {}, this.config.secretKey)) {
       return {
-        status: this.mapStatus(callbackData.ProcReturnCode || 'Success'),
-        paymentId: callbackData.ORDERID,
-        conversationId: callbackData.ORDERID,
-        errorMessage: callbackData.Response,
+        status: PaymentStatus.FAILURE,
+        paymentId: orderId,
+        conversationId: orderId,
+        errorCode: 'INVALID_HASH',
+        errorMessage: 'Invalid 3D Secure callback signature',
         rawResponse: callbackData,
       };
-    } catch (error: any) {
+    }
+
+    if (
+      callbackData.merchantSafeId !== this.config.merchantSafeId ||
+      callbackData.terminalSafeId !== this.config.terminalSafeId
+    ) {
       return {
         status: PaymentStatus.FAILURE,
-        errorMessage: error.message || '3DS completion failed',
-        rawResponse: error,
+        paymentId: orderId,
+        conversationId: orderId,
+        errorCode: 'TERMINAL_MISMATCH',
+        errorMessage: 'Callback belongs to a different terminal',
+        rawResponse: callbackData,
       };
     }
+
+    const approved = callbackData.responseCode === AKBANK_SUCCESS_CODE;
+
+    return {
+      status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+      paymentId: orderId,
+      conversationId: orderId,
+      errorCode: approved ? undefined : callbackData.responseCode,
+      errorMessage: approved ? undefined : callbackData.hostMessage || callbackData.responseMessage,
+      rawResponse: callbackData,
+    };
   }
 
   /**
-   * İade işlemi
+   * Refund (txnCode 1002). `paymentId` is the order id.
    */
   async refund(request: RefundRequest): Promise<RefundResponse> {
     try {
-      const amount = formatAmount(parseFloat(request.price));
-      const currency = getCurrencyCode(request.currency || 'TRY');
-
-      const hash = createAkbankHash({
-        merchantId: this.merchantId,
-        terminalId: this.terminalId,
-        orderId: request.paymentId,
-        amount,
-        currency,
-        storeKey: this.storeKey,
-        txnType: 'Refund',
+      const data = await this.process({
+        ...this.baseRequest(AKBANK_TXN_CODES.REFUND),
+        transaction: {
+          amount: formatAkbankAmount(request.price),
+          currencyCode: getAkbankCurrencyCode(request.currency),
+        },
+        order: { orderId: request.paymentId },
       });
+      const approved = data.responseCode === AKBANK_SUCCESS_CODE;
 
-      const akbankRequest: Record<string, string> = {
-        MERCHANTID: this.merchantId,
-        TERMINALID: this.terminalId,
-        ORDERID: request.paymentId,
-        AMOUNT: amount,
-        CURRENCY: currency,
-        TXNTYPE: 'Refund',
-        HASH: hash,
-      };
-
-      const formData = this.createFormData(akbankRequest);
-      const response = await this.client.post<AkbankRefundResponse>(
-        '/servlet/PaymentGateway',
-        formData
-      );
-
-      if (response.data.ProcReturnCode === 'Success' || response.data.ProcReturnCode === '00') {
-        return {
-          status: PaymentStatus.SUCCESS,
-          refundId: response.data.RefundId || response.data.OrderId,
-          conversationId: request.conversationId,
-          rawResponse: response.data,
-        };
-      } else {
-        return {
-          status: PaymentStatus.FAILURE,
-          errorCode: response.data.ErrMsg,
-          errorMessage: response.data.Response,
-          rawResponse: response.data,
-        };
-      }
-    } catch (error: any) {
       return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Refund failed',
-        rawResponse: error.response?.data,
+        status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        refundId: approved ? data.transaction?.rrn || data.transaction?.authCode : undefined,
+        conversationId: request.conversationId,
+        ...(approved ? {} : Akbank.errorOf(data)),
+        rawResponse: data,
       };
+    } catch (error) {
+      return this.failure<RefundResponse>(error, 'Refund failed', {
+        conversationId: request.conversationId,
+      });
     }
   }
 
   /**
-   * İptal işlemi
+   * Void (txnCode 1003). `paymentId` is the order id.
    */
   async cancel(request: CancelRequest): Promise<CancelResponse> {
     try {
-      const hash = createAkbankHash({
-        merchantId: this.merchantId,
-        terminalId: this.terminalId,
-        orderId: request.paymentId,
-        amount: '0',
-        currency: '949',
-        storeKey: this.storeKey,
-        txnType: 'Void',
+      const data = await this.process({
+        ...this.baseRequest(AKBANK_TXN_CODES.VOID),
+        order: { orderId: request.paymentId },
       });
+      const approved = data.responseCode === AKBANK_SUCCESS_CODE;
 
-      const akbankRequest: Record<string, string> = {
-        MERCHANTID: this.merchantId,
-        TERMINALID: this.terminalId,
-        ORDERID: request.paymentId,
-        TXNTYPE: 'Void',
-        HASH: hash,
-      };
-
-      const formData = this.createFormData(akbankRequest);
-      const response = await this.client.post<AkbankCancelResponse>(
-        '/servlet/PaymentGateway',
-        formData
-      );
-
-      if (response.data.ProcReturnCode === 'Success' || response.data.ProcReturnCode === '00') {
-        return {
-          status: PaymentStatus.SUCCESS,
-          conversationId: request.conversationId,
-          rawResponse: response.data,
-        };
-      } else {
-        return {
-          status: PaymentStatus.FAILURE,
-          errorCode: response.data.ErrMsg,
-          errorMessage: response.data.Response,
-          rawResponse: response.data,
-        };
-      }
-    } catch (error: any) {
       return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Cancel failed',
-        rawResponse: error.response?.data,
+        status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        transactionId: approved ? data.transaction?.rrn : undefined,
+        conversationId: request.conversationId,
+        ...(approved ? {} : Akbank.errorOf(data)),
+        rawResponse: data,
       };
+    } catch (error) {
+      return this.failure<CancelResponse>(error, 'Cancel failed', {
+        conversationId: request.conversationId,
+      });
     }
   }
 
   /**
-   * Ödeme sorgulama
+   * Order status via order history (txnCode 1010)
    */
-  async binCheck(binNumber: string): Promise<BinCheckResponse> {
+  async getPayment(paymentId: string): Promise<PaymentResponse> {
     try {
-      const hash = createAkbankHash({
-        merchantId: this.merchantId,
-        terminalId: this.terminalId,
-        orderId: `BIN-${Date.now()}`,
-        amount: '0',
-        currency: '949',
-        storeKey: this.storeKey,
-        txnType: 'BINQuery',
-      });
+      const data = await this.process(
+        {
+          ...this.baseRequest(AKBANK_TXN_CODES.ORDER_HISTORY),
+          order: { orderId: paymentId },
+        },
+        true
+      );
 
-      const formData = this.createFormData({
-        MERCHANTID: this.merchantId,
-        TERMINALID: this.terminalId,
-        TXNTYPE: 'BINQuery',
-        PAN: binNumber.padEnd(16, '0'),
-        HASH: hash,
-      });
-
-      const response = await this.client.post<any>('/servlet/PaymentGateway', formData);
-      const d = response.data;
-
-      return {
-        binNumber,
-        cardType: d.CARDTYPE || d.CardType || 'UNKNOWN',
-        cardAssociation: d.CARDASSOCIATION || d.CardAssociation || 'UNKNOWN',
-        cardFamily: d.CARDFAMILY || d.CardFamily || 'UNKNOWN',
-        bankName: d.BANKNAME || d.BankName || 'Akbank',
-        bankCode: parseInt(d.BANKCODE || '46', 10),
-        commercial: d.COMMERCIAL === '1' || d.Commercial === 'true',
-        rawResponse: d,
-      };
-    } catch (error: any) {
-      throw new Error(error.message || 'Akbank BIN check failed');
-    }
-  }
-
-  async installmentInfo(request: InstallmentInfoRequest): Promise<InstallmentInfoResponse> {
-    try {
-      const amount = formatAmount(parseFloat(request.price || '0'));
-      const orderId = `INST-${Date.now()}`;
-
-      const hash = createAkbankHash({
-        merchantId: this.merchantId,
-        terminalId: this.terminalId,
-        orderId,
-        amount,
-        currency: '949',
-        storeKey: this.storeKey,
-        txnType: 'InstallmentEnquiry',
-      });
-
-      const formData = this.createFormData({
-        MERCHANTID: this.merchantId,
-        TERMINALID: this.terminalId,
-        TXNTYPE: 'InstallmentEnquiry',
-        PAN: request.binNumber.padEnd(16, '0'),
-        AMOUNT: amount,
-        CURRENCY: '949',
-        ORDERID: orderId,
-        HASH: hash,
-      });
-
-      const response = await this.client.post<any>('/servlet/PaymentGateway', formData);
-      const d = response.data;
-
-      if (d.ProcReturnCode !== '00' && d.ProcReturnCode !== 'Success') {
+      if (data.responseCode !== AKBANK_SUCCESS_CODE) {
         return {
           status: PaymentStatus.FAILURE,
-          errorCode: d.ErrMsg,
-          errorMessage: d.Response,
-          rawResponse: d,
+          paymentId,
+          conversationId: paymentId,
+          ...Akbank.errorOf(data),
+          rawResponse: data,
         };
       }
 
-      const installmentCounts: number[] = d.EXTRA?.NUMINSTALLMENT
-        ? d.EXTRA.NUMINSTALLMENT.split(',').map(Number).filter(Boolean)
-        : [1, 2, 3, 6, 9, 12];
-
-      const price = parseFloat(request.price || '0');
-      const installmentDetails: InstallmentPrice[] = [
-        {
-          binNumber: request.binNumber,
-          price,
-          cardType: d.CARDTYPE || 'CREDIT_CARD',
-          cardAssociation: d.CARDASSOCIATION || 'UNKNOWN',
-          cardFamilyName: d.CARDFAMILY || 'UNKNOWN',
-          bankCode: 46,
-          bankName: 'Akbank',
-          commercial: 0,
-          installmentPrices: installmentCounts.map((count) => ({
-            installmentNumber: count,
-            totalPrice: price,
-            installmentPrice: price / count,
-          })),
-        },
-      ];
+      const list: AkbankTxnDetail[] = data.txnDetailList ?? [];
+      const sale =
+        list.find(
+          (tx) =>
+            tx.txnCode === AKBANK_TXN_CODES.SALE || tx.txnCode === AKBANK_TXN_CODES.SECURE_SALE
+        ) ?? list[0];
 
       return {
-        status: PaymentStatus.SUCCESS,
-        installmentDetails,
-        rawResponse: d,
+        status: mapAkbankTxnStatus(sale),
+        paymentId,
+        conversationId: paymentId,
+        errorMessage:
+          sale && sale.responseCode !== AKBANK_SUCCESS_CODE ? sale.responseMessage : undefined,
+        rawResponse: data,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Installment info failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure<PaymentResponse>(error, 'Get payment failed', {
+        paymentId,
+        conversationId: paymentId,
+      });
     }
   }
+}
 
-  async getPayment(paymentId: string): Promise<PaymentResponse> {
-    try {
-      const hash = createAkbankHash({
-        merchantId: this.merchantId,
-        terminalId: this.terminalId,
-        orderId: paymentId,
-        amount: '0',
-        currency: '949',
-        storeKey: this.storeKey,
-        txnType: 'StatusInquiry',
-      });
-
-      const akbankRequest: Record<string, string> = {
-        MERCHANTID: this.merchantId,
-        TERMINALID: this.terminalId,
-        ORDERID: paymentId,
-        TXNTYPE: 'StatusInquiry',
-        HASH: hash,
-      };
-
-      const formData = this.createFormData(akbankRequest);
-      const response = await this.client.post<AkbankResponse>('/servlet/PaymentGateway', formData);
-
-      return {
-        status: this.mapStatus(response.data.ProcReturnCode),
-        paymentId: response.data.OrderId,
-        conversationId: response.data.OrderId,
-        errorCode: response.data.ErrMsg,
-        errorMessage: response.data.Response,
-        rawResponse: response.data,
-      };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Get payment failed',
-        rawResponse: error.response?.data,
-      };
-    }
+/**
+ * txnStatus: N = completed, V = voided, R = refunded, S = failed
+ */
+export function mapAkbankTxnStatus(tx: AkbankTxnDetail | undefined): PaymentStatus {
+  if (!tx) return PaymentStatus.PENDING;
+  if (tx.responseCode && tx.responseCode !== AKBANK_SUCCESS_CODE) return PaymentStatus.FAILURE;
+  switch (tx.txnStatus) {
+    case 'N':
+      return PaymentStatus.SUCCESS;
+    case 'V':
+    case 'R':
+      return PaymentStatus.CANCELLED;
+    case 'S':
+      return PaymentStatus.FAILURE;
+    default:
+      return tx.responseCode === AKBANK_SUCCESS_CODE
+        ? PaymentStatus.SUCCESS
+        : PaymentStatus.PENDING;
   }
 }

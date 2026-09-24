@@ -1,6 +1,11 @@
 import { PaymentProvider, PaymentProviderConfig } from './PaymentProvider';
-import { BetterPaymentConfig, ProviderType, ProviderInstances, PROVIDER_DEFAULT_URLS } from './BetterPaymentConfig';
-import { ProviderNotEnabledError } from './errors';
+import {
+  BetterPaymentConfig,
+  ProviderType,
+  ProviderInstances,
+  PROVIDER_DEFAULT_URLS,
+} from './BetterPaymentConfig';
+import { ProviderNotEnabledError, ConfigurationError } from './errors';
 import { Iyzico } from '../providers/iyzico';
 import { PayTR } from '../providers/paytr';
 import { Akbank } from '../providers/akbank';
@@ -15,7 +20,7 @@ import {
   CancelRequest,
   CancelResponse,
 } from '../types';
-import { BetterPaymentHandler } from './BetterPaymentHandler';
+import { BetterPaymentHandler, BetterPaymentHandlerOptions } from './BetterPaymentHandler';
 
 /**
  * BetterPayment - Merkezi ödeme yönetim sınıfı
@@ -31,7 +36,6 @@ import { BetterPaymentHandler } from './BetterPaymentHandler';
  *       config: {
  *         apiKey: 'your-api-key',
  *         secretKey: 'your-secret-key',
- *         baseUrl: 'https://sandbox-api.iyzipay.com'
  *       }
  *     },
  *     paytr: {
@@ -40,11 +44,11 @@ import { BetterPaymentHandler } from './BetterPaymentHandler';
  *         merchantId: 'your-merchant-id',
  *         merchantKey: 'your-merchant-key',
  *         merchantSalt: 'your-merchant-salt',
- *         baseUrl: 'https://www.paytr.com'
  *       }
  *     }
  *   },
- *   defaultProvider: 'iyzico'
+ *   defaultProvider: ProviderType.IYZICO,
+ *   mode: 'sandbox',
  * });
  *
  * // Kullanım şekilleri:
@@ -68,69 +72,84 @@ export class BetterPayment {
   private config: BetterPaymentConfig;
   private providers: ProviderInstances = {};
   private defaultProvider?: ProviderType;
-  private _handler: BetterPaymentHandler;
+  private _handler?: BetterPaymentHandler;
 
   constructor(config: BetterPaymentConfig) {
     this.config = config;
     this.defaultProvider = config.defaultProvider;
     this.initializeProviders();
-    this._handler = new BetterPaymentHandler(this);
   }
 
   /**
-   * HTTP handler for creating API endpoints
+   * HTTP handler configured with `config.handler` options.
+   * Created lazily; see BetterPaymentHandlerOptions for the security defaults.
    */
   get handler(): BetterPaymentHandler {
+    if (!this._handler) {
+      this._handler = new BetterPaymentHandler(this, this.config.handler);
+    }
     return this._handler;
   }
 
-  private applyDefaultBaseUrl<T extends PaymentProviderConfig>(providerType: ProviderType, config: T): T {
+  /**
+   * Creates an additional HTTP handler with its own options
+   * (e.g. a public handler and an authenticated admin handler).
+   */
+  createHandler(options: BetterPaymentHandlerOptions = {}): BetterPaymentHandler {
+    return new BetterPaymentHandler(this, options);
+  }
+
+  private withDefaults<T extends PaymentProviderConfig>(providerType: ProviderType, config: T): T {
     const mode = this.config.mode || 'production';
     const defaults = PROVIDER_DEFAULT_URLS[providerType];
-    const baseUrl = config.baseUrl ?? (defaults ? (defaults[mode] ?? defaults['production']) : undefined);
     return {
       ...config,
-      baseUrl,
+      baseUrl: config.baseUrl ?? defaults[mode],
       logger: config.logger ?? this.config.logger,
       retry: config.retry ?? this.config.retry,
     };
   }
 
   /**
-   * Provider'ları başlat
+   * Provider'ları başlat. Eksik/hatalı yapılandırmada provider constructor'ı
+   * ConfigurationError fırlatır.
    */
   private initializeProviders(): void {
-    // İyzico provider'ı başlat
-    if (this.config.providers[ProviderType.IYZICO]?.enabled) {
-      const iyzicoConfig = this.applyDefaultBaseUrl(ProviderType.IYZICO, this.config.providers[ProviderType.IYZICO].config);
-      this.validateIyzicoConfig(iyzicoConfig);
-      this.providers[ProviderType.IYZICO] = new Iyzico(iyzicoConfig);
+    const { providers } = this.config;
+    const sandbox = this.config.mode === 'sandbox';
+
+    if (providers[ProviderType.IYZICO]?.enabled) {
+      this.providers[ProviderType.IYZICO] = new Iyzico(
+        this.withDefaults(ProviderType.IYZICO, providers[ProviderType.IYZICO].config)
+      );
     }
 
-    // PayTR provider'ı başlat
-    if (this.config.providers[ProviderType.PAYTR]?.enabled) {
-      const paytrConfig = this.applyDefaultBaseUrl(ProviderType.PAYTR, this.config.providers[ProviderType.PAYTR].config);
-      this.validatePayTRConfig(paytrConfig);
-      this.providers[ProviderType.PAYTR] = new PayTR(paytrConfig as any);
+    if (providers[ProviderType.PAYTR]?.enabled) {
+      const config = this.withDefaults(ProviderType.PAYTR, providers[ProviderType.PAYTR].config);
+      this.providers[ProviderType.PAYTR] = new PayTR({
+        ...config,
+        testMode: config.testMode ?? sandbox,
+      });
     }
 
-    // Akbank provider'ı başlat
-    if (this.config.providers[ProviderType.AKBANK]?.enabled) {
-      const akbankConfig = this.applyDefaultBaseUrl(ProviderType.AKBANK, this.config.providers[ProviderType.AKBANK].config);
-      this.validateAkbankConfig(akbankConfig);
-      this.providers[ProviderType.AKBANK] = new Akbank(akbankConfig as any);
+    if (providers[ProviderType.AKBANK]?.enabled) {
+      const config = this.withDefaults(ProviderType.AKBANK, providers[ProviderType.AKBANK].config);
+      this.providers[ProviderType.AKBANK] = new Akbank({
+        ...config,
+        testMode: config.testMode ?? sandbox,
+      });
     }
 
-    // Parampos provider'ı başlat
-    if (this.config.providers[ProviderType.PARAMPOS]?.enabled) {
-      const paramposConfig = this.applyDefaultBaseUrl(ProviderType.PARAMPOS, this.config.providers[ProviderType.PARAMPOS].config);
-      this.validateParamposConfig(paramposConfig);
-      this.providers[ProviderType.PARAMPOS] = new Parampos(paramposConfig as any);
+    if (providers[ProviderType.PARAMPOS]?.enabled) {
+      this.providers[ProviderType.PARAMPOS] = new Parampos(
+        this.withDefaults(ProviderType.PARAMPOS, providers[ProviderType.PARAMPOS].config)
+      );
     }
 
-    // Default provider kontrolü
     if (this.defaultProvider && !this.providers[this.defaultProvider]) {
-      throw new Error(`Default provider '${this.defaultProvider}' is not enabled or configured`);
+      throw new ConfigurationError(
+        `Default provider '${this.defaultProvider}' is not enabled or configured`
+      );
     }
 
     // Eğer sadece bir provider varsa onu default yap
@@ -139,86 +158,6 @@ export class BetterPayment {
       if (enabledProviders.length === 1) {
         this.defaultProvider = enabledProviders[0];
       }
-    }
-  }
-
-  /**
-   * İyzico config validation
-   */
-  private validateIyzicoConfig(config: PaymentProviderConfig): void {
-    const missingFields: string[] = [];
-
-    if (!config.apiKey) missingFields.push('apiKey (IYZICO_API_KEY)');
-    if (!config.secretKey) missingFields.push('secretKey (IYZICO_SECRET_KEY)');
-
-    if (missingFields.length > 0) {
-      throw new Error(
-        `Iyzico provider configuration is missing required fields:\n` +
-          `  - ${missingFields.join('\n  - ')}\n\n` +
-          `Please add these to your BetterPayment config or set mode: 'sandbox' | 'production' for default URLs.`
-      );
-    }
-  }
-
-  private validatePayTRConfig(
-    config: PaymentProviderConfig & { merchantId: string; merchantSalt: string }
-  ): void {
-    const missingFields: string[] = [];
-
-    if (!config.merchantId) missingFields.push('merchantId (PAYTR_MERCHANT_ID)');
-    if (!config.secretKey) missingFields.push('merchantKey (PAYTR_MERCHANT_KEY)');
-    if (!config.merchantSalt) missingFields.push('merchantSalt (PAYTR_MERCHANT_SALT)');
-
-    if (missingFields.length > 0) {
-      throw new Error(
-        `PayTR provider configuration is missing required fields:\n` +
-          `  - ${missingFields.join('\n  - ')}`
-      );
-    }
-  }
-
-  private validateAkbankConfig(
-    config: PaymentProviderConfig & {
-      merchantId: string;
-      terminalId: string;
-      storeKey: string;
-      secure3DStoreKey?: string;
-    }
-  ): void {
-    const missingFields: string[] = [];
-
-    if (!config.merchantId) missingFields.push('merchantId (AKBANK_MERCHANT_ID)');
-    if (!config.terminalId) missingFields.push('terminalId (AKBANK_TERMINAL_ID)');
-    if (!config.storeKey) missingFields.push('storeKey (AKBANK_STORE_KEY)');
-
-    if (missingFields.length > 0) {
-      throw new Error(
-        `Akbank provider configuration is missing required fields:\n` +
-          `  - ${missingFields.join('\n  - ')}`
-      );
-    }
-  }
-
-  private validateParamposConfig(
-    config: PaymentProviderConfig & {
-      clientCode: string;
-      clientUsername: string;
-      clientPassword: string;
-      guid: string;
-    }
-  ): void {
-    const missingFields: string[] = [];
-
-    if (!config.clientCode) missingFields.push('clientCode (PARAMPOS_CLIENT_CODE)');
-    if (!config.clientUsername) missingFields.push('clientUsername (PARAMPOS_CLIENT_USERNAME)');
-    if (!config.clientPassword) missingFields.push('clientPassword (PARAMPOS_CLIENT_PASSWORD)');
-    if (!config.guid) missingFields.push('guid (PARAMPOS_GUID)');
-
-    if (missingFields.length > 0) {
-      throw new Error(
-        `Parampos provider configuration is missing required fields:\n` +
-          `  - ${missingFields.join('\n  - ')}`
-      );
     }
   }
 
@@ -240,7 +179,7 @@ export class BetterPayment {
    */
   private getDefaultProvider(): PaymentProvider {
     if (!this.defaultProvider) {
-      throw new Error(
+      throw new ConfigurationError(
         'No default provider set. Please specify a provider using .use() method ' +
           'or set defaultProvider in configuration.'
       );

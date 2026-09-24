@@ -11,7 +11,7 @@ export interface PaymentCard {
   expireMonth: string;
   expireYear: string;
   cvc: string;
-  registerCard?: boolean | number;
+  registerCard?: boolean;
 }
 
 export interface Address {

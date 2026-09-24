@@ -5,10 +5,10 @@
  * nasıl sorgulayacağınızı gösterir.
  */
 
-import { BetterPay, ProviderType } from 'better-payment';
+import { BetterPayment, ProviderType } from 'better-payment';
 
-// 1. BetterPay'i yapılandır
-const betterPay = new BetterPay({
+// 1. BetterPayment'ı yapılandır
+const betterPay = new BetterPayment({
   providers: {
     iyzico: {
       enabled: true,

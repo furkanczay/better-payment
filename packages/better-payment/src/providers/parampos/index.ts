@@ -1,11 +1,17 @@
 /**
  * Parampos Payment Provider
  *
- * SOAP-based payment gateway integration for Turkish banks via Parampos
+ * SOAP-based integration with Param (TurkPOS).
  */
 
 import axios, { AxiosInstance } from 'axios';
-import { PaymentProvider, PaymentProviderConfig } from '../../core/PaymentProvider';
+import {
+  PaymentProvider,
+  PaymentProviderConfig,
+  RetryableRequestConfig,
+} from '../../core/PaymentProvider';
+import { ConfigurationError } from '../../core/errors';
+import { generateOrderId, errorMessage, isNetworkError } from '../../core/utils';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -18,87 +24,51 @@ import {
   BinCheckResponse,
   PaymentStatus,
 } from '../../types';
-import {
-  ParamposPaymentResponse,
-  Parampos3DSInitResponse,
-  Parampos3DSCallbackData,
-  ParamposRefundResponse,
-  ParamposCancelResponse,
-  ParamposInquiryResponse,
-  ParamposBinCheckResponse,
-  ParamposStatus,
-} from './types';
+import { ParamposResult, Parampos3DSCallbackData, ParamposOrderStatus } from './types';
 import {
   generateParamposPaymentHash,
   verifyParampos3DSCallback,
-  mapCurrencyToParampos,
   formatParamposAmount,
+  formatParamposRefundAmount,
   formatParamposExpiryMonth,
   formatParamposExpiryYear,
+  formatParamposGsm,
   buildParamposSoapEnvelope,
   parseParamposSoapResponse,
-  buildParamposSecurityXml,
-  buildParamposCardXml,
-  calculateParamposTotalAmount,
-  escapeXml,
+  isParamposSuccess,
+  parseParamposAmount,
 } from './utils';
 
 /**
- * Extended configuration for Parampos provider
+ * Parampos configuration
  */
 export interface ParamposConfig extends PaymentProviderConfig {
-  /**
-   * Merchant client code
-   */
+  /** CLIENT_CODE (terminal numarası) */
   clientCode: string;
-
-  /**
-   * Merchant client username
-   */
+  /** CLIENT_USERNAME */
   clientUsername: string;
-
-  /**
-   * Merchant client password (used as secretKey)
-   */
+  /** CLIENT_PASSWORD */
   clientPassword: string;
-
-  /**
-   * Merchant GUID (used as apiKey)
-   */
+  /** Merchant GUID (anahtar). Used for hashes, never sent to the browser. */
   guid: string;
-
-  /**
-   * Test mode flag
-   */
-  testMode?: boolean;
 }
+
+const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
+const NETWORK_ERROR_MESSAGE =
+  'No response from Parampos. The transaction may have been processed; verify it with getPayment() before retrying.';
 
 /**
  * Parampos Payment Provider
- *
- * Implements payment operations using Parampos SOAP API
  */
-export class Parampos extends PaymentProvider {
+export class Parampos extends PaymentProvider<ParamposConfig> {
   private client: AxiosInstance;
-  private paramposConfig: ParamposConfig;
 
   constructor(config: ParamposConfig) {
-    // Map Parampos-specific config to base config
-    super({
-      apiKey: config.guid,
-      secretKey: config.clientPassword,
-      baseUrl: config.baseUrl,
-      locale: config.locale,
-      logger: config.logger,
-      retry: config.retry,
-    });
-
-    this.paramposConfig = config;
-    this.validateParamposConfig();
+    super(config);
 
     this.client = axios.create({
       baseURL: this.config.baseUrl,
-      timeout: 60000, // SOAP requests can take longer
+      timeout: 60000,
       headers: {
         'Content-Type': 'text/xml; charset=utf-8',
       },
@@ -107,457 +77,442 @@ export class Parampos extends PaymentProvider {
     this.setupAxiosRetry(this.client);
   }
 
-  /**
-   * Validate Parampos-specific configuration
-   */
-  private validateParamposConfig(): void {
-    if (!this.paramposConfig.clientCode) {
-      throw new Error('Parampos Client Code is required');
+  protected validateConfig(): void {
+    const missing = (['clientCode', 'clientUsername', 'clientPassword', 'guid'] as const).filter(
+      (key) => !this.config[key]
+    );
+    if (missing.length > 0) {
+      throw new ConfigurationError(
+        `Parampos configuration is missing: ${missing.join(', ')}`,
+        'parampos'
+      );
     }
-    if (!this.paramposConfig.clientUsername) {
-      throw new Error('Parampos Client Username is required');
-    }
-    if (!this.paramposConfig.clientPassword) {
-      throw new Error('Parampos Client Password is required');
-    }
-    if (!this.paramposConfig.guid) {
-      throw new Error('Parampos GUID is required');
+    if (!this.config.baseUrl) {
+      throw new ConfigurationError('Parampos baseUrl is required', 'parampos');
     }
   }
 
-
-  /**
-   * Map Parampos status to unified PaymentStatus
-   */
-  private mapStatus(paramposStatus: string): PaymentStatus {
-    switch (paramposStatus) {
-      case ParamposStatus.SUCCESS:
-      case '1':
-        return PaymentStatus.SUCCESS;
-      case ParamposStatus.FAILURE:
-      case '0':
-        return PaymentStatus.FAILURE;
-      default:
-        return PaymentStatus.FAILURE;
-    }
+  private get credentials() {
+    return {
+      G: {
+        CLIENT_CODE: this.config.clientCode,
+        CLIENT_USERNAME: this.config.clientUsername,
+        CLIENT_PASSWORD: this.config.clientPassword,
+      },
+      GUID: this.config.guid,
+    };
   }
 
   /**
    * Send SOAP request to Parampos API
    */
-  private async sendSoapRequest<T>(
+  private async sendSoapRequest(
     soapAction: string,
-    soapBody: string,
-    resultTagName: string
-  ): Promise<T> {
-    try {
-      const envelope = buildParamposSoapEnvelope(soapAction, soapBody);
+    fields: Record<string, any>,
+    options: { retryable?: boolean } = {}
+  ): Promise<ParamposResult> {
+    const envelope = buildParamposSoapEnvelope(soapAction, fields);
 
-      const response = await this.client.post('', envelope, {
-        headers: {
-          SOAPAction: `https://turkpos.com.tr/${soapAction}`,
-        },
-      });
+    const requestConfig: RetryableRequestConfig = {
+      headers: { SOAPAction: `https://turkpos.com.tr/${soapAction}` },
+      retryable: options.retryable === true,
+      responseType: 'text',
+    };
 
-      const result = parseParamposSoapResponse<T>(
-        response.data,
-        resultTagName
-      );
+    const response = await this.client.post('', envelope, requestConfig);
+    return parseParamposSoapResponse<ParamposResult>(String(response.data), `${soapAction}Result`);
+  }
 
-      return result;
-    } catch (error: any) {
+  private failure<
+    T extends {
+      status: PaymentStatus;
+      errorCode?: string;
+      errorMessage?: string;
+      rawResponse?: any;
+    },
+  >(error: unknown, fallback: string, extra: Partial<T> = {}): T {
+    if (isNetworkError(error)) {
+      return {
+        status: PaymentStatus.PENDING,
+        errorCode: NETWORK_ERROR_CODE,
+        errorMessage: NETWORK_ERROR_MESSAGE,
+        ...extra,
+      } as T;
+    }
+    return {
+      status: PaymentStatus.FAILURE,
+      errorMessage: errorMessage(error, fallback),
+      rawResponse: (error as any)?.response?.data,
+      ...extra,
+    } as T;
+  }
+
+  private buildPaymentFields(
+    request: PaymentRequest,
+    orderId: string,
+    securityType: 'NS' | '3D',
+    installment: number,
+    callbackUrl?: string
+  ): Record<string, any> {
+    const transactionAmount = formatParamposAmount(request.price);
+    const totalAmount = formatParamposAmount(request.paidPrice ?? request.price);
+    const hash = generateParamposPaymentHash(
+      this.config.clientCode,
+      this.config.guid,
+      installment,
+      transactionAmount,
+      totalAmount,
+      orderId
+    );
+
+    return {
+      ...this.credentials,
+      KK_Sahibi: request.paymentCard.cardHolderName,
+      KK_No: request.paymentCard.cardNumber,
+      KK_SK_Ay: formatParamposExpiryMonth(request.paymentCard.expireMonth),
+      KK_SK_Yil: formatParamposExpiryYear(request.paymentCard.expireYear),
+      KK_CVC: request.paymentCard.cvc,
+      // Optional per docs, but the service rejects requests without the element
+      KK_Sahibi_GSM: formatParamposGsm(request.buyer?.gsmNumber),
+      Hata_URL: callbackUrl ?? '',
+      Basarili_URL: callbackUrl ?? '',
+      Siparis_ID: orderId,
+      Siparis_Aciklama: request.basketId ?? '',
+      Taksit: installment,
+      Islem_Tutar: transactionAmount,
+      Toplam_Tutar: totalAmount,
+      Islem_Hash: hash,
+      Islem_Guvenlik_Tip: securityType,
+      Islem_ID: orderId,
+      IPAdr: request.buyer.ip,
+      Ref_URL: '',
+      Data1: '',
+      Data2: '',
+      Data3: '',
+      Data4: '',
+      Data5: '',
+    };
+  }
+
+  /**
+   * TP_WMD_UCD only supports TRY. Foreign currency payments require a different
+   * service (TP_Islem_Odeme_WD) which is not implemented yet.
+   */
+  private assertTry(currency: string | undefined): void {
+    const value = (currency || 'TRY').toUpperCase();
+    if (value !== 'TRY' && value !== 'TL') {
       throw new Error(
-        `Parampos SOAP request failed: ${error.message || 'Unknown error'}`
+        `Parampos provider currently supports only TRY payments (received ${currency})`
       );
     }
   }
 
   /**
-   * Create direct payment (without 3D Secure)
+   * Direct (non-3D) payment
+   *
+   * `price` is Islem_Tutar and `paidPrice` is Toplam_Tutar (amount charged to the
+   * card, including any installment commission). For installments, calculate
+   * `paidPrice` from the rates configured on your Param account.
    */
-  async createPayment(request: PaymentRequest): Promise<PaymentResponse> {
+  async createPayment(
+    request: PaymentRequest & { installment?: number }
+  ): Promise<PaymentResponse> {
+    const orderId = request.conversationId || generateOrderId();
     try {
-      const installment = 1; // Single payment
-      const transactionAmount = formatParamposAmount(request.price);
-      const totalAmount = formatParamposAmount(request.paidPrice);
+      this.assertTry(request.currency);
+      const installment = Math.max(1, request.installment ?? 1);
+      const fields = this.buildPaymentFields(request, orderId, 'NS', installment);
+      const result = await this.sendSoapRequest('TP_WMD_UCD', fields);
 
-      // Generate transaction hash
-      const hash = generateParamposPaymentHash(
-        this.paramposConfig.clientCode,
-        this.paramposConfig.guid,
-        installment,
-        transactionAmount,
-        totalAmount,
-        request.basketId
-      );
-
-      // Build SOAP body
-      const securityXml = buildParamposSecurityXml(
-        this.paramposConfig.clientCode,
-        this.paramposConfig.clientUsername,
-        this.paramposConfig.clientPassword,
-        this.paramposConfig.guid
-      );
-
-      const cardXml = buildParamposCardXml(
-        request.paymentCard.cardHolderName,
-        request.paymentCard.cardNumber,
-        formatParamposExpiryMonth(request.paymentCard.expireMonth),
-        formatParamposExpiryYear(request.paymentCard.expireYear),
-        request.paymentCard.cvc,
-        request.paymentCard.registerCard || false
-      );
-
-      const currencyCode = mapCurrencyToParampos(request.currency);
-
-      const soapBody = `${securityXml}
-  ${cardXml}
-  <Taksit>${installment}</Taksit>
-  <Islem_Tutar>${escapeXml(transactionAmount)}</Islem_Tutar>
-  <Toplam_Tutar>${escapeXml(totalAmount)}</Toplam_Tutar>
-  <Siparis_ID>${escapeXml(request.basketId)}</Siparis_ID>
-  <Siparis_Aciklama>${escapeXml(request.basketId)}</Siparis_Aciklama>
-  <Islem_Hash>${escapeXml(hash)}</Islem_Hash>
-  <IPAdr>${escapeXml(request.buyer.ip)}</IPAdr>
-  <Doviz_Kodu>${escapeXml(currencyCode)}</Doviz_Kodu>`;
-
-      const response = await this.sendSoapRequest<ParamposPaymentResponse>(
-        'TP_Islem_Odeme',
-        soapBody,
-        'TP_Islem_OdemeResult'
-      );
+      const approved = isParamposSuccess(result.Sonuc) && Number(result.Islem_ID) > 0;
 
       return {
-        status: this.mapStatus(response.Sonuc),
-        paymentId: response.Islem_GUID,
-        conversationId: request.conversationId,
-        errorCode: response.Hata_Kod,
-        errorMessage:
-          response.Sonuc === ParamposStatus.SUCCESS
-            ? undefined
-            : response.Sonuc_Str,
-        rawResponse: response,
+        status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        paymentId: orderId,
+        conversationId: orderId,
+        errorCode: approved ? undefined : result.Sonuc,
+        errorMessage: approved ? undefined : result.Sonuc_Str || result.Bank_HostMsg,
+        rawResponse: result,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        conversationId: request.conversationId,
-        errorMessage: error.message || 'Payment failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure<PaymentResponse>(error, 'Payment failed', {
+        paymentId: orderId,
+        conversationId: orderId,
+      });
     }
   }
 
   /**
-   * Initialize 3D Secure payment
+   * Initialize 3D Secure payment (TP_WMD_UCD, Islem_Guvenlik_Tip = 3D)
+   *
+   * Render `threeDSHtmlContent` in the browser. Param POSTs the result to
+   * `callbackUrl`; pass that POST body to completeThreeDSPayment().
    */
-  async initThreeDSPayment(
-    request: ThreeDSPaymentRequest
-  ): Promise<ThreeDSInitResponse> {
+  async initThreeDSPayment(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
+    const orderId = request.conversationId || generateOrderId();
     try {
-      const installment = request.installment || 1;
-      const transactionAmount = formatParamposAmount(request.price);
-      const totalAmount =
-        installment > 1
-          ? calculateParamposTotalAmount(request.price, installment)
-          : formatParamposAmount(request.paidPrice);
-
-      // Generate transaction hash
-      const hash = generateParamposPaymentHash(
-        this.paramposConfig.clientCode,
-        this.paramposConfig.guid,
+      this.assertTry(request.currency);
+      if (!request.callbackUrl) {
+        throw new Error('callbackUrl is required for 3D Secure payments');
+      }
+      const installment = Math.max(1, request.installment ?? 1);
+      const fields = this.buildPaymentFields(
+        request,
+        orderId,
+        '3D',
         installment,
-        transactionAmount,
-        totalAmount,
-        request.basketId
+        request.callbackUrl
       );
+      const result = await this.sendSoapRequest('TP_WMD_UCD', fields);
 
-      // Build SOAP body
-      const securityXml = buildParamposSecurityXml(
-        this.paramposConfig.clientCode,
-        this.paramposConfig.clientUsername,
-        this.paramposConfig.clientPassword,
-        this.paramposConfig.guid
-      );
-
-      const cardXml = buildParamposCardXml(
-        request.paymentCard.cardHolderName,
-        request.paymentCard.cardNumber,
-        formatParamposExpiryMonth(request.paymentCard.expireMonth),
-        formatParamposExpiryYear(request.paymentCard.expireYear),
-        request.paymentCard.cvc,
-        request.paymentCard.registerCard || false
-      );
-
-      const currencyCode = mapCurrencyToParampos(request.currency);
-
-      const soapBody = `${securityXml}
-  ${cardXml}
-  <Taksit>${installment}</Taksit>
-  <Islem_Tutar>${escapeXml(transactionAmount)}</Islem_Tutar>
-  <Toplam_Tutar>${escapeXml(totalAmount)}</Toplam_Tutar>
-  <Siparis_ID>${escapeXml(request.basketId)}</Siparis_ID>
-  <Siparis_Aciklama>${escapeXml(request.basketId)}</Siparis_Aciklama>
-  <Islem_Hash>${escapeXml(hash)}</Islem_Hash>
-  <IPAdr>${escapeXml(request.buyer.ip)}</IPAdr>
-  <SUCCESS_URL>${escapeXml(request.callbackUrl)}</SUCCESS_URL>
-  <FAIL_URL>${escapeXml(request.callbackUrl)}</FAIL_URL>
-  <Doviz_Kodu>${escapeXml(currencyCode)}</Doviz_Kodu>`;
-
-      const response = await this.sendSoapRequest<Parampos3DSInitResponse>(
-        'TP_Islem_Odeme_3D',
-        soapBody,
-        'TP_Islem_Odeme_3DResult'
-      );
-
-      if (response.Sonuc !== ParamposStatus.SUCCESS) {
+      if (!isParamposSuccess(result.Sonuc) || !result.UCD_HTML || result.UCD_HTML === 'NONSECURE') {
         return {
           status: PaymentStatus.FAILURE,
-          conversationId: request.conversationId,
-          errorCode: response.Hata_Kod,
-          errorMessage: response.Sonuc_Str,
-          rawResponse: response,
+          paymentId: orderId,
+          conversationId: orderId,
+          errorCode: result.Sonuc,
+          errorMessage: result.Sonuc_Str || '3D Secure form could not be created',
+          rawResponse: result,
         };
       }
 
       return {
         status: PaymentStatus.PENDING,
-        threeDSHtmlContent: response.UCD_HTML,
-        paymentId: response.Islem_GUID,
-        conversationId: request.conversationId,
-        rawResponse: response,
+        threeDSHtmlContent: result.UCD_HTML,
+        paymentId: orderId,
+        conversationId: orderId,
+        rawResponse: result,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        conversationId: request.conversationId,
-        errorMessage: error.message || '3D Secure initialization failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure<ThreeDSInitResponse>(error, '3D Secure initialization failed', {
+        paymentId: orderId,
+        conversationId: orderId,
+      });
     }
   }
 
   /**
-   * Complete 3D Secure payment after callback
+   * Complete 3D Secure payment
+   *
+   * 1. Verifies islemHash with the configured GUID (callback values are untrusted).
+   * 2. Requires mdStatus = 1 (full 3D authentication).
+   * 3. Finalizes the payment with TP_WMD_Pay. The payment is only successful
+   *    when TP_WMD_Pay returns Sonuc > 0 and a Dekont_ID.
    */
-  async completeThreeDSPayment(
-    callbackData: Parampos3DSCallbackData
-  ): Promise<PaymentResponse> {
+  async completeThreeDSPayment(callbackData: Parampos3DSCallbackData): Promise<PaymentResponse> {
+    const orderId = callbackData?.orderId;
     try {
-      // Verify callback hash
-      const isValid = verifyParampos3DSCallback(
-        callbackData.islemGUID,
-        callbackData.md,
-        callbackData.mdStatus,
-        callbackData.orderId,
-        callbackData.GUID || this.paramposConfig.guid,
-        callbackData.hash
-      );
-
-      if (!isValid) {
+      if (!verifyParampos3DSCallback(callbackData ?? {}, this.config.guid)) {
         return {
           status: PaymentStatus.FAILURE,
+          paymentId: orderId,
+          conversationId: orderId,
+          errorCode: 'INVALID_HASH',
           errorMessage: 'Invalid 3D Secure callback signature',
           rawResponse: callbackData,
         };
       }
 
-      // Check MD status (1 = success, others = failure)
       if (callbackData.mdStatus !== '1') {
         return {
           status: PaymentStatus.FAILURE,
-          paymentId: callbackData.islemGUID,
-          errorMessage: callbackData.Sonuc_Str || '3D Secure verification failed',
+          paymentId: orderId,
+          conversationId: orderId,
+          errorCode: `MD_STATUS_${callbackData.mdStatus}`,
+          errorMessage: callbackData.bankResult || '3D Secure authentication failed',
           rawResponse: callbackData,
         };
       }
 
-      // Payment was successful after 3DS
+      const result = await this.sendSoapRequest('TP_WMD_Pay', {
+        ...this.credentials,
+        UCD_MD: callbackData.md,
+        Islem_GUID: callbackData.islemGUID,
+        Siparis_ID: callbackData.orderId,
+      });
+
+      const approved = isParamposSuccess(result.Sonuc) && Number(result.Dekont_ID) > 0;
+
       return {
-        status: PaymentStatus.SUCCESS,
-        paymentId: callbackData.islemGUID,
-        rawResponse: callbackData,
+        status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        paymentId: orderId,
+        conversationId: orderId,
+        errorCode: approved ? undefined : result.Sonuc,
+        errorMessage: approved
+          ? undefined
+          : result.Sonuc_Ack || result.Sonuc_Str || result.Bank_HostMsg,
+        rawResponse: { callback: callbackData, payment: result },
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || '3D Secure completion failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure<PaymentResponse>(error, '3D Secure completion failed', {
+        paymentId: orderId,
+        conversationId: orderId,
+      });
     }
   }
 
+  private async cancelOrRefund(
+    action: 'IADE' | 'IPTAL',
+    orderId: string,
+    amount: string
+  ): Promise<ParamposResult> {
+    return this.sendSoapRequest('TP_Islem_Iptal_Iade_Kismi2', {
+      ...this.credentials,
+      Durum: action,
+      Siparis_ID: orderId,
+      Tutar: formatParamposRefundAmount(amount),
+    });
+  }
+
   /**
-   * Refund a payment
+   * Refund (full or partial). `paymentId` is the order id (Siparis_ID).
    */
   async refund(request: RefundRequest): Promise<RefundResponse> {
     try {
-      const refundAmount = formatParamposAmount(request.price);
-
-      // Build SOAP body
-      const securityXml = buildParamposSecurityXml(
-        this.paramposConfig.clientCode,
-        this.paramposConfig.clientUsername,
-        this.paramposConfig.clientPassword,
-        this.paramposConfig.guid
-      );
-
-      const soapBody = `${securityXml}
-  <Islem_GUID>${escapeXml(request.paymentId)}</Islem_GUID>
-  <Iade_Tutar>${escapeXml(refundAmount)}</Iade_Tutar>
-  <IPAdr>${escapeXml(request.ip)}</IPAdr>`;
-
-      const response = await this.sendSoapRequest<ParamposRefundResponse>(
-        'TP_Islem_Iade',
-        soapBody,
-        'TP_Islem_IadeResult'
-      );
+      const result = await this.cancelOrRefund('IADE', request.paymentId, request.price);
+      const approved = isParamposSuccess(result.Sonuc);
 
       return {
-        status: this.mapStatus(response.Sonuc),
-        refundId: response.Iade_Islem_GUID,
+        status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        refundId: approved ? result.Bank_Trans_ID || request.paymentId : undefined,
         conversationId: request.conversationId,
-        errorCode: response.Hata_Kod,
-        errorMessage:
-          response.Sonuc === ParamposStatus.SUCCESS
-            ? undefined
-            : response.Sonuc_Str,
-        rawResponse: response,
+        errorCode: approved ? undefined : result.Sonuc,
+        errorMessage: approved ? undefined : result.Sonuc_Str,
+        rawResponse: result,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
+    } catch (error) {
+      return this.failure<RefundResponse>(error, 'Refund failed', {
         conversationId: request.conversationId,
-        errorMessage: error.message || 'Refund failed',
-        rawResponse: error.response?.data,
-      };
+      });
     }
   }
 
   /**
-   * Cancel a payment (void)
+   * Cancel (void) a same-day payment. `paymentId` is the order id (Siparis_ID).
+   * Param requires the full amount; when `price` is not given it is read with
+   * a status query first.
    */
   async cancel(request: CancelRequest): Promise<CancelResponse> {
     try {
-      // Build SOAP body
-      const securityXml = buildParamposSecurityXml(
-        this.paramposConfig.clientCode,
-        this.paramposConfig.clientUsername,
-        this.paramposConfig.clientPassword,
-        this.paramposConfig.guid
-      );
+      let amount = request.price;
+      if (!amount) {
+        const status = await this.queryOrder(request.paymentId);
+        const total = parseParamposAmount(status.Toplam_Tutar);
+        if (!isParamposSuccess(status.Sonuc) || total === undefined) {
+          return {
+            status: PaymentStatus.FAILURE,
+            conversationId: request.conversationId,
+            errorMessage:
+              status.Sonuc_Str || 'Could not determine payment amount for cancellation; pass price',
+            rawResponse: status,
+          };
+        }
+        amount = total.toFixed(2);
+      }
 
-      const soapBody = `${securityXml}
-  <Islem_GUID>${escapeXml(request.paymentId)}</Islem_GUID>
-  <IPAdr>${escapeXml(request.ip)}</IPAdr>`;
-
-      const response = await this.sendSoapRequest<ParamposCancelResponse>(
-        'TP_Islem_Iptal',
-        soapBody,
-        'TP_Islem_IptalResult'
-      );
+      const result = await this.cancelOrRefund('IPTAL', request.paymentId, amount);
+      const approved = isParamposSuccess(result.Sonuc);
 
       return {
-        status: this.mapStatus(response.Sonuc),
+        status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        transactionId: approved ? result.Bank_Trans_ID : undefined,
         conversationId: request.conversationId,
-        errorCode: response.Hata_Kod,
-        errorMessage:
-          response.Sonuc === ParamposStatus.SUCCESS
-            ? undefined
-            : response.Sonuc_Str,
-        rawResponse: response,
+        errorCode: approved ? undefined : result.Sonuc,
+        errorMessage: approved ? undefined : result.Sonuc_Str,
+        rawResponse: result,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
+    } catch (error) {
+      return this.failure<CancelResponse>(error, 'Cancellation failed', {
         conversationId: request.conversationId,
-        errorMessage: error.message || 'Cancellation failed',
-        rawResponse: error.response?.data,
-      };
+      });
     }
   }
 
+  private queryOrder(orderId: string): Promise<ParamposResult> {
+    return this.sendSoapRequest(
+      'TP_Islem_Sorgulama4',
+      {
+        ...this.credentials,
+        Dekont_ID: '',
+        Siparis_ID: orderId,
+        Islem_ID: '',
+      },
+      { retryable: true }
+    );
+  }
+
   /**
-   * Get payment details by ID
+   * Payment status by order id (Siparis_ID)
    */
   async getPayment(paymentId: string): Promise<PaymentResponse> {
     try {
-      // Build SOAP body
-      const securityXml = buildParamposSecurityXml(
-        this.paramposConfig.clientCode,
-        this.paramposConfig.clientUsername,
-        this.paramposConfig.clientPassword,
-        this.paramposConfig.guid
-      );
+      const result = await this.queryOrder(paymentId);
 
-      const soapBody = `${securityXml}
-  <Islem_GUID>${escapeXml(paymentId)}</Islem_GUID>
-  <IPAdr>127.0.0.1</IPAdr>`;
-
-      const response = await this.sendSoapRequest<ParamposInquiryResponse>(
-        'TP_Islem_Sorgulama',
-        soapBody,
-        'TP_Islem_SorgulamaResult'
-      );
+      if (!isParamposSuccess(result.Sonuc)) {
+        return {
+          status: PaymentStatus.FAILURE,
+          paymentId,
+          conversationId: paymentId,
+          errorCode: result.Sonuc,
+          errorMessage: result.Sonuc_Str,
+          rawResponse: result,
+        };
+      }
 
       return {
-        status: this.mapStatus(response.Sonuc),
-        paymentId: response.Islem_GUID,
-        conversationId: response.Siparis_ID,
-        errorCode: response.Hata_Kod,
-        errorMessage:
-          response.Sonuc === ParamposStatus.SUCCESS
-            ? undefined
-            : response.Sonuc_Str,
-        rawResponse: response,
+        status: mapParamposOrderStatus(result.Durum as ParamposOrderStatus | undefined),
+        paymentId: result.Siparis_ID || paymentId,
+        conversationId: result.Siparis_ID || paymentId,
+        errorMessage: result.Durum === 'SUCCESS' ? undefined : result.Odeme_Sonuc_Aciklama,
+        rawResponse: result,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Payment inquiry failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure<PaymentResponse>(error, 'Payment inquiry failed', { paymentId });
     }
   }
 
   /**
-   * BIN check (card information inquiry)
+   * BIN query (BIN_SanalPos)
    */
   async binCheck(binNumber: string): Promise<BinCheckResponse> {
-    try {
-      // Build SOAP body
-      const securityXml = buildParamposSecurityXml(
-        this.paramposConfig.clientCode,
-        this.paramposConfig.clientUsername,
-        this.paramposConfig.clientPassword,
-        this.paramposConfig.guid
-      );
+    const result = await this.sendSoapRequest(
+      'BIN_SanalPos',
+      { ...this.credentials, BIN: binNumber },
+      { retryable: true }
+    );
 
-      const soapBody = `${securityXml}
-  <Bin>${escapeXml(binNumber)}</Bin>`;
-
-      const response = await this.sendSoapRequest<ParamposBinCheckResponse>(
-        'TP_Kart_Bilgi',
-        soapBody,
-        'TP_Kart_BilgiResult'
-      );
-
-      if (response.Sonuc !== ParamposStatus.SUCCESS) {
-        throw new Error(response.Sonuc_Str || 'BIN check failed');
-      }
-
-      return {
-        binNumber,
-        cardType: response.Kart_Tip || '',
-        cardAssociation: response.Kart_Aile || '',
-        cardFamily: response.Kart_Aile || '',
-        bankName: response.Kart_Banka || '',
-        bankCode: 0,
-        commercial: response.Ticari_Kart === '1',
-        rawResponse: response,
-      };
-    } catch (error: any) {
-      throw new Error(`BIN check for ${binNumber} not supported by this provider`);
+    if (!isParamposSuccess(result.Sonuc) || !result.BIN) {
+      throw new Error(result.Sonuc_Str || `BIN ${binNumber} not found`);
     }
+
+    return {
+      binNumber: result.BIN,
+      cardType: result.Kart_Tip || '',
+      cardAssociation: result.Kart_Org || '',
+      cardFamily: result.Kart_Tip || '',
+      bankName: result.Kart_Banka || '',
+      bankCode: Number(result.Banka_Kodu) || 0,
+      commercial: result.Ticari_Kart === '1' || /ticari/i.test(result.Kart_Tip || ''),
+      rawResponse: result,
+    };
+  }
+}
+
+/**
+ * Maps Param `Durum` to the unified payment status
+ */
+export function mapParamposOrderStatus(durum: ParamposOrderStatus | undefined): PaymentStatus {
+  switch (durum) {
+    case 'SUCCESS':
+    case 'PARTIAL_REFUND':
+      return PaymentStatus.SUCCESS;
+    case 'CANCEL':
+    case 'REFUND':
+      return PaymentStatus.CANCELLED;
+    case 'FAIL':
+    case 'BANK_FAIL':
+      return PaymentStatus.FAILURE;
+    default:
+      return PaymentStatus.PENDING;
   }
 }

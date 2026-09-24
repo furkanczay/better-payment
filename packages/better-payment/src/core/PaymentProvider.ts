@@ -1,4 +1,4 @@
-import type { AxiosInstance } from 'axios';
+import type { AxiosInstance, AxiosRequestConfig } from 'axios';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -14,13 +14,13 @@ import {
 } from '../types';
 import { BetterPaymentLogger } from './logger';
 import type { RetryConfig } from './retry';
+import { BetterPaymentError } from './errors';
 
 /**
- * Ödeme sağlayıcısı yapılandırması
+ * Tüm provider'larda ortak olan yapılandırma alanları.
+ * Kimlik bilgileri her provider'ın kendi config tipinde tanımlanır.
  */
 export interface PaymentProviderConfig {
-  apiKey: string;
-  secretKey: string;
   baseUrl?: string;
   locale?: string;
   logger?: BetterPaymentLogger;
@@ -28,12 +28,25 @@ export interface PaymentProviderConfig {
 }
 
 /**
+ * Axios request config'ine eklenen, bu isteğin tekrar denenmesinin
+ * güvenli olduğunu belirten işaret. Ödeme/iade gibi idempotent olmayan
+ * istekler bu işaret olmadan asla yeniden gönderilmez.
+ */
+export interface RetryableRequestConfig extends AxiosRequestConfig {
+  retryable?: boolean;
+}
+
+const IDEMPOTENT_METHODS = ['get', 'head', 'options'];
+
+/**
  * Tüm ödeme sağlayıcıları için temel abstract sınıf
  */
-export abstract class PaymentProvider {
-  protected config: PaymentProviderConfig;
+export abstract class PaymentProvider<
+  TConfig extends PaymentProviderConfig = PaymentProviderConfig,
+> {
+  protected config: TConfig;
 
-  constructor(config: PaymentProviderConfig) {
+  constructor(config: TConfig) {
     this.config = {
       locale: 'tr',
       ...config,
@@ -42,16 +55,9 @@ export abstract class PaymentProvider {
   }
 
   /**
-   * Yapılandırmayı doğrula
+   * Yapılandırmayı doğrula. Provider'lar kendi zorunlu alanlarını kontrol eder.
    */
-  protected validateConfig(): void {
-    if (!this.config.apiKey) {
-      throw new Error('API Key is required');
-    }
-    if (!this.config.secretKey) {
-      throw new Error('Secret Key is required');
-    }
-  }
+  protected validateConfig(): void {}
 
   /**
    * Direkt ödeme (3D Secure olmadan)
@@ -85,7 +91,8 @@ export abstract class PaymentProvider {
 
   /**
    * Attaches request/response logging interceptors to an axios instance.
-   * No-op when no logger is configured.
+   * No-op when no logger is configured. Request/response bodies are never
+   * logged because they contain card data and credentials.
    */
   protected setupAxiosLogging(client: AxiosInstance, provider: string): void {
     const logger = this.config.logger;
@@ -126,6 +133,13 @@ export abstract class PaymentProvider {
 
   /**
    * Attaches retry logic to an axios instance.
+   *
+   * Only idempotent requests are retried: GET/HEAD/OPTIONS, or requests
+   * explicitly marked with `retryable: true` (e.g. read-only SOAP/POST queries).
+   * Payment, refund and cancel requests are never retried, because a timeout
+   * after the provider received the request would otherwise charge or refund
+   * twice.
+   *
    * No-op when retry.attempts <= 1 or retry is not configured.
    */
   protected setupAxiosRetry(client: AxiosInstance): void {
@@ -133,39 +147,47 @@ export abstract class PaymentProvider {
     if (!retry || retry.attempts <= 1) return;
 
     client.interceptors.response.use(undefined, async (error) => {
-      const config = error.config as Record<string, unknown> | undefined;
+      const config = error.config as
+        | (RetryableRequestConfig & { __retryCount?: number })
+        | undefined;
       if (!config) return Promise.reject(error);
 
-      const retryCount = (config.__retryCount as number | undefined) ?? 0;
+      const method = (config.method || 'get').toLowerCase();
+      const isSafe = config.retryable === true || IDEMPOTENT_METHODS.includes(method);
+      if (!isSafe) return Promise.reject(error);
+
+      const retryCount = config.__retryCount ?? 0;
 
       const networkError = !error.response;
       const statusMatch =
-        error.response &&
-        retry.statusCodes &&
+        !!error.response &&
+        !!retry.statusCodes &&
         retry.statusCodes.includes(error.response.status as number);
 
-      const shouldRetry =
-        retryCount < retry.attempts - 1 && (networkError || !!statusMatch);
+      const shouldRetry = retryCount < retry.attempts - 1 && (networkError || statusMatch);
 
       if (!shouldRetry) return Promise.reject(error);
 
       config.__retryCount = retryCount + 1;
       await new Promise<void>((resolve) => setTimeout(resolve, retry.delay ?? 1000));
-      return client(config as any);
+      return client(config);
     });
   }
 
   /**
    * BIN sorgulama
    */
-  async binCheck(binNumber: string): Promise<BinCheckResponse> {
-    throw new Error(`BIN check for ${binNumber} not supported by this provider`);
+  async binCheck(_binNumber: string): Promise<BinCheckResponse> {
+    throw new BetterPaymentError('BIN check is not supported by this provider', 'NOT_SUPPORTED');
   }
 
   /**
    * Taksit sorgulama
    */
   async installmentInfo(_request: InstallmentInfoRequest): Promise<InstallmentInfoResponse> {
-    throw new Error(`Installment info not supported by this provider`);
+    throw new BetterPaymentError(
+      'Installment info is not supported by this provider',
+      'NOT_SUPPORTED'
+    );
   }
 }

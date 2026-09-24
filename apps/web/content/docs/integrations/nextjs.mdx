@@ -1,11 +1,9 @@
 ---
 title: Next.js Integration
-description: Complete guide for integrating better-payment with Next.js App Router.
+description: Integrating better-payment with the Next.js App Router.
 ---
 
-## Setup
-
-### 1. Create the singleton
+## 1. Create the singleton
 
 ```typescript
 // lib/payment.ts
@@ -16,6 +14,7 @@ let _instance: BetterPayment | null = null;
 export function getBetterPayment(): BetterPayment {
   if (!_instance) {
     _instance = new BetterPayment({
+      mode: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
       defaultProvider: ProviderType.IYZICO,
       providers: {
         iyzico: {
@@ -23,9 +22,14 @@ export function getBetterPayment(): BetterPayment {
           config: {
             apiKey: process.env.IYZICO_API_KEY!,
             secretKey: process.env.IYZICO_SECRET_KEY!,
-            baseUrl: process.env.IYZICO_BASE_URL ?? 'https://sandbox-api.iyzipay.com',
           },
         },
+      },
+      handler: {
+        allowedActions: ['payment/init-3ds', 'payment/complete-3ds', 'callback'],
+        transformRequest: async (ctx) => buildPaymentRequestFromOrder(ctx.body.orderId, ctx.body.paymentCard),
+        onCallback: async (result) => markOrder(result.paymentId, result.status),
+        callbackRedirect: (result) => `/orders/${result.paymentId}?payment=${result.status}`,
       },
     });
   }
@@ -34,42 +38,36 @@ export function getBetterPayment(): BetterPayment {
 ```
 
 <Callout type="warn">
-  Use lazy initialization (a function, not a module-level `new BetterPayment(...)`) to avoid crashes during Next.js static page generation when env vars are not available.
+  Initialize lazily (in a function, not with a module-level `new BetterPayment(...)`). Otherwise Next.js static generation can crash when the environment variables are not available.
 </Callout>
 
-### 2. Create the catch-all route handler
+## 2. Create the catch-all route handler
 
 ```typescript
 // app/api/pay/[...path]/route.ts
-import { NextRequest, NextResponse } from 'next/server';
 import { getBetterPayment } from '@/lib/payment';
-import type { BetterPaymentRequest } from 'better-payment';
 
-async function handler(req: NextRequest): Promise<NextResponse> {
+export const runtime = 'nodejs'; // better-payment needs node:crypto
+
+async function handler(req: Request): Promise<Response> {
   const contentType = req.headers.get('content-type') ?? '';
   let body: unknown;
 
   if (req.method !== 'GET' && req.method !== 'HEAD') {
-    if (contentType.includes('application/json')) {
-      body = await req.json().catch(() => undefined);
-    } else if (contentType.includes('application/x-www-form-urlencoded')) {
-      const fd = await req.formData();
-      const obj: Record<string, string> = {};
-      fd.forEach((v, k) => { obj[k] = v as string; });
-      body = obj;
-    }
+    const text = await req.text();
+    body = contentType.includes('application/json') && text ? JSON.parse(text) : text;
   }
 
-  const betterPayReq: BetterPaymentRequest = {
+  const res = await getBetterPayment().handler.handle({
     method: req.method,
     url: req.url,
     headers: Object.fromEntries(req.headers.entries()),
     body,
-  };
+  });
 
-  const res = await getBetterPayment().handler.handle(betterPayReq);
-
-  return NextResponse.json(res.body, {
+  // PayTR notifications must receive plain "OK"; redirects have an empty body
+  const payload = typeof res.body === 'string' ? res.body : JSON.stringify(res.body);
+  return new Response(res.status === 303 ? null : payload, {
     status: res.status,
     headers: res.headers,
   });
@@ -79,70 +77,41 @@ export const GET = handler;
 export const POST = handler;
 ```
 
-### 3. Configure environment variables
+Form-urlencoded callbacks (iyzico, Param, Akbank, PayTR) are passed as raw
+strings; the handler parses them.
 
-```bash
-# .env.local
-IYZICO_API_KEY=your-api-key
-IYZICO_SECRET_KEY=your-secret-key
-IYZICO_BASE_URL=https://sandbox-api.iyzipay.com
-```
-
-## Making Payments from the Frontend
+## 3. Start a payment from the frontend
 
 ```typescript
-// Client-side payment initiation
-const response = await fetch('/api/pay/iyzico/create', {
+const res = await fetch('/api/pay/iyzico/payment/init-3ds', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    price: '100.00',
-    paidPrice: '100.00',
-    currency: 'TRY',
-    // ...
-  }),
+  body: JSON.stringify({ orderId, paymentCard }), // amounts come from transformRequest
 });
 
-const result = await response.json();
-```
-
-## 3D Secure Flow
-
-```typescript
-// 1. Initialize from Server Action or API Route
-const init = await fetch('/api/pay/iyzico/3ds/init', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ ...paymentData, callbackUrl: `${origin}/payment/callback` }),
-});
-
-const { htmlContent } = await init.json();
-
-// 2. Display htmlContent in an iframe or dangerouslySetInnerHTML
-// 3. Handle callback in a separate route
-```
-
-### Callback Route
-
-```typescript
-// app/payment/callback/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getBetterPayment } from '@/lib/payment';
-
-export async function POST(req: NextRequest) {
-  const body = await req.formData();
-  const paymentId = body.get('paymentId') as string;
-  const conversationId = body.get('conversationId') as string;
-
-  const result = await getBetterPayment().iyzico.completeThreeDSPayment({
-    paymentId,
-    conversationId,
-  });
-
-  if (result.status === 'success') {
-    return NextResponse.redirect(new URL('/payment/success', req.url));
-  }
-
-  return NextResponse.redirect(new URL('/payment/failure', req.url));
+const result = await res.json();
+if (result.status === 'pending' && result.threeDSHtmlContent) {
+  document.open();
+  document.write(result.threeDSHtmlContent);
+  document.close();
 }
 ```
+
+Or use the typed client:
+
+```typescript
+import { createBetterPaymentClient } from 'better-payment/client';
+
+const client = createBetterPaymentClient({ baseUrl: '/api/pay' });
+const result = await client.iyzico.initThreeDSPayment(requestBuiltByTransformRequest);
+// 422 (provider failure) resolves with status 'failure' instead of throwing
+```
+
+## 4. Callback
+
+Set `callbackUrl` to `https://yoursite.com/api/pay/<provider>/payment/complete-3ds`.
+The handler verifies the callback, calls `onCallback`, and redirects the customer
+using `callbackRedirect`.
+
+For PayTR, set the **notification URL** in the PayTR panel to
+`https://yoursite.com/api/pay/paytr/callback`.

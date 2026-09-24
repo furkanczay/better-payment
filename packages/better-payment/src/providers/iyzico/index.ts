@@ -1,5 +1,12 @@
 import axios, { AxiosInstance } from 'axios';
-import { PaymentProvider, PaymentProviderConfig } from '../../core/PaymentProvider';
+import crypto from 'crypto';
+import {
+  PaymentProvider,
+  PaymentProviderConfig,
+  RetryableRequestConfig,
+} from '../../core/PaymentProvider';
+import { ConfigurationError } from '../../core/errors';
+import { errorMessage, isNetworkError } from '../../core/utils';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -54,12 +61,43 @@ import {
 } from './types';
 
 /**
+ * iyzico configuration
+ */
+export interface IyzicoConfig extends PaymentProviderConfig {
+  apiKey: string;
+  secretKey: string;
+}
+
+const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
+const NETWORK_ERROR_MESSAGE =
+  'No response from iyzico. The transaction may have been processed; verify it with getPayment() before retrying.';
+
+/**
+ * iyzico checkout form / 3DS payment status -> unified status
+ */
+function mapIyzicoPaymentStatus(
+  apiStatus: string | undefined,
+  paymentStatus: string | undefined
+): PaymentStatus {
+  if (apiStatus !== 'success') return PaymentStatus.FAILURE;
+  switch ((paymentStatus || '').toUpperCase()) {
+    case 'SUCCESS':
+      return PaymentStatus.SUCCESS;
+    case 'FAILURE':
+      return PaymentStatus.FAILURE;
+    default:
+      // INIT_THREEDS, CALLBACK_THREEDS, WAITING, BKM_POS_SELECTED, ...
+      return PaymentStatus.PENDING;
+  }
+}
+
+/**
  * İyzico ödeme sağlayıcısı
  */
-export class Iyzico extends PaymentProvider {
+export class Iyzico extends PaymentProvider<IyzicoConfig> {
   private client: AxiosInstance;
 
-  constructor(config: PaymentProviderConfig) {
+  constructor(config: IyzicoConfig) {
     super(config);
     this.client = axios.create({
       baseURL: this.config.baseUrl,
@@ -67,6 +105,39 @@ export class Iyzico extends PaymentProvider {
     });
     this.setupAxiosLogging(this.client, 'iyzico');
     this.setupAxiosRetry(this.client);
+  }
+
+  protected validateConfig(): void {
+    const missing = (['apiKey', 'secretKey'] as const).filter((key) => !this.config[key]);
+    if (missing.length > 0) {
+      throw new ConfigurationError(
+        `iyzico configuration is missing: ${missing.join(', ')}`,
+        'iyzico'
+      );
+    }
+    if (!this.config.baseUrl) {
+      throw new ConfigurationError('iyzico baseUrl is required', 'iyzico');
+    }
+  }
+
+  private failure<T extends { status: PaymentStatus; errorCode?: string; errorMessage?: string }>(
+    error: any,
+    fallback: string
+  ): T {
+    if (isNetworkError(error)) {
+      return {
+        status: PaymentStatus.PENDING,
+        errorCode: NETWORK_ERROR_CODE,
+        errorMessage: NETWORK_ERROR_MESSAGE,
+      } as T;
+    }
+    const data = error?.response?.data;
+    return {
+      status: PaymentStatus.FAILURE,
+      errorCode: data?.errorCode,
+      errorMessage: data?.errorMessage || errorMessage(error, fallback),
+      rawResponse: data,
+    } as unknown as T;
   }
 
   /**
@@ -84,10 +155,16 @@ export class Iyzico extends PaymentProvider {
   }
 
   /**
-   * Genel request gönderme metodu
+   * Signed request (IYZWSv2). The signature covers the random key, the URI path
+   * and the exact JSON body sent ("{}" for bodiless requests, as in the official SDK).
    */
-  private async sendRequest<T>(endpoint: string, data: any): Promise<T> {
-    const requestBody = JSON.stringify(data);
+  private async sendRequest<T>(
+    endpoint: string,
+    data: unknown,
+    options: { method?: 'POST' | 'GET'; retryable?: boolean } = {}
+  ): Promise<T> {
+    const method = options.method ?? 'POST';
+    const requestBody = JSON.stringify(data ?? {});
     const headers = createIyzicoHeaders(
       this.config.apiKey,
       this.config.secretKey,
@@ -95,13 +172,18 @@ export class Iyzico extends PaymentProvider {
       requestBody
     );
 
-    // İmza için kullanılan body ile gönderilen body'nin aynı olması gerekiyor
-    const response = await this.client.post<T>(endpoint, requestBody, {
-      headers: {
-        ...headers,
-        'Content-Type': 'application/json',
-      },
-    });
+    const config: RetryableRequestConfig = {
+      method,
+      url: endpoint,
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      retryable: options.retryable,
+    };
+    if (method !== 'GET') {
+      // İmza için kullanılan body ile gönderilen body'nin aynı olması gerekiyor
+      config.data = requestBody;
+    }
+
+    const response = await this.client.request<T>(config);
     return response.data;
   }
 
@@ -238,12 +320,8 @@ export class Iyzico extends PaymentProvider {
         errorGroup: response.errorGroup,
         rawResponse: response,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Payment failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure(error, 'Payment failed');
     }
   }
 
@@ -282,12 +360,8 @@ export class Iyzico extends PaymentProvider {
         errorMessage: response.errorMessage,
         rawResponse: response,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || '3DS initialization failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure(error, '3DS initialization failed');
     }
   }
 
@@ -295,6 +369,26 @@ export class Iyzico extends PaymentProvider {
    * 3D Secure ödeme tamamla
    */
   async completeThreeDSPayment(callbackData: any): Promise<PaymentResponse> {
+    // iyzico posts status=success and mdStatus=1 only when 3D authentication
+    // succeeded. Anything else must not be authorized.
+    if (
+      !callbackData?.paymentId ||
+      callbackData.status !== 'success' ||
+      String(callbackData.mdStatus) !== '1'
+    ) {
+      return {
+        status: PaymentStatus.FAILURE,
+        paymentId: callbackData?.paymentId,
+        conversationId: callbackData?.conversationId,
+        errorCode:
+          callbackData?.mdStatus !== undefined
+            ? `MD_STATUS_${callbackData.mdStatus}`
+            : 'INVALID_CALLBACK',
+        errorMessage: '3D Secure authentication failed',
+        rawResponse: callbackData,
+      };
+    }
+
     try {
       // Callback'ten gelen token ve conversationId ile ödemeyi tamamla
       const response = await this.sendRequest<IyzicoPaymentResponse>('/payment/3dsecure/auth', {
@@ -313,12 +407,8 @@ export class Iyzico extends PaymentProvider {
         errorGroup: response.errorGroup,
         rawResponse: response,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || '3DS completion failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure(error, '3DS completion failed');
     }
   }
 
@@ -344,12 +434,8 @@ export class Iyzico extends PaymentProvider {
         errorMessage: response.errorMessage,
         rawResponse: response,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Refund failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure(error, 'Refund failed');
     }
   }
 
@@ -372,12 +458,8 @@ export class Iyzico extends PaymentProvider {
         errorMessage: response.errorMessage,
         rawResponse: response,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Cancel failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure(error, 'Cancel failed');
     }
   }
 
@@ -386,10 +468,14 @@ export class Iyzico extends PaymentProvider {
    */
   async getPayment(paymentId: string): Promise<PaymentResponse> {
     try {
-      const response = await this.sendRequest<IyzicoPaymentResponse>('/payment/detail', {
-        locale: this.config.locale || 'tr',
-        paymentId: paymentId,
-      });
+      const response = await this.sendRequest<IyzicoPaymentResponse>(
+        '/payment/detail',
+        {
+          locale: this.config.locale || 'tr',
+          paymentId: paymentId,
+        },
+        { retryable: true }
+      );
 
       return {
         status: this.mapStatus(response.status),
@@ -400,12 +486,8 @@ export class Iyzico extends PaymentProvider {
         errorGroup: response.errorGroup,
         rawResponse: response,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Get payment failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure(error, 'Get payment failed');
     }
   }
 
@@ -432,12 +514,8 @@ export class Iyzico extends PaymentProvider {
         errorMessage: response.errorMessage,
         rawResponse: response,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Checkout form initialization failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure(error, 'Checkout form initialization failed');
     }
   }
 
@@ -459,7 +537,8 @@ export class Iyzico extends PaymentProvider {
       );
 
       return {
-        status: this.mapStatus(response.status),
+        // status reflects the payment itself, not just the API call
+        status: mapIyzicoPaymentStatus(response.status, response.paymentStatus),
         paymentId: response.paymentId,
         paymentStatus: response.paymentStatus,
         price: response.price,
@@ -485,12 +564,8 @@ export class Iyzico extends PaymentProvider {
         errorMessage: response.errorMessage,
         rawResponse: response,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Retrieve checkout form failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure(error, 'Retrieve checkout form failed');
     }
   }
 
@@ -499,6 +574,18 @@ export class Iyzico extends PaymentProvider {
    * SUBSCRIPTION METHODS
    * ===================
    */
+
+  /**
+   * Subscription API responses keep iyzico's shape; only `status` is mapped
+   * to the unified PaymentStatus and the raw response is attached.
+   */
+  private mapSubscriptionResponse<T>(response: any): T {
+    return {
+      ...response,
+      status: this.mapStatus(response?.status),
+      rawResponse: response,
+    } as T;
+  }
 
   async initializeSubscription(
     request: SubscriptionInitializeRequest
@@ -543,13 +630,9 @@ export class Iyzico extends PaymentProvider {
 
       const response = await this.sendRequest<any>('/v2/subscription/initialize', iyzicoRequest);
 
-      return response;
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Subscription initialization failed',
-        errorCode: error.response?.data?.errorCode,
-      };
+      return this.mapSubscriptionResponse(response);
+    } catch (error) {
+      return this.failure(error, 'Subscription initialization failed');
     }
   }
 
@@ -558,17 +641,13 @@ export class Iyzico extends PaymentProvider {
   ): Promise<SubscriptionCancelResponse> {
     try {
       const response = await this.sendRequest<any>(
-        `/v2/subscription/subscriptions/${request.subscriptionReferenceCode}/cancel`,
+        `/v2/subscription/subscriptions/${encodeURIComponent(request.subscriptionReferenceCode)}/cancel`,
         {}
       );
 
-      return response;
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Subscription cancellation failed',
-        errorCode: error.response?.data?.errorCode,
-      };
+      return this.mapSubscriptionResponse(response);
+    } catch (error) {
+      return this.failure(error, 'Subscription cancellation failed');
     }
   }
 
@@ -583,17 +662,13 @@ export class Iyzico extends PaymentProvider {
       };
 
       const response = await this.sendRequest<any>(
-        `/v2/subscription/subscriptions/${request.subscriptionReferenceCode}/upgrade`,
+        `/v2/subscription/subscriptions/${encodeURIComponent(request.subscriptionReferenceCode)}/upgrade`,
         iyzicoRequest
       );
 
-      return response;
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Subscription upgrade failed',
-        errorCode: error.response?.data?.errorCode,
-      };
+      return this.mapSubscriptionResponse(response);
+    } catch (error) {
+      return this.failure(error, 'Subscription upgrade failed');
     }
   }
 
@@ -602,17 +677,14 @@ export class Iyzico extends PaymentProvider {
   ): Promise<SubscriptionRetrieveResponse> {
     try {
       const response = await this.sendRequest<any>(
-        `/v2/subscription/subscriptions/${request.subscriptionReferenceCode}`,
-        {}
+        `/v2/subscription/subscriptions/${encodeURIComponent(request.subscriptionReferenceCode)}`,
+        {},
+        { method: 'GET', retryable: true }
       );
 
-      return response;
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Subscription retrieve failed',
-        errorCode: error.response?.data?.errorCode,
-      };
+      return this.mapSubscriptionResponse(response);
+    } catch (error) {
+      return this.failure(error, 'Subscription retrieve failed');
     }
   }
 
@@ -632,13 +704,9 @@ export class Iyzico extends PaymentProvider {
         iyzicoRequest
       );
 
-      return response;
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Card update initialization failed',
-        errorCode: error.response?.data?.errorCode,
-      };
+      return this.mapSubscriptionResponse(response);
+    } catch (error) {
+      return this.failure(error, 'Card update initialization failed');
     }
   }
 
@@ -655,19 +723,13 @@ export class Iyzico extends PaymentProvider {
 
       const response = await this.sendRequest<any>('/v2/subscription/products', iyzicoRequest);
 
-      return response;
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Product creation failed',
-        errorCode: error.response?.data?.errorCode,
-      };
+      return this.mapSubscriptionResponse(response);
+    } catch (error) {
+      return this.failure(error, 'Product creation failed');
     }
   }
 
-  async createPricingPlan(
-    request: PricingPlanCreateRequest
-  ): Promise<PricingPlanResponse> {
+  async createPricingPlan(request: PricingPlanCreateRequest): Promise<PricingPlanResponse> {
     try {
       const iyzicoRequest = {
         locale: request.locale || this.config.locale || 'tr',
@@ -683,17 +745,13 @@ export class Iyzico extends PaymentProvider {
       };
 
       const response = await this.sendRequest<any>(
-        `/v2/subscription/products/${request.productReferenceCode}/pricing-plans`,
+        `/v2/subscription/products/${encodeURIComponent(request.productReferenceCode)}/pricing-plans`,
         iyzicoRequest
       );
 
-      return response;
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Pricing plan creation failed',
-        errorCode: error.response?.data?.errorCode,
-      };
+      return this.mapSubscriptionResponse(response);
+    } catch (error) {
+      return this.failure(error, 'Pricing plan creation failed');
     }
   }
 
@@ -703,11 +761,13 @@ export class Iyzico extends PaymentProvider {
   async binCheck(binNumber: string): Promise<BinCheckResponse> {
     const request: IyzicoBinCheckRequest = {
       locale: this.config.locale,
-      conversationId: '123456789',
+      conversationId: crypto.randomBytes(8).toString('hex'),
       binNumber: binNumber,
     };
 
-    const response = await this.sendRequest<IyzicoBinCheckResponse>('/payment/bin/check', request);
+    const response = await this.sendRequest<IyzicoBinCheckResponse>('/payment/bin/check', request, {
+      retryable: true,
+    });
 
     if (response.status !== 'success') {
       throw new Error(response.errorMessage || 'BIN check failed');
@@ -834,12 +894,8 @@ export class Iyzico extends PaymentProvider {
         errorMessage: response.errorMessage,
         rawResponse: response,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'PWI payment initialization failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure(error, 'PWI payment initialization failed');
     }
   }
 
@@ -883,7 +939,8 @@ export class Iyzico extends PaymentProvider {
       );
 
       return {
-        status: this.mapStatus(response.status),
+        // status reflects the transfer itself: WAITING -> pending, SUCCESS -> success
+        status: mapIyzicoPaymentStatus(response.status, response.paymentStatus),
         token: response.token,
         callbackUrl: response.callbackUrl,
         paymentStatus: response.paymentStatus,
@@ -906,12 +963,8 @@ export class Iyzico extends PaymentProvider {
         errorMessage: response.errorMessage,
         rawResponse: response,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'PWI payment retrieve failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure(error, 'PWI payment retrieve failed');
     }
   }
 
@@ -970,12 +1023,8 @@ export class Iyzico extends PaymentProvider {
         errorMessage: response.errorMessage,
         rawResponse: response,
       };
-    } catch (error: any) {
-      return {
-        status: PaymentStatus.FAILURE,
-        errorMessage: error.message || 'Installment info request failed',
-        rawResponse: error.response?.data,
-      };
+    } catch (error) {
+      return this.failure(error, 'Installment info request failed');
     }
   }
 }

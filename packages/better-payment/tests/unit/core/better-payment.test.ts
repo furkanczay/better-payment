@@ -28,9 +28,8 @@ const paytrConfig = {
   paytr: {
     enabled: true,
     config: {
-      apiKey: 'merchant-key',
-      secretKey: 'merchant-key',
       merchantId: 'MERCHANT_ID',
+      merchantKey: 'MERCHANT_KEY',
       merchantSalt: 'MERCHANT_SALT',
     },
   },
@@ -80,7 +79,7 @@ describe('BetterPayment', () => {
           providers: {
             paytr: {
               enabled: true,
-              config: { apiKey: 'k', secretKey: 's', merchantId: '', merchantSalt: 'salt' },
+              config: { merchantId: '', merchantKey: 'k', merchantSalt: 'salt' },
             },
           },
         })
@@ -175,11 +174,9 @@ describe('BetterPayment', () => {
           akbank: {
             enabled: true,
             config: {
-              apiKey: 'k',
-              secretKey: 's',
-              merchantId: 'M',
-              terminalId: 'T',
-              storeKey: 'SK',
+              merchantSafeId: 'M',
+              terminalSafeId: 'T',
+              secretKey: 'SK',
             },
           },
         },
@@ -200,8 +197,6 @@ describe('BetterPayment', () => {
           parampos: {
             enabled: true,
             config: {
-              apiKey: 'guid',
-              secretKey: 'pass',
               clientCode: 'CC',
               clientUsername: 'user',
               clientPassword: 'pass',
@@ -278,5 +273,68 @@ describe('BetterPayment', () => {
       await bp.createPayment({} as any);
       expect(spy).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('BetterPayment mode and defaults', () => {
+  it('sandbox mode enables PayTR test mode and sandbox URLs', () => {
+    const bp = new BetterPayment({
+      mode: 'sandbox',
+      providers: {
+        paytr: { enabled: true, config: { merchantId: 'M', merchantKey: 'K', merchantSalt: 'S' } },
+        akbank: { enabled: true, config: { merchantSafeId: 'M', terminalSafeId: 'T', secretKey: 'K' } },
+        parampos: {
+          enabled: true,
+          config: { clientCode: '1', clientUsername: 'u', clientPassword: 'p', guid: 'g' },
+        },
+      },
+    });
+    expect((bp.paytr as any).config.testMode).toBe(true);
+    expect((bp.akbank as any).config.testMode).toBe(true);
+    expect((bp.akbank as any).config.baseUrl).toBe('https://apipre.akbank.com/api/v1/payment/virtualpos');
+    expect((bp.parampos as any).config.baseUrl).toBe(
+      'https://test-dmz.param.com.tr/turkpos.ws/service_turkpos_test.asmx'
+    );
+  });
+
+  it('production mode keeps test mode off unless configured', () => {
+    const bp = new BetterPayment({
+      providers: { paytr: { enabled: true, config: { merchantId: 'M', merchantKey: 'K', merchantSalt: 'S' } } },
+    });
+    expect((bp.paytr as any).config.testMode).toBe(false);
+  });
+
+  it('explicit baseUrl wins over mode defaults', () => {
+    const bp = new BetterPayment({
+      mode: 'sandbox',
+      providers: {
+        iyzico: { enabled: true, config: { apiKey: 'a', secretKey: 's', baseUrl: 'https://custom' } },
+      },
+    });
+    expect((bp.iyzico as any).config.baseUrl).toBe('https://custom');
+  });
+
+  it('throws ConfigurationError with the missing field names', async () => {
+    const { ConfigurationError } = await import('../../../src/core/errors');
+    try {
+      new BetterPayment({
+        providers: { paytr: { enabled: true, config: { merchantId: 'M', merchantKey: '', merchantSalt: '' } } },
+      });
+      expect.unreachable();
+    } catch (error: any) {
+      expect(error).toBeInstanceOf(ConfigurationError);
+      expect(error.message).toContain('merchantKey');
+      expect(error.message).toContain('merchantSalt');
+    }
+  });
+
+  it('handler uses config.handler options', () => {
+    expect(
+      () =>
+        new BetterPayment({
+          providers: { iyzico: { enabled: true, config: { apiKey: 'a', secretKey: 's' } } },
+          handler: { allowedActions: ['refund'] },
+        }).handler
+    ).toThrow(/authorize/);
   });
 });

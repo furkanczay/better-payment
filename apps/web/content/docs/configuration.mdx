@@ -9,15 +9,19 @@ description: Full configuration reference for BetterPayment.
 import { BetterPayment, ProviderType } from 'better-payment';
 
 const payment = new BetterPayment({
-  defaultProvider: ProviderType.IYZICO, // optional
+  defaultProvider: ProviderType.IYZICO, // optional; the only enabled provider becomes default
+  mode: 'sandbox',                      // 'sandbox' | 'production' (default)
+  logger,                               // optional, see below
+  retry,                                // optional, see below
+  handler,                              // optional HTTP handler options
   providers: {
     iyzico: {
       enabled: true,
       config: {
         apiKey: string,
         secretKey: string,
-        baseUrl: string,
-        locale?: 'tr' | 'en', // default: 'tr'
+        baseUrl?: string,  // default from mode
+        locale?: 'tr' | 'en',
       },
     },
     paytr: {
@@ -26,18 +30,19 @@ const payment = new BetterPayment({
         merchantId: string,
         merchantKey: string,
         merchantSalt: string,
-        baseUrl?: string, // default: 'https://www.paytr.com'
-        locale?: 'tr' | 'en',
+        testMode?: boolean,     // default: mode === 'sandbox'
+        timeoutLimit?: number,  // iFrame timeout in minutes, default 30
       },
     },
     akbank: {
       enabled: true,
       config: {
-        clientId: string,
-        clientSecret: string,
         merchantSafeId: string,
         terminalSafeId: string,
-        baseUrl?: string,
+        secretKey: string,
+        subMerchantId?: string,
+        testMode?: boolean,     // selects the test 3D gateway; default: mode === 'sandbox'
+        gateway3dUrl?: string,  // override the securepay URL
       },
     },
     parampos: {
@@ -46,100 +51,66 @@ const payment = new BetterPayment({
         clientCode: string,
         clientUsername: string,
         clientPassword: string,
-        baseUrl?: string,
+        guid: string,
       },
     },
   },
 });
 ```
 
+Missing or empty credentials throw a `ConfigurationError` that lists the missing fields.
+
+### Default URLs
+
+| Provider | sandbox | production |
+|----------|---------|------------|
+| iyzico | `https://sandbox-api.iyzipay.com` | `https://api.iyzipay.com` |
+| PayTR | `https://www.paytr.com` (with `test_mode=1`) | `https://www.paytr.com` |
+| Akbank | `https://apipre.akbank.com/api/v1/payment/virtualpos` | `https://api.akbank.com/api/v1/payment/virtualpos` |
+| Parampos | `https://test-dmz.param.com.tr/turkpos.ws/service_turkpos_test.asmx` | `https://posws.param.com.tr/turkpos.ws/service_turkpos_prod.asmx` |
+
+Set `baseUrl` on a provider's config to override its default.
+
 ## Provider Access
 
 ```typescript
-// Access by property (throws if not enabled)
-payment.iyzico
+payment.iyzico           // throws ProviderNotEnabledError if not enabled
 payment.paytr
 payment.akbank
 payment.parampos
 
-// Dynamic access
 payment.use(ProviderType.PAYTR)
-
-// Check availability
 payment.isProviderEnabled(ProviderType.IYZICO)  // boolean
 payment.getEnabledProviders()                    // ProviderType[]
 ```
 
-## HTTP Handler
-
-`BetterPaymentHandler` routes HTTP requests to the correct provider method. Mount it at any path — the handler parses the URL to determine provider and action.
-
-```
-POST /api/pay/:provider/:action
-GET  /api/pay/:provider/:action
-```
-
-### Next.js App Router
+## Logging
 
 ```typescript
-// app/api/pay/[...path]/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getBetterPayment } from '@/lib/payment';
-
-async function handler(req: NextRequest) {
-  const contentType = req.headers.get('content-type') ?? '';
-  let body: unknown;
-
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    if (contentType.includes('application/json')) {
-      body = await req.json().catch(() => undefined);
-    } else if (contentType.includes('application/x-www-form-urlencoded')) {
-      const fd = await req.formData();
-      const obj: Record<string, string> = {};
-      fd.forEach((v, k) => { obj[k] = v as string; });
-      body = obj;
-    }
-  }
-
-  const res = await getBetterPayment().handler.handle({
-    method: req.method,
-    url: req.url,
-    headers: Object.fromEntries(req.headers.entries()),
-    body,
-  });
-
-  return NextResponse.json(res.body, {
-    status: res.status,
-    headers: res.headers,
-  });
+logger: {
+  debug: (message, meta) => {},
+  info: (message, meta) => {},
+  error: (message, error, meta) => {},
 }
+```
 
-export const GET = handler;
-export const POST = handler;
+The logger receives the HTTP method, URL and status. Request and response bodies,
+which contain card data and credentials, are never logged.
+
+## Retry
+
+```typescript
+retry: {
+  attempts: 3,              // total attempts including the first
+  delay: 1000,              // ms between attempts
+  statusCodes: [429, 503],  // retry on these HTTP statuses (network errors are always retried)
+}
 ```
 
 <Callout type="info">
-  Use a lazy singleton (function that initializes on first call) to avoid build-time env var errors with Next.js static generation.
+  Only idempotent requests are retried: status, BIN and installment queries. Payment, refund and cancel requests are **never** retried. If one of them fails without a response, it returns `status: 'pending'` with `errorCode: 'NETWORK_ERROR'` so that you check the outcome with `getPayment()`.
 </Callout>
 
-### Express
+## HTTP Handler
 
-```typescript
-import express from 'express';
-import { payment } from './lib/payment';
-
-const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-app.all('/api/pay/*', async (req, res) => {
-  const result = await payment.handler.handle({
-    method: req.method,
-    url: `${req.protocol}://${req.get('host')}${req.originalUrl}`,
-    headers: req.headers as Record<string, string>,
-    body: req.body,
-  });
-
-  res.status(result.status).json(result.body);
-});
-```
+See [BetterPaymentHandler](/docs/api/handler) for the options and the framework examples.

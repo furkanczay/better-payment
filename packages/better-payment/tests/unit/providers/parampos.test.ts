@@ -1,407 +1,375 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Parampos, mapParamposOrderStatus } from '../../../src/providers/parampos';
 import {
   generateParamposPaymentHash,
   generateParampos3DSVerificationHash,
   verifyParampos3DSCallback,
-  mapCurrencyToParampos,
-  mapCurrencyFromParampos,
   formatParamposAmount,
+  formatParamposRefundAmount,
   formatParamposExpiryMonth,
   formatParamposExpiryYear,
+  formatParamposGsm,
   buildParamposSoapEnvelope,
   parseParamposSoapResponse,
-  buildParamposSecurityXml,
-  buildParamposCardXml,
-  calculateParamposTotalAmount,
   escapeXml,
+  unescapeXml,
+  encodeIso88599,
+  isParamposSuccess,
   validateTurkishIdentityNumber,
   maskCardNumber,
 } from '../../../src/providers/parampos/utils';
-import { Currency } from '../../../src/types';
-import { ParamposCurrency } from '../../../src/providers/parampos/types';
+import { PaymentStatus } from '../../../src/types';
+import { mockPaymentRequest, mockThreeDSPaymentRequest } from '../../fixtures/payment-data';
 
-describe('Parampos Utils - Unit Tests', () => {
-  describe('Hash Generation', () => {
-    it('should generate payment hash correctly', () => {
-      const hash = generateParamposPaymentHash(
-        'CLIENT123',
-        'GUID456',
-        1,
-        '100.00',
-        '100.00',
-        'ORDER789'
-      );
+// Reference values from Param's test environment (also used by the mews/pos test-suite)
+const GUID = '0c13d406-873b-403b-9c09-a5766840d98c';
 
-      expect(hash).toBeDefined();
-      expect(typeof hash).toBe('string');
-      expect(hash.length).toBeGreaterThan(0);
-    });
+function soap(action: string, fields: Record<string, string>): string {
+  const inner = Object.entries(fields)
+    .map(([k, v]) => `<${k}>${escapeXml(v)}</${k}>`)
+    .join('');
+  return (
+    '<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body>' +
+    `<${action}Response xmlns="https://turkpos.com.tr/"><${action}Result>${inner}</${action}Result></${action}Response>` +
+    '</soap:Body></soap:Envelope>'
+  );
+}
 
-    it('should generate different hashes for different inputs', () => {
-      const hash1 = generateParamposPaymentHash(
-        'CLIENT1',
-        'GUID1',
-        1,
-        '100.00',
-        '100.00',
-        'ORDER1'
-      );
+describe('Parampos utils', () => {
+  it('payment hash matches the reference vector (base64(sha1), ISO-8859-9)', () => {
+    expect(generateParamposPaymentHash('10738', GUID, '3', '1.000,01', '1.000,01', '202412293F4E')).toBe(
+      'jsLYSB3lJ81leFgDLw4D8PbXURs='
+    );
+  });
 
-      const hash2 = generateParamposPaymentHash(
-        'CLIENT2',
-        'GUID2',
-        1,
-        '100.00',
-        '100.00',
-        'ORDER2'
-      );
-
-      expect(hash1).not.toBe(hash2);
-    });
-
-    it('should generate 3DS verification hash correctly', () => {
-      const hash = generateParampos3DSVerificationHash(
-        'ISLEM123',
-        'MD456',
+  it('3D callback hash matches the reference vector', () => {
+    expect(
+      generateParampos3DSVerificationHash(
+        '35513153-9902-4a4c-a256-af6ed9cadc52',
+        '581877:A65A349B0BAE27FC6567294215158DD8AE223843B5C96462F04A750CA7E8B165:3680:##500100000',
         '1',
-        'ORDER789',
-        'GUID000'
-      );
+        '2025011749D1',
+        GUID
+      )
+    ).toBe('b1D7+nI3j4k3WGJuhW5IuPOFpEE=');
+  });
 
-      expect(hash).toBeDefined();
-      expect(typeof hash).toBe('string');
-      expect(hash.length).toBeGreaterThan(0);
+  describe('verifyParampos3DSCallback', () => {
+    const callback = {
+      islemGUID: '35513153-9902-4a4c-a256-af6ed9cadc52',
+      md: '581877:A65A349B0BAE27FC6567294215158DD8AE223843B5C96462F04A750CA7E8B165:3680:##500100000',
+      mdStatus: '1',
+      orderId: '2025011749D1',
+      islemHash: 'b1D7+nI3j4k3WGJuhW5IuPOFpEE=',
+    };
+
+    it('accepts a valid callback', () => {
+      expect(verifyParampos3DSCallback(callback, GUID)).toBe(true);
+    });
+
+    it('rejects a tampered mdStatus', () => {
+      expect(verifyParampos3DSCallback({ ...callback, mdStatus: '0' }, GUID)).toBe(false);
+    });
+
+    it('rejects a callback signed with an attacker-chosen GUID', () => {
+      const attackerGuid = '11111111-1111-1111-1111-111111111111';
+      const forged = {
+        ...callback,
+        GUID: attackerGuid,
+        islemHash: generateParampos3DSVerificationHash(
+          callback.islemGUID,
+          callback.md,
+          '1',
+          callback.orderId,
+          attackerGuid
+        ),
+      };
+      expect(verifyParampos3DSCallback(forged, GUID)).toBe(false);
+    });
+
+    it('rejects callbacks with missing fields', () => {
+      expect(verifyParampos3DSCallback({ ...callback, islemHash: undefined }, GUID)).toBe(false);
+      expect(verifyParampos3DSCallback({}, GUID)).toBe(false);
     });
   });
 
-  describe('3DS Callback Verification', () => {
-    it('should verify valid 3DS callback', () => {
-      const islemGuid = 'ISLEM123';
-      const md = 'MD456';
-      const mdStatus = '1';
-      const orderId = 'ORDER789';
-      const guid = 'GUID000';
+  it('formats payment amounts with a decimal comma', () => {
+    expect(formatParamposAmount('100')).toBe('100,00');
+    expect(formatParamposAmount(10.5)).toBe('10,50');
+    expect(formatParamposAmount('1.006')).toBe('1,01');
+    expect(() => formatParamposAmount('abc')).toThrow();
+    expect(() => formatParamposAmount('-1')).toThrow();
+  });
 
-      const hash = generateParampos3DSVerificationHash(
-        islemGuid,
-        md,
-        mdStatus,
-        orderId,
-        guid
-      );
+  it('formats refund amounts with a decimal dot', () => {
+    expect(formatParamposRefundAmount('10.5')).toBe('10.50');
+  });
 
-      const isValid = verifyParampos3DSCallback(
-        islemGuid,
-        md,
-        mdStatus,
-        orderId,
-        guid,
-        hash
-      );
+  it('formats card expiry', () => {
+    expect(formatParamposExpiryMonth('3')).toBe('03');
+    expect(() => formatParamposExpiryMonth('13')).toThrow();
+    expect(formatParamposExpiryYear('30')).toBe('2030');
+    expect(formatParamposExpiryYear('2031')).toBe('2031');
+    expect(() => formatParamposExpiryYear('203')).toThrow();
+  });
 
-      expect(isValid).toBe(true);
+  it('formats GSM numbers to 10 digits', () => {
+    expect(formatParamposGsm('+90 535 000 00 00')).toBe('5350000000');
+    expect(formatParamposGsm('05350000000')).toBe('5350000000');
+    expect(formatParamposGsm(undefined)).toBe('');
+  });
+
+  it('encodes Turkish characters as ISO-8859-9', () => {
+    expect([...encodeIso88599('ğüşİıç')]).toEqual([0xf0, 0xfc, 0xfe, 0xdd, 0xfd, 0xe7]);
+  });
+
+  it('escapes and unescapes XML', () => {
+    expect(escapeXml('<a & "b">')).toBe('&lt;a &amp; &quot;b&quot;&gt;');
+    expect(unescapeXml('&lt;form action=&quot;x&quot;&gt;&#x130;&#252;')).toBe('<form action="x">İü');
+    expect(escapeXml(undefined)).toBe('');
+  });
+
+  it('builds a SOAP envelope with escaped values', () => {
+    const xml = buildParamposSoapEnvelope('TP_WMD_Pay', { G: { CLIENT_CODE: '1' }, Siparis_ID: 'a<b' });
+    expect(xml).toContain('<TP_WMD_Pay xmlns="https://turkpos.com.tr/">');
+    expect(xml).toContain('<G><CLIENT_CODE>1</CLIENT_CODE></G>');
+    expect(xml).toContain('<Siparis_ID>a&lt;b</Siparis_ID>');
+  });
+
+  it('parses results, unescaping HTML and flattening nested elements', () => {
+    const xml = soap('TP_Islem_Sorgulama4', { Sonuc: '1', Sonuc_Str: 'Başarılı' }).replace(
+      '<Sonuc>',
+      '<DT_Bilgi><Durum>SUCCESS</Durum><Toplam_Tutar>10.01</Toplam_Tutar></DT_Bilgi><Sonuc>'
+    );
+    const result = parseParamposSoapResponse(xml, 'TP_Islem_Sorgulama4Result');
+    expect(result).toMatchObject({ Sonuc: '1', Durum: 'SUCCESS', Toplam_Tutar: '10.01' });
+
+    const html = parseParamposSoapResponse(soap('TP_WMD_UCD', { UCD_HTML: '<form id="x"></form>' }), 'TP_WMD_UCDResult');
+    expect(html.UCD_HTML).toBe('<form id="x"></form>');
+  });
+
+  it('throws on SOAP faults and missing results', () => {
+    expect(() =>
+      parseParamposSoapResponse('<soap:Fault><faultstring>Server was unable</faultstring></soap:Fault>', 'X')
+    ).toThrow(/Server was unable/);
+    expect(() => parseParamposSoapResponse('<a/>', 'TP_WMD_UCDResult')).toThrow();
+  });
+
+  it('isParamposSuccess treats positive codes as success', () => {
+    expect(isParamposSuccess('1')).toBe(true);
+    expect(isParamposSuccess('0')).toBe(false);
+    expect(isParamposSuccess('-102')).toBe(false);
+    expect(isParamposSuccess(undefined)).toBe(false);
+  });
+
+  it('maps Durum values', () => {
+    expect(mapParamposOrderStatus('SUCCESS')).toBe(PaymentStatus.SUCCESS);
+    expect(mapParamposOrderStatus('REFUND')).toBe(PaymentStatus.CANCELLED);
+    expect(mapParamposOrderStatus('CANCEL')).toBe(PaymentStatus.CANCELLED);
+    expect(mapParamposOrderStatus('FAIL')).toBe(PaymentStatus.FAILURE);
+    expect(mapParamposOrderStatus(undefined)).toBe(PaymentStatus.PENDING);
+  });
+
+  it('validates TC identity numbers and masks card numbers', () => {
+    expect(validateTurkishIdentityNumber('10000000146')).toBe(true);
+    expect(validateTurkishIdentityNumber('12345678901')).toBe(false);
+    expect(maskCardNumber('4446763125813623')).toBe('4446********3623');
+  });
+});
+
+describe('Parampos provider', () => {
+  let parampos: Parampos;
+  let post: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    parampos = new Parampos({
+      clientCode: '10738',
+      clientUsername: 'Test',
+      clientPassword: 'Test',
+      guid: GUID,
+      baseUrl: 'https://test-dmz.param.com.tr/turkpos.ws/service_turkpos_test.asmx',
+    });
+    post = vi.fn();
+    (parampos as any).client.post = post;
+  });
+
+  const sentXml = (call = 0): string => post.mock.calls[call][1];
+
+  it('requires all credentials', () => {
+    expect(
+      () =>
+        new Parampos({
+          clientCode: '1',
+          clientUsername: '',
+          clientPassword: 'p',
+          guid: 'g',
+          baseUrl: 'https://x',
+        })
+    ).toThrow(/clientUsername/);
+  });
+
+  it('sends a non-3D payment with TP_WMD_UCD, comma amounts and a valid hash', async () => {
+    post.mockResolvedValue({ data: soap('TP_WMD_UCD', { Sonuc: '1', Islem_ID: '3007296556', UCD_HTML: 'NONSECURE' }) });
+
+    const result = await parampos.createPayment({ ...mockPaymentRequest, conversationId: 'ORDER1' });
+
+    const xml = sentXml();
+    expect(post.mock.calls[0][2].headers.SOAPAction).toBe('https://turkpos.com.tr/TP_WMD_UCD');
+    expect(xml).toContain('<Islem_Guvenlik_Tip>NS</Islem_Guvenlik_Tip>');
+    expect(xml).toContain('<Islem_Tutar>1,00</Islem_Tutar>');
+    expect(xml).toContain('<Toplam_Tutar>1,20</Toplam_Tutar>');
+    expect(xml).toContain('<Siparis_ID>ORDER1</Siparis_ID>');
+    expect(xml).toContain('<GUID>' + GUID + '</GUID>');
+    expect(xml).toContain(
+      `<Islem_Hash>${generateParamposPaymentHash('10738', GUID, 1, '1,00', '1,20', 'ORDER1')}</Islem_Hash>`
+    );
+    expect(result.status).toBe(PaymentStatus.SUCCESS);
+    expect(result.paymentId).toBe('ORDER1');
+  });
+
+  it('declines when Sonuc > 0 but Islem_ID is 0', async () => {
+    post.mockResolvedValue({ data: soap('TP_WMD_UCD', { Sonuc: '-1', Islem_ID: '0', Sonuc_Str: 'Tekrar deneyin' }) });
+    const result = await parampos.createPayment(mockPaymentRequest);
+    expect(result.status).toBe(PaymentStatus.FAILURE);
+    expect(result.errorMessage).toBe('Tekrar deneyin');
+  });
+
+  it('rejects non-TRY currencies instead of silently charging TRY', async () => {
+    const result = await parampos.createPayment({ ...mockPaymentRequest, currency: 'USD' });
+    expect(result.status).toBe(PaymentStatus.FAILURE);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('never invents installment commission: Toplam_Tutar is paidPrice', async () => {
+    post.mockResolvedValue({ data: soap('TP_WMD_UCD', { Sonuc: '1', UCD_HTML: '<form></form>' }) });
+    await parampos.initThreeDSPayment({ ...mockThreeDSPaymentRequest, price: '100', paidPrice: '104.50', installment: 3 });
+    const xml = sentXml();
+    expect(xml).toContain('<Taksit>3</Taksit>');
+    expect(xml).toContain('<Islem_Tutar>100,00</Islem_Tutar>');
+    expect(xml).toContain('<Toplam_Tutar>104,50</Toplam_Tutar>');
+  });
+
+  it('initializes 3DS and returns the unescaped UCD_HTML', async () => {
+    post.mockResolvedValue({ data: soap('TP_WMD_UCD', { Sonuc: '1', UCD_HTML: '<form action="https://bank">x</form>' }) });
+    const result = await parampos.initThreeDSPayment({ ...mockThreeDSPaymentRequest, conversationId: 'ORDER3D' });
+    expect(sentXml()).toContain('<Islem_Guvenlik_Tip>3D</Islem_Guvenlik_Tip>');
+    expect(sentXml()).toContain('<Basarili_URL>https://example.com/callback</Basarili_URL>');
+    expect(result.status).toBe(PaymentStatus.PENDING);
+    expect(result.threeDSHtmlContent).toBe('<form action="https://bank">x</form>');
+    expect(result.paymentId).toBe('ORDER3D');
+  });
+
+  describe('completeThreeDSPayment', () => {
+    const callback = {
+      islemGUID: '35513153-9902-4a4c-a256-af6ed9cadc52',
+      md: '581877:A65A349B0BAE27FC6567294215158DD8AE223843B5C96462F04A750CA7E8B165:3680:##500100000',
+      mdStatus: '1',
+      orderId: '2025011749D1',
+      islemHash: 'b1D7+nI3j4k3WGJuhW5IuPOFpEE=',
+    };
+
+    it('finalizes with TP_WMD_Pay and succeeds only with a Dekont_ID', async () => {
+      post.mockResolvedValue({ data: soap('TP_WMD_Pay', { Sonuc: '1', Dekont_ID: '3007295376', Siparis_ID: callback.orderId }) });
+
+      const result = await parampos.completeThreeDSPayment(callback);
+
+      expect(post).toHaveBeenCalledTimes(1);
+      const xml = sentXml();
+      expect(xml).toContain('<TP_WMD_Pay xmlns="https://turkpos.com.tr/">');
+      expect(xml).toContain(`<UCD_MD>${callback.md}</UCD_MD>`);
+      expect(xml).toContain(`<Islem_GUID>${callback.islemGUID}</Islem_GUID>`);
+      expect(xml).toContain(`<Siparis_ID>${callback.orderId}</Siparis_ID>`);
+      expect(result.status).toBe(PaymentStatus.SUCCESS);
+      expect(result.paymentId).toBe(callback.orderId);
     });
 
-    it('should reject invalid 3DS callback', () => {
-      const isValid = verifyParampos3DSCallback(
-        'ISLEM123',
-        'MD456',
-        '1',
-        'ORDER789',
-        'GUID000',
-        'invalid-hash'
-      );
+    it('fails when TP_WMD_Pay declines', async () => {
+      post.mockResolvedValue({ data: soap('TP_WMD_Pay', { Sonuc: '-100', Sonuc_Ack: 'Hesap bulunamadı.' }) });
+      const result = await parampos.completeThreeDSPayment(callback);
+      expect(result.status).toBe(PaymentStatus.FAILURE);
+      expect(result.errorMessage).toBe('Hesap bulunamadı.');
+    });
 
-      expect(isValid).toBe(false);
+    it('rejects forged callbacks without contacting Param', async () => {
+      const attackerGuid = 'attacker';
+      const forged = {
+        ...callback,
+        GUID: attackerGuid,
+        islemHash: generateParampos3DSVerificationHash(callback.islemGUID, callback.md, '1', callback.orderId, attackerGuid),
+      };
+      const result = await parampos.completeThreeDSPayment(forged);
+      expect(result.status).toBe(PaymentStatus.FAILURE);
+      expect(result.errorCode).toBe('INVALID_HASH');
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it('does not finalize when mdStatus is not 1', async () => {
+      const md0 = {
+        ...callback,
+        mdStatus: '0',
+        islemHash: generateParampos3DSVerificationHash(callback.islemGUID, callback.md, '0', callback.orderId, GUID),
+      };
+      const result = await parampos.completeThreeDSPayment(md0);
+      expect(result.status).toBe(PaymentStatus.FAILURE);
+      expect(post).not.toHaveBeenCalled();
     });
   });
 
-  describe('Currency Mapping', () => {
-    it('should map TRY to Parampos currency', () => {
-      const mapped = mapCurrencyToParampos(Currency.TRY);
-      expect(mapped).toBe(ParamposCurrency.TRY);
-    });
-
-    it('should map USD to Parampos currency', () => {
-      const mapped = mapCurrencyToParampos(Currency.USD);
-      expect(mapped).toBe(ParamposCurrency.USD);
-    });
-
-    it('should map EUR to Parampos currency', () => {
-      const mapped = mapCurrencyToParampos(Currency.EUR);
-      expect(mapped).toBe(ParamposCurrency.EUR);
-    });
-
-    it('should map GBP to Parampos currency', () => {
-      const mapped = mapCurrencyToParampos(Currency.GBP);
-      expect(mapped).toBe(ParamposCurrency.GBP);
-    });
-
-    it('should default to TRY for unknown currency', () => {
-      const mapped = mapCurrencyToParampos('UNKNOWN' as Currency);
-      expect(mapped).toBe(ParamposCurrency.TRY);
-    });
-
-    it('should map Parampos currency back to unified currency', () => {
-      expect(mapCurrencyFromParampos(ParamposCurrency.TRY)).toBe(Currency.TRY);
-      expect(mapCurrencyFromParampos(ParamposCurrency.USD)).toBe(Currency.USD);
-      expect(mapCurrencyFromParampos(ParamposCurrency.EUR)).toBe(Currency.EUR);
-      expect(mapCurrencyFromParampos(ParamposCurrency.GBP)).toBe(Currency.GBP);
-    });
+  it('refunds with TP_Islem_Iptal_Iade_Kismi2 (IADE, dot amount, Siparis_ID)', async () => {
+    post.mockResolvedValue({ data: soap('TP_Islem_Iptal_Iade_Kismi2', { Sonuc: '1', Sonuc_Str: 'OK' }) });
+    const result = await parampos.refund({ paymentId: 'ORDER1', price: '5.5', currency: 'TRY', ip: '1.1.1.1' });
+    const xml = sentXml();
+    expect(xml).toContain('<Durum>IADE</Durum>');
+    expect(xml).toContain('<Siparis_ID>ORDER1</Siparis_ID>');
+    expect(xml).toContain('<Tutar>5.50</Tutar>');
+    expect(result.status).toBe(PaymentStatus.SUCCESS);
   });
 
-  describe('Amount Formatting', () => {
-    it('should format integer amount', () => {
-      const formatted = formatParamposAmount(100);
-      expect(formatted).toBe('100.00');
-    });
+  it('cancel looks up the amount when price is not given', async () => {
+    post
+      .mockResolvedValueOnce({
+        data: soap('TP_Islem_Sorgulama4', { Sonuc: '1', Durum: 'SUCCESS', Toplam_Tutar: '10.01', Siparis_ID: 'ORDER1' }),
+      })
+      .mockResolvedValueOnce({ data: soap('TP_Islem_Iptal_Iade_Kismi2', { Sonuc: '1' }) });
 
-    it('should format decimal amount', () => {
-      const formatted = formatParamposAmount(99.99);
-      expect(formatted).toBe('99.99');
-    });
+    const result = await parampos.cancel({ paymentId: 'ORDER1', ip: '1.1.1.1' });
 
-    it('should format string amount', () => {
-      const formatted = formatParamposAmount('150.50');
-      expect(formatted).toBe('150.50');
-    });
-
-    it('should round to 2 decimal places', () => {
-      const formatted = formatParamposAmount(99.999);
-      expect(formatted).toBe('100.00');
-    });
-
-    it('should throw error for invalid amount', () => {
-      expect(() => formatParamposAmount('invalid')).toThrow('Invalid amount');
-    });
+    expect(sentXml(1)).toContain('<Durum>IPTAL</Durum>');
+    expect(sentXml(1)).toContain('<Tutar>10.01</Tutar>');
+    expect(result.status).toBe(PaymentStatus.SUCCESS);
   });
 
-  describe('Expiry Date Formatting', () => {
-    it('should format single digit month', () => {
-      const formatted = formatParamposExpiryMonth(1);
-      expect(formatted).toBe('01');
+  it('getPayment maps Durum and marks the query as retryable', async () => {
+    post.mockResolvedValue({
+      data: soap('TP_Islem_Sorgulama4', { Sonuc: '1', Durum: 'REFUND', Siparis_ID: 'ORDER1' }),
     });
-
-    it('should format two digit month', () => {
-      const formatted = formatParamposExpiryMonth(12);
-      expect(formatted).toBe('12');
-    });
-
-    it('should format string month', () => {
-      const formatted = formatParamposExpiryMonth('05');
-      expect(formatted).toBe('05');
-    });
-
-    it('should throw error for invalid month', () => {
-      expect(() => formatParamposExpiryMonth(0)).toThrow('Invalid month');
-      expect(() => formatParamposExpiryMonth(13)).toThrow('Invalid month');
-    });
-
-    it('should format 2-digit year to 4-digit', () => {
-      const formatted = formatParamposExpiryYear(25);
-      expect(formatted).toBe('2025');
-    });
-
-    it('should keep 4-digit year as is', () => {
-      const formatted = formatParamposExpiryYear(2025);
-      expect(formatted).toBe('2025');
-    });
-
-    it('should throw error for invalid year', () => {
-      expect(() => formatParamposExpiryYear(1999)).toThrow('Invalid year');
-      expect(() => formatParamposExpiryYear('123')).toThrow('Invalid year format');
-    });
+    const result = await parampos.getPayment('ORDER1');
+    expect(result.status).toBe(PaymentStatus.CANCELLED);
+    expect(post.mock.calls[0][2].retryable).toBe(true);
   });
 
-  describe('SOAP Envelope Building', () => {
-    it('should build SOAP envelope', () => {
-      const envelope = buildParamposSoapEnvelope('TestAction', '<TestData>Test</TestData>');
-
-      expect(envelope).toContain('<?xml version="1.0"');
-      expect(envelope).toContain('soap:Envelope');
-      expect(envelope).toContain('TestAction');
-      expect(envelope).toContain('TestData');
-    });
-
-    it('should include proper XML namespaces', () => {
-      const envelope = buildParamposSoapEnvelope('TestAction', '<Data/>');
-
-      expect(envelope).toContain('xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"');
-      expect(envelope).toContain('xmlns="https://turkpos.com.tr/"');
-    });
+  it('payment requests are not retryable', async () => {
+    post.mockResolvedValue({ data: soap('TP_WMD_UCD', { Sonuc: '1', Islem_ID: '1' }) });
+    await parampos.createPayment(mockPaymentRequest);
+    expect(post.mock.calls[0][2].retryable).toBe(false);
   });
 
-  describe('SOAP Response Parsing', () => {
-    it('should parse SOAP response correctly', () => {
-      const soapXml = `<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <TestResult>
-      <Sonuc>1</Sonuc>
-      <Sonuc_Str>Success</Sonuc_Str>
-      <Islem_GUID>test-guid-123</Islem_GUID>
-    </TestResult>
-  </soap:Body>
-</soap:Envelope>`;
-
-      const result = parseParamposSoapResponse<any>(soapXml, 'TestResult');
-
-      expect(result).toBeDefined();
-      expect(result.Sonuc).toBe('1');
-      expect(result.Sonuc_Str).toBe('Success');
-      expect(result.Islem_GUID).toBe('test-guid-123');
-    });
-
-    it('should throw error if result tag not found', () => {
-      const soapXml = `<?xml version="1.0"?><soap:Envelope></soap:Envelope>`;
-
-      expect(() => parseParamposSoapResponse(soapXml, 'MissingResult')).toThrow(
-        'Could not find MissingResult'
-      );
-    });
+  it('reports network errors as PENDING (outcome unknown)', async () => {
+    post.mockRejectedValue({ isAxiosError: true, code: 'ECONNABORTED', request: {} });
+    const result = await parampos.createPayment(mockPaymentRequest);
+    expect(result.status).toBe(PaymentStatus.PENDING);
+    expect(result.errorCode).toBe('NETWORK_ERROR');
   });
 
-  describe('Security XML Building', () => {
-    it('should build security XML', () => {
-      const xml = buildParamposSecurityXml('CLIENT', 'USER', 'PASS', 'GUID');
-
-      expect(xml).toContain('<G>');
-      expect(xml).toContain('<CLIENT_CODE>CLIENT</CLIENT_CODE>');
-      expect(xml).toContain('<CLIENT_USERNAME>USER</CLIENT_USERNAME>');
-      expect(xml).toContain('<CLIENT_PASSWORD>PASS</CLIENT_PASSWORD>');
-      expect(xml).toContain('<GUID>GUID</GUID>');
-      expect(xml).toContain('</G>');
+  it('binCheck uses BIN_SanalPos and surfaces errors', async () => {
+    post.mockResolvedValueOnce({
+      data: soap('BIN_SanalPos', { Sonuc: '1', BIN: '444676', Kart_Banka: 'ZİRAAT', Kart_Org: 'VISA', Kart_Tip: 'Kredi Kartı' }),
     });
+    const result = await parampos.binCheck('444676');
+    expect(sentXml()).toContain('<BIN>444676</BIN>');
+    expect(result.bankName).toBe('ZİRAAT');
 
-    it('should escape special characters', () => {
-      const xml = buildParamposSecurityXml('CLIENT<>', 'USER', 'PASS&', 'GUID');
-
-      expect(xml).toContain('&lt;');
-      expect(xml).toContain('&gt;');
-      expect(xml).toContain('&amp;');
-    });
-  });
-
-  describe('Card XML Building', () => {
-    it('should build card XML', () => {
-      const xml = buildParamposCardXml('John Doe', '1234567890123456', '12', '2025', '123', false);
-
-      expect(xml).toContain('<KK_Bilgi>');
-      expect(xml).toContain('<KK_Sahibi>John Doe</KK_Sahibi>');
-      expect(xml).toContain('<KK_No>1234567890123456</KK_No>');
-      expect(xml).toContain('<KK_SK_Ay>12</KK_SK_Ay>');
-      expect(xml).toContain('<KK_SK_Yil>2025</KK_SK_Yil>');
-      expect(xml).toContain('<KK_CVC>123</KK_CVC>');
-      expect(xml).toContain('<KK_Saklama_Durumu>0</KK_Saklama_Durumu>');
-      expect(xml).toContain('</KK_Bilgi>');
-    });
-
-    it('should set save card flag correctly', () => {
-      const xmlSave = buildParamposCardXml('John Doe', '1234', '12', '2025', '123', true);
-      const xmlNoSave = buildParamposCardXml('John Doe', '1234', '12', '2025', '123', false);
-
-      expect(xmlSave).toContain('<KK_Saklama_Durumu>1</KK_Saklama_Durumu>');
-      expect(xmlNoSave).toContain('<KK_Saklama_Durumu>0</KK_Saklama_Durumu>');
-    });
-  });
-
-  describe('XML Escaping', () => {
-    it('should escape ampersand', () => {
-      expect(escapeXml('A&B')).toBe('A&amp;B');
-    });
-
-    it('should escape less than', () => {
-      expect(escapeXml('A<B')).toBe('A&lt;B');
-    });
-
-    it('should escape greater than', () => {
-      expect(escapeXml('A>B')).toBe('A&gt;B');
-    });
-
-    it('should escape quotes', () => {
-      expect(escapeXml('A"B')).toBe('A&quot;B');
-      expect(escapeXml("A'B")).toBe('A&apos;B');
-    });
-
-    it('should escape multiple characters', () => {
-      expect(escapeXml('<tag attr="value">&text</tag>')).toBe(
-        '&lt;tag attr=&quot;value&quot;&gt;&amp;text&lt;/tag&gt;'
-      );
-    });
-  });
-
-  describe('Installment Amount Calculation', () => {
-    it('should return same amount for 1 installment', () => {
-      const total = calculateParamposTotalAmount('1000.00', 1);
-      expect(total).toBe('1000.00');
-    });
-
-    it('should calculate amount with 2 installments', () => {
-      const total = calculateParamposTotalAmount('1000.00', 2);
-      expect(parseFloat(total)).toBeGreaterThan(1000);
-      expect(parseFloat(total)).toBe(1020); // 2% fee
-    });
-
-    it('should calculate amount with 6 installments', () => {
-      const total = calculateParamposTotalAmount('1000.00', 6);
-      expect(parseFloat(total)).toBeGreaterThan(1000);
-      expect(parseFloat(total)).toBe(1060); // 6% fee
-    });
-
-    it('should calculate amount with 12 installments', () => {
-      const total = calculateParamposTotalAmount('1000.00', 12);
-      expect(parseFloat(total)).toBeGreaterThan(1000);
-      expect(parseFloat(total)).toBe(1120); // 12% fee
-    });
-
-    it('should work with numeric input', () => {
-      const total = calculateParamposTotalAmount(1000, 3);
-      expect(parseFloat(total)).toBe(1030); // 3% fee
-    });
-  });
-
-  describe('Turkish Identity Number Validation', () => {
-    it('should validate correct identity number', () => {
-      const valid = validateTurkishIdentityNumber('12345678901');
-      // Note: This is a format test, not a real TC Kimlik validation
-      expect(typeof valid).toBe('boolean');
-    });
-
-    it('should reject identity number with wrong length', () => {
-      expect(validateTurkishIdentityNumber('123')).toBe(false);
-      expect(validateTurkishIdentityNumber('123456789012')).toBe(false);
-    });
-
-    it('should reject identity number with non-digits', () => {
-      expect(validateTurkishIdentityNumber('1234567890a')).toBe(false);
-    });
-
-    it('should reject identity number starting with 0', () => {
-      expect(validateTurkishIdentityNumber('01234567890')).toBe(false);
-    });
-  });
-
-  describe('Card Number Masking', () => {
-    it('should mask 16-digit card number', () => {
-      const masked = maskCardNumber('1234567890123456');
-      expect(masked).toBe('1234********3456');
-    });
-
-    it('should mask 15-digit card number', () => {
-      const masked = maskCardNumber('123456789012345');
-      expect(masked).toBe('1234*******2345');
-    });
-
-    it('should not mask short card numbers', () => {
-      const masked = maskCardNumber('123456789');
-      expect(masked).toBe('123456789');
-    });
-
-    it('should show first 4 and last 4 digits', () => {
-      const masked = maskCardNumber('5528790000000008');
-      expect(masked.startsWith('5528')).toBe(true);
-      expect(masked.endsWith('0008')).toBe(true);
-      expect(masked).toContain('****');
-    });
+    post.mockResolvedValueOnce({ data: soap('BIN_SanalPos', { Sonuc: '-1', Sonuc_Str: 'Hata' }) });
+    await expect(parampos.binCheck('000000')).rejects.toThrow('Hata');
   });
 });

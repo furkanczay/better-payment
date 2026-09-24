@@ -1,10 +1,9 @@
-import { BetterPayment } from './BetterPayment';
+import type { BetterPayment } from './BetterPayment';
 import { ProviderType } from './BetterPaymentConfig';
-import {
-  PaymentRequest,
-  ThreeDSPaymentRequest,
-  RefundRequest,
-  CancelRequest,
+import { ConfigurationError } from './errors';
+import { VERSION } from '../version';
+import { PaymentStatus } from '../types';
+import type {
   CheckoutFormRequest,
   PWIPaymentRequest,
   InstallmentInfoRequest,
@@ -29,7 +28,9 @@ export interface BetterPaymentRequest {
 }
 
 /**
- * HTTP Response interface for framework-agnostic handling
+ * HTTP Response interface for framework-agnostic handling.
+ * `body` is a JSON-serializable object, except for text responses
+ * (Content-Type text/plain, e.g. the PayTR "OK" acknowledgement) where it is a string.
  */
 export interface BetterPaymentResponse {
   status: number;
@@ -38,511 +39,560 @@ export interface BetterPaymentResponse {
 }
 
 /**
- * Route handler için context
+ * Handler actions (URL path after `/:provider/`)
  */
+export type HandlerAction =
+  | 'payment'
+  | 'payment/init-3ds'
+  | 'payment/token'
+  | 'payment/complete-3ds'
+  | 'payment/get'
+  | 'callback'
+  | 'refund'
+  | 'cancel'
+  | 'checkout/init'
+  | 'checkout/retrieve'
+  | 'pwi/init'
+  | 'pwi/retrieve'
+  | 'installment'
+  | 'bin-check'
+  | 'subscription/initialize'
+  | 'subscription/cancel'
+  | 'subscription/upgrade'
+  | 'subscription/retrieve'
+  | 'subscription/card-update'
+  | 'subscription/product'
+  | 'subscription/pricing-plan';
+
+export const ALL_HANDLER_ACTIONS: HandlerAction[] = [
+  'payment',
+  'payment/init-3ds',
+  'payment/token',
+  'payment/complete-3ds',
+  'payment/get',
+  'callback',
+  'refund',
+  'cancel',
+  'checkout/init',
+  'checkout/retrieve',
+  'pwi/init',
+  'pwi/retrieve',
+  'installment',
+  'bin-check',
+  'subscription/initialize',
+  'subscription/cancel',
+  'subscription/upgrade',
+  'subscription/retrieve',
+  'subscription/card-update',
+  'subscription/product',
+  'subscription/pricing-plan',
+];
+
+/**
+ * Enabled when `allowedActions` is not set: provider callbacks (which must be
+ * reachable by the bank/provider) and read-only card queries.
+ */
+export const DEFAULT_HANDLER_ACTIONS: HandlerAction[] = [
+  'payment/complete-3ds',
+  'callback',
+  'installment',
+  'bin-check',
+];
+
+/**
+ * Actions that move money back, manage subscriptions or expose payment
+ * details. They can only be enabled together with an `authorize` hook.
+ */
+export const PRIVILEGED_HANDLER_ACTIONS: HandlerAction[] = [
+  'refund',
+  'cancel',
+  'payment/get',
+  'subscription/cancel',
+  'subscription/upgrade',
+  'subscription/retrieve',
+  'subscription/card-update',
+  'subscription/product',
+  'subscription/pricing-plan',
+];
+
+/**
+ * Provider callbacks. They are signed by the provider and are called by the
+ * bank or the customer's browser, not by your frontend.
+ */
+export const CALLBACK_HANDLER_ACTIONS: HandlerAction[] = ['payment/complete-3ds', 'callback'];
+
+export interface HandlerContext {
+  provider: ProviderType;
+  action: HandlerAction;
+  params: Record<string, string>;
+  request: BetterPaymentRequest;
+  /** Parsed request body (form-urlencoded callbacks are converted to objects) */
+  body: any;
+}
+
+export interface BetterPaymentHandlerOptions {
+  /** Path prefix the handler is mounted on. Default: '/api/pay' */
+  basePath?: string;
+  /**
+   * Actions exposed over HTTP. Default: DEFAULT_HANDLER_ACTIONS.
+   * Use 'all' to expose everything (requires `authorize`).
+   */
+  allowedActions?: HandlerAction[] | 'all';
+  /**
+   * Called before every action except the health check. Return false (or throw)
+   * to reject the request with 403. Required when privileged actions are enabled.
+   *
+   * Provider callbacks (`callback`, `payment/complete-3ds`) are signed by the
+   * provider and are called by the bank/customer browser, so the hook usually
+   * lets them through: `if (CALLBACK_HANDLER_ACTIONS.includes(ctx.action)) return true`.
+   */
+  authorize?: (ctx: HandlerContext) => boolean | Promise<boolean>;
+  /**
+   * Returns the body passed to the provider. Use it to set amounts, basket and
+   * buyer on the server instead of trusting the client, e.g. look up the order
+   * by id and build the payment request from your database.
+   */
+  transformRequest?: (ctx: HandlerContext) => any | Promise<any>;
+  /**
+   * Called with the verified result of a provider callback. Update your order here.
+   * Errors thrown here make the handler return 500 (PayTR will then retry the notification).
+   */
+  onCallback?: (result: any, ctx: HandlerContext) => void | Promise<void>;
+  /**
+   * For browser callbacks (3D Secure return), return a URL to redirect the
+   * customer to (303). When undefined, the result is returned as JSON.
+   */
+  callbackRedirect?: (
+    result: any,
+    ctx: HandlerContext
+  ) => string | undefined | Promise<string | undefined>;
+  /** Include error messages of unexpected exceptions in 500 responses. Default: false */
+  exposeErrors?: boolean;
+}
+
 interface RouteContext {
   provider: ProviderType;
-  action: string;
+  action: HandlerAction | string;
   params: Record<string, string>;
 }
 
+class HttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string
+  ) {
+    super(message);
+  }
+}
+
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
+
 /**
- * BetterPayHandler - Otomatik API endpoint'leri için merkezi handler
+ * BetterPaymentHandler - Framework-agnostic HTTP handler
  *
- * Better-auth'tan ilham alınarak tasarlanmıştır. Tüm ödeme işlemlerini
- * otomatik olarak HTTP endpoint'lerine çevirir.
+ * Endpoints (relative to `basePath`, default `/api/pay`):
+ * - POST /:provider/payment                -> createPayment()
+ * - POST /:provider/payment/init-3ds       -> initThreeDSPayment()
+ * - POST /:provider/payment/token          -> createPaymentWithToken() (PayTR)
+ * - POST /:provider/payment/complete-3ds   -> completeThreeDSPayment()
+ * - POST /:provider/callback               -> completeThreeDSPayment() (PayTR: responds "OK")
+ * - GET  /:provider/payment/:id            -> getPayment()
+ * - POST /:provider/refund | cancel        -> refund() / cancel()
+ * - POST /:provider/installment | bin-check
+ * - iyzico only: checkout/*, pwi/*, subscription/*
+ * - GET  /health
  *
- * Desteklenen endpoint'ler:
- * - POST /api/pay/:provider/payment           -> createPayment()
- * - POST /api/pay/:provider/payment/init-3ds  -> initThreeDSPayment()
- * - POST /api/pay/:provider/payment/complete-3ds -> completeThreeDSPayment()
- * - POST /api/pay/:provider/refund            -> refund()
- * - POST /api/pay/:provider/cancel            -> cancel()
- * - GET  /api/pay/:provider/payment/:id       -> getPayment()
- * - POST /api/pay/:provider/callback          -> 3DS callback handler
- * - GET  /api/pay/health                      -> Health check
- *
- * @example
- * ```typescript
- * const betterPay = new BetterPay({ ... });
- * const handler = new BetterPayHandler(betterPay);
- *
- * // Framework adapter kullanımı:
- * // Next.js: toNextJsHandler(handler)
- * // Express: toNodeHandler(handler)
- * ```
+ * Secure by default: only callbacks and card queries are enabled. Enable more
+ * with `allowedActions`; privileged actions also require `authorize`.
  */
 export class BetterPaymentHandler {
-  constructor(private betterPayment: BetterPayment) {}
+  private readonly basePath: string;
+  private readonly allowed: Set<HandlerAction>;
 
-  /**
-   * Ana request handler - tüm framework'ler için ortak
-   */
-  async handle(request: BetterPaymentRequest): Promise<BetterPaymentResponse> {
-    try {
-      // Clean URL - remove query string and trailing slash
-      const cleanUrl = request.url.split('?')[0].replace(/\/$/, '');
+  constructor(
+    private betterPayment: BetterPayment,
+    private options: BetterPaymentHandlerOptions = {}
+  ) {
+    this.basePath = '/' + (options.basePath ?? '/api/pay').replace(/^\/+|\/+$/g, '');
+    const allowed =
+      options.allowedActions === 'all'
+        ? ALL_HANDLER_ACTIONS
+        : (options.allowedActions ?? DEFAULT_HANDLER_ACTIONS);
+    this.allowed = new Set(allowed);
 
-      // Health check
-      if (cleanUrl.endsWith('/health') || cleanUrl.endsWith('/ok')) {
-        return this.healthCheck();
-      }
-
-      // Route parsing
-      const context = this.parseRoute(request.url);
-      if (!context) {
-        return this.errorResponse(404, 'Route not found');
-      }
-
-      // Provider validation
-      if (!this.betterPayment.isProviderEnabled(context.provider)) {
-        return this.errorResponse(
-          400,
-          `Provider '${context.provider}' is not enabled or configured`
-        );
-      }
-
-      // Route action handler'ı çağır
-      return await this.handleAction(request, context);
-    } catch (error: any) {
-      return this.errorResponse(500, error.message || 'Internal server error');
+    const privileged = allowed.filter((a) => PRIVILEGED_HANDLER_ACTIONS.includes(a));
+    if (privileged.length > 0 && !options.authorize) {
+      throw new ConfigurationError(
+        `Handler actions [${privileged.join(', ')}] require an 'authorize' hook. ` +
+          'Refunds, cancellations and subscription management must never be publicly reachable.'
+      );
     }
   }
 
   /**
-   * URL'den route bilgilerini parse et
-   *
-   * Pattern: /api/pay/:provider/:action
-   * Örnekler:
-   * - /api/pay/iyzico/payment
-   * - /api/pay/paytr/payment/init-3ds
-   * - /api/pay/iyzico/payment/123
+   * Main request handler
    */
-  private parseRoute(url: string): RouteContext | null {
-    // Query string'i temizle
-    const cleanUrl = url.split('?')[0];
+  async handle(request: BetterPaymentRequest): Promise<BetterPaymentResponse> {
+    try {
+      const path = this.getPath(request.url);
+      if (path === null) {
+        return this.errorResponse(404, 'Route not found');
+      }
 
-    // Trailing slash'i kaldır
-    const normalizedUrl = cleanUrl.replace(/\/$/, '');
+      if (path === '/health' || path === '/ok') {
+        return this.healthCheck();
+      }
 
-    // /api/pay/ prefix'ini kaldır
-    const pathMatch = normalizedUrl.match(/\/api\/pay\/(.+)/);
-    if (!pathMatch) {
+      const route = this.parseRoute(path);
+      if (!route) {
+        return this.errorResponse(404, 'Route not found');
+      }
+
+      const action = route.action as HandlerAction;
+      if (!ALL_HANDLER_ACTIONS.includes(action)) {
+        return this.errorResponse(404, `Action '${route.action}' not found`);
+      }
+      if (!this.allowed.has(action)) {
+        return this.errorResponse(404, `Action '${route.action}' is not enabled`);
+      }
+
+      if (!this.betterPayment.isProviderEnabled(route.provider)) {
+        return this.errorResponse(400, `Provider '${route.provider}' is not enabled or configured`);
+      }
+
+      const ctx: HandlerContext = {
+        provider: route.provider,
+        action,
+        params: route.params,
+        request,
+        body: this.parseBody(request),
+      };
+
+      if (this.options.authorize) {
+        let ok = false;
+        try {
+          ok = await this.options.authorize(ctx);
+        } catch {
+          ok = false;
+        }
+        if (!ok) {
+          return this.errorResponse(403, 'Forbidden');
+        }
+      }
+
+      if (this.options.transformRequest && !CALLBACK_HANDLER_ACTIONS.includes(action)) {
+        ctx.body = await this.options.transformRequest(ctx);
+      }
+
+      return await this.handleAction(ctx);
+    } catch (error: any) {
+      if (error instanceof HttpError) {
+        return this.errorResponse(error.status, error.message);
+      }
+      return this.errorResponse(
+        500,
+        this.options.exposeErrors && error?.message ? error.message : 'Internal server error'
+      );
+    }
+  }
+
+  private getPath(url: string): string | null {
+    let pathname: string;
+    try {
+      pathname = new URL(url, 'http://localhost').pathname;
+    } catch {
       return null;
     }
+    pathname = pathname.replace(/\/+$/, '');
+    if (pathname === this.basePath) return '';
+    if (!pathname.startsWith(this.basePath + '/')) return null;
+    return pathname.slice(this.basePath.length);
+  }
 
-    const segments = pathMatch[1].split('/');
-    if (segments.length === 0) {
-      return null;
-    }
+  /**
+   * Parses "/:provider/:action..." (path relative to basePath)
+   */
+  private parseRoute(path: string): RouteContext | null {
+    const segments = path
+      .split('/')
+      .filter(Boolean)
+      .map((s) => decodeURIComponent(s));
+    if (segments.length < 2) return null;
 
-    // Provider (iyzico, paytr)
     const provider = segments[0] as ProviderType;
-
-    // Validate provider
     if (!Object.values(ProviderType).includes(provider)) {
       return null;
     }
 
-    // Action ve params
-    const action = segments.slice(1).join('/');
+    const rest = segments.slice(1);
     const params: Record<string, string> = {};
 
-    // Payment ID extraction (/payment/:id)
-    const paymentIdMatch = action.match(/^payment\/([^/]+)$/);
-    if (paymentIdMatch) {
-      params.paymentId = paymentIdMatch[1];
+    // GET /payment/:id
+    if (
+      rest.length === 2 &&
+      rest[0] === 'payment' &&
+      !['init-3ds', 'token', 'complete-3ds'].includes(rest[1])
+    ) {
+      params.paymentId = rest[1];
+      return { provider, action: 'payment/get', params };
     }
 
-    return { provider, action, params };
+    return { provider, action: rest.join('/'), params };
   }
 
-  /**
-   * Action'a göre ilgili provider metodunu çağır
-   */
-  private async handleAction(
-    request: BetterPaymentRequest,
-    context: RouteContext
-  ): Promise<BetterPaymentResponse> {
-    const provider = this.betterPayment.use(context.provider);
-    const { action, params } = context;
-
-    try {
-      switch (action) {
-        case 'payment':
-          return await this.handleCreatePayment(request, provider);
-
-        case 'payment/init-3ds':
-          return await this.handleInitThreeDS(request, provider);
-
-        case 'payment/token':
-          return await this.handleTokenPayment(request, provider);
-
-        case 'payment/complete-3ds':
-        case 'callback':
-          return await this.handleCompleteThreeDS(request, provider);
-
-        case 'refund':
-          return await this.handleRefund(request, provider);
-
-        case 'cancel':
-          return await this.handleCancel(request, provider);
-
-        // Iyzico-specific routes
-        case 'checkout/init':
-          return await this.handleCheckoutInit(request, provider);
-
-        case 'checkout/retrieve':
-          return await this.handleCheckoutRetrieve(request, provider);
-
-        case 'pwi/init':
-          return await this.handlePWIInit(request, provider);
-
-        case 'pwi/retrieve':
-          return await this.handlePWIRetrieve(request, provider);
-
-        case 'installment':
-          return await this.handleInstallmentInfo(request, provider);
-
-        case 'bin-check':
-          return await this.handleBinCheck(request, provider);
-
-        case 'subscription/initialize':
-          return await this.handleSubscriptionInitialize(request, provider);
-
-        case 'subscription/cancel':
-          return await this.handleSubscriptionCancel(request, provider);
-
-        case 'subscription/upgrade':
-          return await this.handleSubscriptionUpgrade(request, provider);
-
-        case 'subscription/retrieve':
-          return await this.handleSubscriptionRetrieve(request, provider);
-
-        case 'subscription/card-update':
-          return await this.handleSubscriptionCardUpdate(request, provider);
-
-        case 'subscription/product':
-          return await this.handleSubscriptionProduct(request, provider);
-
-        case 'subscription/pricing-plan':
-          return await this.handlePricingPlan(request, provider);
-
-        default:
-          // GET /payment/:id için
-          if (params.paymentId && request.method === 'GET') {
-            return await this.handleGetPayment(params.paymentId, provider);
-          }
-
-          return this.errorResponse(404, `Action '${action}' not found`);
+  private parseBody(request: BetterPaymentRequest): any {
+    const body = request.body;
+    const contentType = (this.header(request, 'content-type') || '').toLowerCase();
+    if (typeof body === 'string') {
+      if (contentType.includes('application/x-www-form-urlencoded')) {
+        return Object.fromEntries(new URLSearchParams(body));
       }
-    } catch (error: any) {
-      return this.errorResponse(500, error.message || 'Payment operation failed');
+      if (contentType.includes('application/json')) {
+        try {
+          return JSON.parse(body);
+        } catch {
+          throw new HttpError(400, 'Invalid JSON body');
+        }
+      }
+    }
+    return body;
+  }
+
+  private header(request: BetterPaymentRequest, name: string): string | undefined {
+    const key = Object.keys(request.headers || {}).find((k) => k.toLowerCase() === name);
+    return key ? request.headers[key] : undefined;
+  }
+
+  private requireMethod(ctx: HandlerContext, method: 'GET' | 'POST'): void {
+    if (ctx.request.method.toUpperCase() !== method) {
+      throw new HttpError(405, 'Method not allowed');
     }
   }
 
-  /**
-   * POST /api/pay/:provider/payment - Ödeme oluştur
-   */
-  private async handleCreatePayment(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') {
-      return this.errorResponse(405, 'Method not allowed');
+  private requireBody(ctx: HandlerContext): any {
+    if (!ctx.body || typeof ctx.body !== 'object') {
+      throw new HttpError(400, 'Request body is required');
     }
-
-    const paymentRequest: PaymentRequest = request.body;
-    const result = await provider.createPayment(paymentRequest);
-
-    return this.successResponse(result);
+    return ctx.body;
   }
 
-  /**
-   * POST /api/pay/:provider/payment/init-3ds - 3DS ödeme başlat
-   */
-  private async handleInitThreeDS(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') {
-      return this.errorResponse(405, 'Method not allowed');
-    }
-
-    const paymentRequest: ThreeDSPaymentRequest = request.body;
-    const result = await provider.initThreeDSPayment(paymentRequest);
-
-    return this.successResponse(result);
-  }
-
-  /**
-   * POST /api/pay/:provider/payment/complete-3ds - 3DS ödeme tamamla
-   * POST /api/pay/:provider/callback - Provider callback (alias)
-   */
-  private async handleCompleteThreeDS(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') {
-      return this.errorResponse(405, 'Method not allowed');
-    }
-
-    let callbackData = request.body;
-    const contentType = (request.headers['content-type'] || request.headers['Content-Type'] || '').toLowerCase();
-    if (contentType.includes('application/x-www-form-urlencoded') && typeof callbackData === 'string') {
-      callbackData = Object.fromEntries(new URLSearchParams(callbackData));
-    }
-
-    const result = await provider.completeThreeDSPayment(callbackData);
-
-    return this.successResponse(result);
-  }
-
-  /**
-   * POST /api/pay/:provider/refund - İade işlemi
-   */
-  private async handleRefund(request: BetterPaymentRequest, provider: any): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') {
-      return this.errorResponse(405, 'Method not allowed');
-    }
-
-    const refundRequest: RefundRequest = request.body;
-    const result = await provider.refund(refundRequest);
-
-    return this.successResponse(result);
-  }
-
-  /**
-   * POST /api/pay/:provider/cancel - İptal işlemi
-   */
-  private async handleCancel(request: BetterPaymentRequest, provider: any): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') {
-      return this.errorResponse(405, 'Method not allowed');
-    }
-
-    const cancelRequest: CancelRequest = request.body;
-    const result = await provider.cancel(cancelRequest);
-
-    return this.successResponse(result);
-  }
-
-  /**
-   * GET /api/pay/:provider/payment/:id - Ödeme sorgula
-   */
-  private async handleGetPayment(paymentId: string, provider: any): Promise<BetterPaymentResponse> {
-    const result = await provider.getPayment(paymentId);
-    return this.successResponse(result);
-  }
-
-  private async handleTokenPayment(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    if (typeof provider.createPaymentWithToken !== 'function') {
-      return this.errorResponse(400, 'This provider does not support token payments');
-    }
-    const result = await provider.createPaymentWithToken(request.body);
-    return this.successResponse(result);
-  }
-
-  private requireIyzico(provider: any): Iyzico | null {
+  private requireIyzico(ctx: HandlerContext): Iyzico {
+    const provider = this.betterPayment.use(ctx.provider);
     if (!(provider instanceof Iyzico)) {
-      return null;
+      throw new HttpError(400, 'Route only available for iyzico provider');
     }
     return provider;
   }
 
-  private async handleCheckoutInit(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
-    const result = await iyzico.initCheckoutForm(request.body as CheckoutFormRequest);
-    return this.successResponse(result);
-  }
+  private async handleAction(ctx: HandlerContext): Promise<BetterPaymentResponse> {
+    const provider: any = this.betterPayment.use(ctx.provider);
 
-  private async handleCheckoutRetrieve(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
-    const { token, conversationId } = request.body;
-    const result = await iyzico.retrieveCheckoutForm(token, conversationId);
-    return this.successResponse(result);
-  }
+    switch (ctx.action) {
+      case 'payment':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(await provider.createPayment(this.requireBody(ctx)));
 
-  private async handlePWIInit(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
-    const result = await iyzico.initPWIPayment(request.body as PWIPaymentRequest);
-    return this.successResponse(result);
-  }
+      case 'payment/init-3ds':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(await provider.initThreeDSPayment(this.requireBody(ctx)));
 
-  private async handlePWIRetrieve(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
-    const { token, conversationId } = request.body;
-    const result = await iyzico.retrievePWIPayment(token, conversationId);
-    return this.successResponse(result);
-  }
+      case 'payment/token':
+        this.requireMethod(ctx, 'POST');
+        if (typeof provider.createPaymentWithToken !== 'function') {
+          throw new HttpError(400, 'This provider does not support token payments');
+        }
+        return this.resultResponse(await provider.createPaymentWithToken(this.requireBody(ctx)));
 
-  private async handleInstallmentInfo(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    if (typeof provider.installmentInfo !== 'function') {
-      return this.errorResponse(400, 'This provider does not support installment info');
+      case 'payment/complete-3ds':
+      case 'callback':
+        this.requireMethod(ctx, 'POST');
+        return this.handleCallback(ctx, provider);
+
+      case 'payment/get':
+        this.requireMethod(ctx, 'GET');
+        return this.resultResponse(await provider.getPayment(ctx.params.paymentId));
+
+      case 'refund':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(await provider.refund(this.requireBody(ctx)));
+
+      case 'cancel':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(await provider.cancel(this.requireBody(ctx)));
+
+      case 'installment':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(
+          await provider.installmentInfo(this.requireBody(ctx) as InstallmentInfoRequest)
+        );
+
+      case 'bin-check': {
+        this.requireMethod(ctx, 'POST');
+        const { binNumber } = this.requireBody(ctx);
+        if (typeof binNumber !== 'string' || !/^\d{6,8}$/.test(binNumber)) {
+          throw new HttpError(400, 'binNumber must be 6-8 digits');
+        }
+        try {
+          return this.jsonResponse(200, await provider.binCheck(binNumber));
+        } catch (error: any) {
+          return this.errorResponse(422, error?.message || 'BIN check failed');
+        }
+      }
+
+      case 'checkout/init':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(
+          await this.requireIyzico(ctx).initCheckoutForm(
+            this.requireBody(ctx) as CheckoutFormRequest
+          )
+        );
+
+      case 'checkout/retrieve': {
+        this.requireMethod(ctx, 'POST');
+        const { token, conversationId } = this.requireBody(ctx);
+        return this.resultResponse(
+          await this.requireIyzico(ctx).retrieveCheckoutForm(token, conversationId)
+        );
+      }
+
+      case 'pwi/init':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(
+          await this.requireIyzico(ctx).initPWIPayment(this.requireBody(ctx) as PWIPaymentRequest)
+        );
+
+      case 'pwi/retrieve': {
+        this.requireMethod(ctx, 'POST');
+        const { token, conversationId } = this.requireBody(ctx);
+        return this.resultResponse(
+          await this.requireIyzico(ctx).retrievePWIPayment(token, conversationId)
+        );
+      }
+
+      case 'subscription/initialize':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(
+          await this.requireIyzico(ctx).initializeSubscription(
+            this.requireBody(ctx) as SubscriptionInitializeRequest
+          )
+        );
+
+      case 'subscription/cancel':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(
+          await this.requireIyzico(ctx).cancelSubscription(
+            this.requireBody(ctx) as SubscriptionCancelRequest
+          )
+        );
+
+      case 'subscription/upgrade':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(
+          await this.requireIyzico(ctx).upgradeSubscription(
+            this.requireBody(ctx) as SubscriptionUpgradeRequest
+          )
+        );
+
+      case 'subscription/retrieve':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(
+          await this.requireIyzico(ctx).retrieveSubscription(
+            this.requireBody(ctx) as SubscriptionRetrieveRequest
+          )
+        );
+
+      case 'subscription/card-update':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(
+          await this.requireIyzico(ctx).updateSubscriptionCard(
+            this.requireBody(ctx) as SubscriptionCardUpdateRequest
+          )
+        );
+
+      case 'subscription/product':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(
+          await this.requireIyzico(ctx).createSubscriptionProduct(
+            this.requireBody(ctx) as SubscriptionProductCreateRequest
+          )
+        );
+
+      case 'subscription/pricing-plan':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(
+          await this.requireIyzico(ctx).createPricingPlan(
+            this.requireBody(ctx) as PricingPlanCreateRequest
+          )
+        );
+
+      default:
+        return this.errorResponse(404, `Action '${ctx.action}' not found`);
     }
-    const result = await provider.installmentInfo(request.body as InstallmentInfoRequest);
-    return this.successResponse(result);
-  }
-
-  private async handleBinCheck(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    if (typeof provider.binCheck !== 'function') {
-      return this.errorResponse(400, 'This provider does not support BIN check');
-    }
-    const { binNumber } = request.body;
-    const result = await provider.binCheck(binNumber);
-    return this.successResponse(result);
-  }
-
-  private async handleSubscriptionInitialize(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
-    const result = await iyzico.initializeSubscription(request.body as SubscriptionInitializeRequest);
-    return this.successResponse(result);
-  }
-
-  private async handleSubscriptionCancel(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
-    const result = await iyzico.cancelSubscription(request.body as SubscriptionCancelRequest);
-    return this.successResponse(result);
-  }
-
-  private async handleSubscriptionUpgrade(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
-    const result = await iyzico.upgradeSubscription(request.body as SubscriptionUpgradeRequest);
-    return this.successResponse(result);
-  }
-
-  private async handleSubscriptionRetrieve(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
-    const result = await iyzico.retrieveSubscription(request.body as SubscriptionRetrieveRequest);
-    return this.successResponse(result);
-  }
-
-  private async handleSubscriptionCardUpdate(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
-    const result = await iyzico.updateSubscriptionCard(request.body as SubscriptionCardUpdateRequest);
-    return this.successResponse(result);
-  }
-
-  private async handleSubscriptionProduct(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
-    const result = await iyzico.createSubscriptionProduct(request.body as SubscriptionProductCreateRequest);
-    return this.successResponse(result);
-  }
-
-  private async handlePricingPlan(
-    request: BetterPaymentRequest,
-    provider: any
-  ): Promise<BetterPaymentResponse> {
-    if (request.method !== 'POST') return this.errorResponse(405, 'Method not allowed');
-    const iyzico = this.requireIyzico(provider);
-    if (!iyzico) return this.errorResponse(400, 'Route only available for iyzico provider');
-    const result = await iyzico.createPricingPlan(request.body as PricingPlanCreateRequest);
-    return this.successResponse(result);
   }
 
   /**
-   * GET /api/pay/health - Health check
+   * Provider callbacks.
+   *
+   * PayTR notifications (server-to-server) must be answered with plain "OK",
+   * otherwise PayTR keeps re-sending them. Browser callbacks (3D return) can be
+   * redirected with `callbackRedirect`.
    */
+  private async handleCallback(ctx: HandlerContext, provider: any): Promise<BetterPaymentResponse> {
+    const result = await provider.completeThreeDSPayment(this.requireBody(ctx));
+    const invalidSignature = result?.errorCode === 'INVALID_HASH';
+
+    if (!invalidSignature && this.options.onCallback) {
+      await this.options.onCallback(result, ctx);
+    }
+
+    if (ctx.provider === ProviderType.PAYTR && ctx.action === 'callback') {
+      if (invalidSignature) {
+        return {
+          status: 400,
+          headers: { 'Content-Type': 'text/plain' },
+          body: 'PAYTR notification failed: bad hash',
+        };
+      }
+      return { status: 200, headers: { 'Content-Type': 'text/plain' }, body: 'OK' };
+    }
+
+    if (this.options.callbackRedirect) {
+      const location = await this.options.callbackRedirect(result, ctx);
+      if (location) {
+        return { status: 303, headers: { Location: location }, body: '' };
+      }
+    }
+
+    return this.resultResponse(result);
+  }
+
+  /**
+   * Maps a provider result to an HTTP response:
+   * success/pending -> 200, failure -> 422 (the body carries the details)
+   */
+  private resultResponse(result: any): BetterPaymentResponse {
+    const failed = result && typeof result === 'object' && result.status === PaymentStatus.FAILURE;
+    return this.jsonResponse(failed ? 422 : 200, result);
+  }
+
   private healthCheck(): BetterPaymentResponse {
-    const enabledProviders = this.betterPayment.getEnabledProviders();
-
-    return {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: {
-        status: 'ok',
-        service: 'better-pay',
-        version: '1.0.0',
-        providers: enabledProviders,
-        timestamp: new Date().toISOString(),
-      },
-    };
+    return this.jsonResponse(200, {
+      status: 'ok',
+      service: 'better-payment',
+      version: VERSION,
+      timestamp: new Date().toISOString(),
+    });
   }
 
-  /**
-   * Success response helper
-   */
-  private successResponse(data: any): BetterPaymentResponse {
-    return {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: data,
-    };
+  private jsonResponse(status: number, body: any): BetterPaymentResponse {
+    return { status, headers: { ...JSON_HEADERS }, body };
   }
 
-  /**
-   * Error response helper
-   */
   private errorResponse(status: number, message: string): BetterPaymentResponse {
-    return {
-      status,
-      headers: { 'Content-Type': 'application/json' },
-      body: {
-        error: true,
-        message,
-        timestamp: new Date().toISOString(),
-      },
-    };
+    return this.jsonResponse(status, {
+      error: true,
+      message,
+      timestamp: new Date().toISOString(),
+    });
   }
 }

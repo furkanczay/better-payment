@@ -1,9 +1,9 @@
 ---
 title: Parampos
-description: Parampos (Param) payment integration reference.
+description: Parampos (Param / TurkPOS) integration reference.
 ---
 
-Parampos uses SOAP/XML protocol with WS-Security authentication.
+Parampos uses Param's TurkPOS SOAP service.
 
 ## Configuration
 
@@ -14,53 +14,70 @@ parampos: {
     clientCode: process.env.PARAMPOS_CLIENT_CODE!,
     clientUsername: process.env.PARAMPOS_CLIENT_USERNAME!,
     clientPassword: process.env.PARAMPOS_CLIENT_PASSWORD!,
-    baseUrl: 'https://test-dmz.param.com.tr', // or production URL
+    guid: process.env.PARAMPOS_GUID!, // keep secret: callbacks are verified with it
+    // baseUrl: defaults from mode (test-dmz.param.com.tr / posws.param.com.tr)
   },
 }
 ```
 
-## Direct Payment (2D)
+## Amounts and installments
+
+- `price` → `Islem_Tutar`, `paidPrice` → `Toplam_Tutar` (the amount charged,
+  including installment commission). Amounts are sent with a decimal comma.
+- For installments, compute `paidPrice` from the rates defined on your Param
+  account. The library never adds commission itself.
+- Only **TRY** is supported (`TP_WMD_UCD`). Other currencies return `failure`.
+
+`paymentId` is your order id (`Siparis_ID`): the `conversationId` you pass, or
+a generated alphanumeric id.
+
+## Direct Payment (non-3D)
 
 ```typescript
-const result = await payment.parampos.createPayment({
-  price: '100.00',
-  paidPrice: '100.00',
-  currency: Currency.TRY,
-  installment: 1,
-  paymentCard: { cardHolderName, cardNumber, expireMonth, expireYear, cvc },
-  buyer: { /* ... */ },
-  basketItems: [{ /* ... */ }],
-});
+const result = await payment.parampos.createPayment({ ...paymentRequest, conversationId: 'ORDER123' });
 ```
 
 ## 3D Secure
 
 ```typescript
-// Initialize — returns HTML form to submit
 const init = await payment.parampos.initThreeDSPayment({
   ...paymentRequest,
-  callbackUrl: 'https://yoursite.com/callback',
+  conversationId: 'ORDER123',
+  installment: 1,
+  callbackUrl: 'https://yoursite.com/api/pay/parampos/payment/complete-3ds',
 });
-
-// Complete (in callback)
-const result = await payment.parampos.completeThreeDSPayment({
-  paymentId: body.paymentId,
-  md: body.MD,
-});
+// Render init.threeDSHtmlContent (UCD_HTML)
 ```
 
-## Refund & Cancel
+Param POSTs `md`, `mdStatus`, `orderId`, `islemGUID`, `islemHash`, … to `callbackUrl`:
 
 ```typescript
-await payment.parampos.refund({
-  paymentTransactionId: 'transaction-id',
-  price: '50.00',
-  currency: Currency.TRY,
-});
+const result = await payment.parampos.completeThreeDSPayment(callbackBody);
+```
 
-await payment.parampos.cancel({ paymentId: 'payment-id' });
+1. `islemHash` is verified with the **GUID from your configuration**. A GUID
+   inside the callback is ignored.
+2. `mdStatus` must be `1`.
+3. The payment is finalized with `TP_WMD_Pay`. It counts as `success` only
+   when Param returns a `Dekont_ID`.
+
+## Refund, Cancel & Status
+
+```typescript
+await payment.parampos.refund({ paymentId: 'ORDER123', price: '50.00', currency: 'TRY', ip: '1.2.3.4' });
+
+// Same-day void. Param needs the full amount; without price it is looked up.
+await payment.parampos.cancel({ paymentId: 'ORDER123', ip: '1.2.3.4' });
+
+const status = await payment.parampos.getPayment('ORDER123'); // TP_Islem_Sorgulama4
+```
+
+## BIN
+
+```typescript
+const bin = await payment.parampos.binCheck('444676'); // BIN_SanalPos
 ```
 
 <Callout type="info">
-  Parampos does not support installment queries through this library. Contact Param directly for installment configuration.
+  Installment queries are not implemented for Parampos yet.
 </Callout>

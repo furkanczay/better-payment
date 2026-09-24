@@ -1,143 +1,144 @@
 import { describe, it, expect } from 'vitest';
-import crypto from 'crypto';
 import {
-  generatePayTRHash,
+  generatePayTRIframeToken,
+  generatePayTRDirectToken,
+  generatePayTRRefundToken,
+  generatePayTRStatusToken,
+  generatePayTRBinToken,
+  generatePayTRInstallmentRatesToken,
   verifyPayTRCallback,
   formatPayTRBasket,
   convertToKurus,
-  generatePayTRToken,
-  generateBinDetailToken,
+  convertFromKurus,
+  formatPayTRAmount,
+  mapPayTRCurrency,
+  assertPayTRMerchantOid,
   createPayTRFormData,
+  buildAutoSubmitForm,
 } from '../../../../src/providers/paytr/utils';
 
-describe('PayTR Utils', () => {
-  const MERCHANT_ID = 'MERCHANT123';
-  const MERCHANT_SALT = 'test-salt-value';
+// Reference credentials/vectors (mews/pos PayTR test-suite):
+// HMAC key = merchant_key, merchant_salt appended to the signed string
+const SALT = 'YEUaNcdHXqyt7hjt';
+const KEY = 'wWwU8buJp6jo1r25';
 
-  describe('generatePayTRHash', () => {
-    it('should generate a base64 HMAC-SHA256 hash', () => {
-      const hash = generatePayTRHash(
-        MERCHANT_ID,
-        '127.0.0.1',
-        'ORDER-001',
-        'user@example.com',
-        '10000',
-        'W1siUHJvZHVjdCIsIjEwMC4wMCIsMV1d',
-        '0',
-        '0',
-        'TL',
-        '1',
-        MERCHANT_SALT
-      );
-      expect(typeof hash).toBe('string');
-      // Base64 pattern
-      expect(hash).toMatch(/^[A-Za-z0-9+/]+=*$/);
-    });
+describe('PayTR signatures', () => {
+  it('iFrame token', () => {
+    expect(
+      generatePayTRIframeToken(
+        {
+          merchantId: '123456',
+          userIp: '127.0.0.1',
+          merchantOid: 'order-123',
+          email: 'test@example.com',
+          paymentAmount: '10050',
+          userBasket: 'W1siUHJvZHVjdCIsIjEwLjUwIiwxXV0=',
+          noInstallment: '0',
+          maxInstallment: '0',
+          currency: 'TL',
+          testMode: '1',
+        },
+        SALT,
+        KEY
+      )
+    ).toBe('O5CaLankrigiiPDh3G75lLWdRX6wrEXGbLRjt37tuzY=');
+  });
 
-    it('should produce consistent results for same inputs', () => {
-      const args = [MERCHANT_ID, '1.2.3.4', 'ORD-1', 'a@b.com', '5000', '[]', '0', '0', 'TL', '0', MERCHANT_SALT] as const;
-      expect(generatePayTRHash(...args)).toBe(generatePayTRHash(...args));
-    });
+  it('Direct API token', () => {
+    expect(
+      generatePayTRDirectToken(
+        {
+          merchantId: '123456',
+          userIp: '127.0.0.1',
+          merchantOid: 'order-456',
+          email: 'test@example.com',
+          paymentAmount: '5000',
+          paymentType: 'card',
+          installmentCount: '0',
+          currency: 'TL',
+          testMode: '1',
+          non3d: '1',
+        },
+        SALT,
+        KEY
+      )
+    ).toBe('guwHEsodarZg3KTuihE7fpb+qAdKI0IQMUkrGFWZDO0=');
+  });
 
-    it('should produce different results for different inputs', () => {
-      const h1 = generatePayTRHash(MERCHANT_ID, '1.1.1.1', 'ORD-1', 'a@b.com', '5000', '[]', '0', '0', 'TL', '0', MERCHANT_SALT);
-      const h2 = generatePayTRHash(MERCHANT_ID, '2.2.2.2', 'ORD-2', 'a@b.com', '5000', '[]', '0', '0', 'TL', '0', MERCHANT_SALT);
-      expect(h1).not.toBe(h2);
-    });
+  it('refund, status, BIN and installment-rate tokens', () => {
+    expect(generatePayTRRefundToken('123456', 'order-789', '5000', SALT, KEY)).toBe(
+      '7ZqQEds0nem2gCqpLltwuNlmV9f7KHVlc73qeiNjwMg='
+    );
+    expect(generatePayTRStatusToken('123456', 'order-999', SALT, KEY)).toBe(
+      'mIFJNpzMuo/gd9pcPNBinujmMVlEkR3DHZ6stLoQo/s='
+    );
+    expect(generatePayTRBinToken('415956', '123456', SALT, KEY)).toBe('lAB6uLq369TxD4S7VDGIzOYt6Fy3XKicfn15Xy1TiBM=');
+    expect(generatePayTRInstallmentRatesToken('123456', 'REQ12345', SALT, KEY)).toBe(
+      'dx7O59UIbRaErFkP72oGXtQb/TgwFs8l/Qznl06iLls='
+    );
   });
 
   describe('verifyPayTRCallback', () => {
-    it('should return true for a valid hash', () => {
-      const merchantOid = 'ORDER-001';
-      const status = 'success';
-      const totalAmount = '10000';
-      const hash = crypto
-        .createHmac('sha256', MERCHANT_SALT)
-        .update(`${merchantOid}${MERCHANT_SALT}${status}${totalAmount}`)
-        .digest('base64');
+    const callback = {
+      merchant_oid: '202606234E4E',
+      status: 'success',
+      total_amount: '1001',
+      hash: 'ZDVOQUw4aDJhNR5dWYBC5bD95bLtSOtj9DzzSQ9sUHs=',
+    };
 
-      expect(verifyPayTRCallback(merchantOid, MERCHANT_SALT, status, totalAmount, hash)).toBe(true);
+    it('accepts a genuine notification', () => {
+      expect(verifyPayTRCallback(callback, SALT, KEY)).toBe(true);
     });
 
-    it('should return false for a tampered hash', () => {
-      expect(verifyPayTRCallback('ORD-1', MERCHANT_SALT, 'success', '10000', 'INVALID_HASH==')).toBe(false);
+    it('rejects tampered status/amount', () => {
+      expect(verifyPayTRCallback({ ...callback, status: 'failed' }, SALT, KEY)).toBe(false);
+      expect(verifyPayTRCallback({ ...callback, total_amount: '1' }, SALT, KEY)).toBe(false);
     });
 
-    it('should return false for wrong status', () => {
-      const merchantOid = 'ORD-1';
-      const hash = crypto
-        .createHmac('sha256', MERCHANT_SALT)
-        .update(`${merchantOid}${MERCHANT_SALT}success10000`)
-        .digest('base64');
-      expect(verifyPayTRCallback(merchantOid, MERCHANT_SALT, 'failed', '10000', hash)).toBe(false);
-    });
-  });
-
-  describe('formatPayTRBasket', () => {
-    it('should encode basket as JSON array of arrays', () => {
-      const basket = [{ name: 'Item A', price: '50.00', quantity: 2 }];
-      const result = formatPayTRBasket(basket);
-      expect(JSON.parse(result)).toEqual([['Item A', '50.00', 2]]);
+    it('rejects a hash made with the salt as key (old, wrong algorithm)', () => {
+      expect(verifyPayTRCallback(callback, KEY, SALT)).toBe(false);
     });
 
-    it('should handle multiple items', () => {
-      const basket = [
-        { name: 'A', price: '10.00', quantity: 1 },
-        { name: 'B', price: '20.00', quantity: 3 },
-      ];
-      const result = JSON.parse(formatPayTRBasket(basket));
-      expect(result).toHaveLength(2);
-      expect(result[1]).toEqual(['B', '20.00', 3]);
+    it('rejects missing fields', () => {
+      expect(verifyPayTRCallback({ ...callback, hash: undefined }, SALT, KEY)).toBe(false);
+      expect(verifyPayTRCallback({}, SALT, KEY)).toBe(false);
     });
   });
+});
 
-  describe('convertToKurus', () => {
-    it('should convert TL to kurus (x100)', () => {
-      expect(convertToKurus('100.00')).toBe('10000');
-      expect(convertToKurus('1.50')).toBe('150');
-      expect(convertToKurus('99.99')).toBe('9999');
-    });
-
-    it('should round floating point correctly', () => {
-      expect(convertToKurus('0.01')).toBe('1');
-    });
+describe('PayTR formatting', () => {
+  it('encodes the basket as base64 JSON with TL prices', () => {
+    const basket = formatPayTRBasket([{ name: 'Product', price: '10.50', quantity: 1 }]);
+    expect(basket).toBe('W1siUHJvZHVjdCIsIjEwLjUwIiwxXV0=');
+    expect(JSON.parse(Buffer.from(basket, 'base64').toString())).toEqual([['Product', '10.50', 1]]);
   });
 
-  describe('generatePayTRToken', () => {
-    it('should produce a base64 string', () => {
-      const token = generatePayTRToken(MERCHANT_ID, 'ORD-001', '10000', MERCHANT_SALT);
-      expect(token).toMatch(/^[A-Za-z0-9+/]+=*$/);
-    });
-
-    it('should be deterministic', () => {
-      const t1 = generatePayTRToken(MERCHANT_ID, 'ORD-1', '5000', MERCHANT_SALT);
-      const t2 = generatePayTRToken(MERCHANT_ID, 'ORD-1', '5000', MERCHANT_SALT);
-      expect(t1).toBe(t2);
-    });
+  it('converts amounts', () => {
+    expect(convertToKurus('100.50')).toBe('10050');
+    expect(convertToKurus('0.29')).toBe('29');
+    expect(convertToKurus(1.005)).toBe('101');
+    expect(convertFromKurus('1001')).toBe('10.01');
+    expect(formatPayTRAmount('5')).toBe('5.00');
+    expect(() => convertToKurus('abc')).toThrow();
   });
 
-  describe('generateBinDetailToken', () => {
-    it('should produce a base64 string', () => {
-      const token = generateBinDetailToken(MERCHANT_ID, '454360', MERCHANT_SALT);
-      expect(token).toMatch(/^[A-Za-z0-9+/]+=*$/);
-    });
-
-    it('should differ for different BIN numbers', () => {
-      const t1 = generateBinDetailToken(MERCHANT_ID, '454360', MERCHANT_SALT);
-      const t2 = generateBinDetailToken(MERCHANT_ID, '411111', MERCHANT_SALT);
-      expect(t1).not.toBe(t2);
-    });
+  it('maps currencies and rejects unsupported ones', () => {
+    expect(mapPayTRCurrency('TRY')).toBe('TL');
+    expect(mapPayTRCurrency(undefined)).toBe('TL');
+    expect(mapPayTRCurrency('usd')).toBe('USD');
+    expect(() => mapPayTRCurrency('CHF')).toThrow(/not supported/);
   });
 
-  describe('createPayTRFormData', () => {
-    it('should encode key=value pairs separated by &', () => {
-      const result = createPayTRFormData({ a: '1', b: '2' });
-      expect(result).toBe('a=1&b=2');
-    });
+  it('merchant_oid must be alphanumeric', () => {
+    expect(() => assertPayTRMerchantOid('ORDER123')).not.toThrow();
+    expect(() => assertPayTRMerchantOid('ORDER-123')).toThrow();
+    expect(() => assertPayTRMerchantOid('')).toThrow();
+  });
 
-    it('should URL-encode special characters', () => {
-      const result = createPayTRFormData({ email: 'user@example.com' });
-      expect(result).toBe('email=user%40example.com');
-    });
+  it('creates form data and escaped auto-submit forms', () => {
+    expect(createPayTRFormData({ a: '1 2', b: 'x&y' })).toBe('a=1%202&b=x%26y');
+    const html = buildAutoSubmitForm('https://www.paytr.com/odeme', { user_name: '"><script>' });
+    expect(html).toContain('value="&quot;&gt;&lt;script&gt;"');
+    expect(html).toContain('action="https://www.paytr.com/odeme"');
   });
 });

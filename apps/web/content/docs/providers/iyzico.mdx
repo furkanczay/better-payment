@@ -1,9 +1,9 @@
 ---
-title: İyzico
-description: Full İyzico integration reference — payments, checkout forms, subscriptions, and more.
+title: iyzico
+description: iyzico integration reference — payments, 3D Secure, checkout form, PWI, subscriptions.
 ---
 
-İyzico is a Turkish payment provider with REST/JSON API and HMAC-SHA256 authentication.
+iyzico uses a JSON REST API. Every request is signed with IYZWSv2 (HMAC-SHA256).
 
 ## Configuration
 
@@ -13,146 +13,107 @@ iyzico: {
   config: {
     apiKey: process.env.IYZICO_API_KEY!,
     secretKey: process.env.IYZICO_SECRET_KEY!,
-    baseUrl: process.env.IYZICO_BASE_URL ?? 'https://sandbox-api.iyzipay.com',
-    locale: 'tr', // optional, default: 'tr'
+    // baseUrl: defaults from mode (sandbox-api.iyzipay.com / api.iyzipay.com)
+    locale: 'tr', // optional
   },
 }
 ```
 
-## Direct Payment (2D)
+## Direct Payment (non-3D)
 
 ```typescript
-const result = await payment.iyzico.createPayment({
-  price: '100.00',
-  paidPrice: '100.00',
-  currency: Currency.TRY,
-  installment: 1,
-  paymentCard: { cardHolderName, cardNumber, expireMonth, expireYear, cvc },
-  buyer: { id, name, surname, email, identityNumber, ip, /* ... */ },
-  shippingAddress: { contactName, city, country, address },
-  billingAddress: { contactName, city, country, address },
-  basketItems: [{ id, name, category1, itemType, price }],
-});
+const result = await payment.iyzico.createPayment(paymentRequest);
+// result.paymentId — iyzico paymentId
 ```
 
 ## 3D Secure
 
-**Initialize:**
-
 ```typescript
 const init = await payment.iyzico.initThreeDSPayment({
   ...paymentRequest,
-  callbackUrl: 'https://yoursite.com/payment/callback',
+  callbackUrl: 'https://yoursite.com/api/pay/iyzico/payment/complete-3ds',
 });
-// Redirect user to: init.htmlContent (rendered in iframe or redirect)
+// Render init.threeDSHtmlContent (already base64-decoded)
 ```
 
-**Complete (in callback endpoint):**
+iyzico POSTs `status`, `paymentId`, `conversationData`, `conversationId` and
+`mdStatus` to `callbackUrl`. Pass that body as it is:
 
 ```typescript
-const result = await payment.iyzico.completeThreeDSPayment({
-  paymentId: body.paymentId,
-  conversationId: body.conversationId,
-});
+const result = await payment.iyzico.completeThreeDSPayment(callbackBody);
 ```
+
+The payment is authorized only when the callback has `status=success` and
+`mdStatus=1`. Any other callback returns `failure` without calling iyzico.
 
 ## Checkout Form
 
-İyzico's hosted checkout form — no PCI DSS scope for card data.
+iyzico's hosted payment form. Card data never reaches your servers.
 
 ```typescript
-// Initialize
 const form = await payment.iyzico.initCheckoutForm({
-  ...paymentRequest,
+  price: '100.00',
+  paidPrice: '100.00',
+  currency: 'TRY',
+  basketId: 'B1',
   callbackUrl: 'https://yoursite.com/checkout/callback',
   enabledInstallments: [1, 2, 3, 6, 9],
+  buyer, shippingAddress, billingAddress, basketItems,
 });
-// form.checkoutFormContent — embed as HTML
-// form.token — save for retrieve step
+// form.checkoutFormContent or form.paymentPageUrl, and form.token
 
-// Retrieve result (in callback)
-const result = await payment.iyzico.retrieveCheckoutForm({
-  token: body.token,
-});
+const result = await payment.iyzico.retrieveCheckoutForm(token, conversationId);
 ```
 
-**Handler endpoints:**
-- `POST /api/pay/iyzico/checkout/init`
-- `POST /api/pay/iyzico/checkout/retrieve`
+<Callout type="info">
+  `result.status` shows the payment's outcome. The API call can succeed while the payment itself fails (`paymentStatus: 'FAILURE'`); in that case `status` is `failure`. While 3DS is still in progress, `status` is `pending`.
+</Callout>
 
-## PWI (Protected Wire Transfer)
-
-İyzico's bank transfer payment method.
+## PWI (Korumalı Havale/EFT)
 
 ```typescript
-const init = await payment.iyzico.initPWIPayment({ ...request });
-const result = await payment.iyzico.retrievePWIPayment({ token: init.token });
+const init = await payment.iyzico.initPWIPayment({ /* same shape as the checkout form */ });
+const result = await payment.iyzico.retrievePWIPayment(init.token!);
+// result.status: 'pending' (paymentStatus WAITING), 'success' (SUCCESS) or 'failure'
+// result.iban, result.bankName while waiting
 ```
 
-**Handler endpoints:**
-- `POST /api/pay/iyzico/pwi/init`
-- `POST /api/pay/iyzico/pwi/retrieve`
-
-## Installment Info
-
-Query available installment options for a BIN.
+## Installments & BIN
 
 ```typescript
-const info = await payment.iyzico.getInstallmentInfo({
-  binNumber: '552879',
-  price: '100.00',
-  currency: Currency.TRY,
-});
+const info = await payment.iyzico.installmentInfo({ binNumber: '552879', price: '100.00' });
 // info.installmentDetails[].installmentPrices[]
+
+const bin = await payment.iyzico.binCheck('552879');
+// bin.cardType, bin.cardAssociation, bin.cardFamily, bin.bankName
 ```
 
-**Handler endpoint:** `POST /api/pay/iyzico/installment`
-
-## BIN Check
+## Refund, Cancel & Status
 
 ```typescript
-const bin = await payment.iyzico.checkBIN({ binNumber: '552879' });
-// bin.cardType, bin.cardAssociation, bin.cardFamily
-```
+// refund takes the paymentTransactionId of the basket item
+await payment.iyzico.refund({ paymentId: 'payment-transaction-id', price: '50.00', currency: 'TRY', ip: '1.2.3.4' });
 
-**Handler endpoint:** `POST /api/pay/iyzico/bin-check`
+await payment.iyzico.cancel({ paymentId: 'payment-id', ip: '1.2.3.4' });
 
-## Refund & Cancel
-
-```typescript
-await payment.iyzico.refund({
-  paymentTransactionId: 'transaction-id',
-  price: '50.00',
-  currency: Currency.TRY,
-});
-
-await payment.iyzico.cancel({ paymentId: 'payment-id' });
+const status = await payment.iyzico.getPayment('payment-id');
 ```
 
 ## Subscriptions (v2 API)
 
-İyzico's full subscription management API.
-
 ```typescript
-// Initialize subscription
-await payment.iyzico.initializeSubscription({ /* ... */ });
+await payment.iyzico.createSubscriptionProduct({ name: 'Pro', description: '...' });
+await payment.iyzico.createPricingPlan({
+  productReferenceCode, name: 'Monthly', price: '99.90',
+  paymentInterval: PaymentInterval.MONTHLY, paymentIntervalCount: 1,
+});
 
-// Manage
+await payment.iyzico.initializeSubscription({ pricingPlanReferenceCode, subscriptionInitialStatus: SubscriptionStatus.ACTIVE, customer, paymentCard });
+await payment.iyzico.retrieveSubscription({ subscriptionReferenceCode }); // GET
+await payment.iyzico.upgradeSubscription({ subscriptionReferenceCode, newPricingPlanReferenceCode });
+await payment.iyzico.updateSubscriptionCard({ subscriptionReferenceCode, callbackUrl });
 await payment.iyzico.cancelSubscription({ subscriptionReferenceCode });
-await payment.iyzico.upgradeSubscription({ /* ... */ });
-await payment.iyzico.retrieveSubscription({ subscriptionReferenceCode });
-await payment.iyzico.updateSubscriptionCard({ /* ... */ });
-
-// Product & pricing plan management
-await payment.iyzico.createSubscriptionProduct({ name, description });
-await payment.iyzico.createSubscriptionPricingPlan({ productReferenceCode, /* ... */ });
 ```
 
-**Handler endpoints:**
-- `POST /api/pay/iyzico/subscription/initialize`
-- `POST /api/pay/iyzico/subscription/cancel`
-- `POST /api/pay/iyzico/subscription/upgrade`
-- `POST /api/pay/iyzico/subscription/retrieve`
-- `POST /api/pay/iyzico/subscription/card-update`
-- `POST /api/pay/iyzico/subscription/product`
-- `POST /api/pay/iyzico/subscription/pricing-plan`
+Subscription responses keep iyzico's structure (`data`, `systemTime`). Their
+`status` is mapped to `success` / `failure`, and the full response is in `rawResponse`.

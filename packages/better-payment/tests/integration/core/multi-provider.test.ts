@@ -35,9 +35,8 @@ describe('BetterPayment Multi-Provider Integration', () => {
           enabled: true,
           config: {
             merchantId: '123456',
+            merchantKey: 'paytr-key',
             merchantSalt: 'paytr-salt',
-            apiKey: 'paytr-key',
-            secretKey: 'paytr-secret',
             baseUrl: 'https://www.paytr.com',
             locale: 'tr',
           },
@@ -48,11 +47,11 @@ describe('BetterPayment Multi-Provider Integration', () => {
 
     // Spy on Iyzico
     const iyzicoClient = (betterPay.iyzico as any).client;
-    vi.spyOn(iyzicoClient, 'post').mockImplementation(async (url: string, data: any) => {
+    vi.spyOn(iyzicoClient, 'request').mockImplementation(async (config: any) => {
       capturedRequests.push({
         provider: 'iyzico',
-        url,
-        data: typeof data === 'string' ? JSON.parse(data) : data,
+        url: config.url,
+        data: typeof config.data === 'string' ? JSON.parse(config.data) : config.data,
       });
       return { data: { status: 'success', paymentId: 'iyzico-123' }, status: 200 };
     });
@@ -166,7 +165,8 @@ describe('BetterPayment Multi-Provider Integration', () => {
       expect(iyzicoConfig.apiKey).toBe('iyzico-key');
       expect(iyzicoConfig.baseUrl).toBe('https://sandbox-api.iyzipay.com');
 
-      expect(paytrConfig.apiKey).toBe('paytr-key');
+      expect(paytrConfig.merchantKey).toBe('paytr-key');
+      expect(paytrConfig.apiKey).toBeUndefined();
       expect(paytrConfig.baseUrl).toBe('https://www.paytr.com');
     });
   });

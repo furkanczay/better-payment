@@ -1,6 +1,6 @@
 {
   "name": "better-payment",
-  "version": "3.0.1",
+  "version": "0.0.1",
   "description": "Unified payment gateway library for Turkish payment providers",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -21,12 +21,11 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "canary": "tsup examples/iyzico-example.ts --format cjs,esm --dts",
-    "test": "vitest",
+    "test": "vitest run",
     "test:unit": "vitest tests/unit",
     "test:integration": "vitest tests/integration",
     "test:e2e": "vitest tests/e2e",
-    "test:watch": "vitest --watch",
+    "test:watch": "vitest",
     "test:coverage": "vitest --coverage",
     "test:ui": "vitest --ui",
     "lint": "eslint src --ext .ts",
@@ -34,9 +33,7 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "clean": "rm -rf dist",
     "prepublishOnly": "pnpm build",
-    "changeset": "changeset",
-    "version": "changeset version",
-    "release": "pnpm build && changeset publish"
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "payment",
@@ -44,6 +41,7 @@
     "iyzico",
     "paytr",
     "akbank",
+    "parampos",
     "turkey",
     "turkish",
     "payment-gateway",
@@ -59,12 +57,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/furkanczay/better-payment.git"
+    "url": "git+https://github.com/furkanczay/better-payment.git",
+    "directory": "packages/better-payment"
   },
   "bugs": {
     "url": "https://github.com/furkanczay/better-payment/issues"
   },
-  "homepage": "https://github.com/furkanczay/better-payment#readme",
+  "homepage": "https://better-payment.czaylabs.com",
   "engines": {
     "node": ">=20.0.0"
   },
