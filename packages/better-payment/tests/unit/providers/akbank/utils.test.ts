@@ -1,114 +1,89 @@
 import { describe, it, expect } from 'vitest';
 import {
-  createAkbankHash,
-  createAkbank3DHash,
-  verifyAkbank3DHash,
-  formatAmount,
-  parseAmount,
+  akbankSign,
+  createAkbank3DFormHash,
+  verifyAkbank3DCallback,
+  generateAkbankRandomNumber,
+  formatAkbankDateTime,
+  formatAkbankAmount,
+  formatAkbankExpiry,
+  getAkbankCurrencyCode,
 } from '../../../../src/providers/akbank/utils';
-import * as crypto from 'crypto';
 
-describe('Akbank Utils - Unit Tests', () => {
-  describe('createAkbankHash', () => {
-    it('should create correct hash', () => {
-      const params = {
-        merchantId: 'MERCHANT',
-        terminalId: 'TERMINAL',
-        orderId: 'ORDER123',
-        amount: '10000',
-        currency: '949',
-        storeKey: 'STOREKEY',
-        txnType: 'Auth',
-      };
+import { AKBANK_TEST, AKBANK_3DPAY_CALLBACK } from '../../../fixtures/akbank';
 
-      const expectedData = 'MERCHANT|TERMINAL|ORDER123|10000|949|Auth|STOREKEY';
-      const expectedHash = crypto
-        .createHash('sha512')
-        .update(expectedData, 'utf8')
-        .digest('base64');
+describe('Akbank utils', () => {
+  it('3D form hash matches the reference vector', () => {
+    const hash = createAkbank3DFormHash(
+      {
+        paymentModel: '3D',
+        txnCode: '3000',
+        merchantSafeId: AKBANK_TEST.merchantSafeId,
+        terminalSafeId: AKBANK_TEST.terminalSafeId,
+        orderId: '20240404A4B0',
+        lang: 'TR',
+        amount: '1.01',
+        ccbRewardAmount: '1.00',
+        pcbRewardAmount: '1.00',
+        xcbRewardAmount: '1.00',
+        currencyCode: '949',
+        installCount: '1',
+        okUrl: 'http://localhost/akbankpos/3d/response.php',
+        failUrl: 'http://localhost/akbankpos/3d/response.php',
+        emailAddress: 'test@test.com',
+        randomNumber:
+          'AEDDD8688E11A3DC588DAB2ED59B2F64D45E798761CEFF17F4DB47581072697890180C4195986250F89C2C67A04A3B96F0AC66AE99B49BB7BEE618FBD621C4CD',
+        requestDateTime: '2024-04-04T21:11:41.000',
+        creditCard: '4355093000315232',
+        expiredDate: '1135',
+        cvv: '665',
+      },
+      AKBANK_TEST.secretKey
+    );
+    expect(hash).toBe('ilR2mCExklKEti+2x61A8pcOfzJ5z5M6xMYmmU8ClaKaDuxKooFuH3v7XW/ba25xlTDqGN1H//i0zTiJl5YnfA==');
+  });
 
-      const result = createAkbankHash(params);
-      expect(result).toBe(expectedHash);
+  describe('verifyAkbank3DCallback', () => {
+    it('accepts the reference 3D_PAY callback', () => {
+      expect(verifyAkbank3DCallback(AKBANK_3DPAY_CALLBACK, AKBANK_TEST.secretKey)).toBe(true);
+    });
+
+    it('rejects a tampered responseCode', () => {
+      expect(verifyAkbank3DCallback({ ...AKBANK_3DPAY_CALLBACK, responseCode: 'VPS-1005' }, AKBANK_TEST.secretKey)).toBe(
+        false
+      );
+    });
+
+    it('rejects a wrong key', () => {
+      expect(verifyAkbank3DCallback(AKBANK_3DPAY_CALLBACK, 'other-key')).toBe(false);
+    });
+
+    it('rejects a hashParams list that does not cover responseCode/orderId', () => {
+      const data = { orderId: 'X', responseCode: 'VPS-0000', hashParams: 'orderId' };
+      const forged = { ...data, hash: akbankSign('X', AKBANK_TEST.secretKey) };
+      expect(verifyAkbank3DCallback(forged, AKBANK_TEST.secretKey)).toBe(false);
+    });
+
+    it('rejects missing hash', () => {
+      expect(verifyAkbank3DCallback({ ...AKBANK_3DPAY_CALLBACK, hash: undefined }, AKBANK_TEST.secretKey)).toBe(false);
     });
   });
 
-  describe('createAkbank3DHash', () => {
-    it('should create correct 3D hash', () => {
-      const params = {
-        merchantId: 'MERCHANT',
-        terminalId: 'TERMINAL',
-        orderId: 'ORDER123',
-        amount: '10000',
-        currency: '949',
-        successUrl: 'https://success.com',
-        errorUrl: 'https://error.com',
-        secure3DStoreKey: '3DSTOREKEY',
-        txnType: 'Auth',
-      };
-
-      const expectedData =
-        'MERCHANT|TERMINAL|ORDER123|10000|949|https://success.com|https://error.com|Auth|3DSTOREKEY';
-      const expectedHash = crypto
-        .createHash('sha512')
-        .update(expectedData, 'utf8')
-        .digest('base64');
-
-      const result = createAkbank3DHash(params);
-      expect(result).toBe(expectedHash);
-    });
+  it('random number is 128 hex chars', () => {
+    expect(generateAkbankRandomNumber()).toMatch(/^[0-9A-F]{128}$/);
   });
 
-  describe('verifyAkbank3DHash', () => {
-    it('should verify correct hash', () => {
-      const params = {
-        merchantId: 'MERCHANT',
-        terminalId: 'TERMINAL',
-        orderId: 'ORDER123',
-        amount: '10000',
-        currency: '949',
-        secure3DStoreKey: '3DSTOREKEY',
-      };
-
-      const hashData = 'MERCHANT|TERMINAL|ORDER123|10000|949|3DSTOREKEY';
-      const secure3DHash = crypto.createHash('sha512').update(hashData, 'utf8').digest('base64');
-
-      const result = verifyAkbank3DHash({
-        ...params,
-        secure3DHash,
-      });
-
-      expect(result).toBe(true);
-    });
-
-    it('should fail incorrect hash', () => {
-      const params = {
-        merchantId: 'MERCHANT',
-        terminalId: 'TERMINAL',
-        orderId: 'ORDER123',
-        amount: '10000',
-        currency: '949',
-        secure3DStoreKey: '3DSTOREKEY',
-        secure3DHash: 'WRONG_HASH',
-      };
-
-      const result = verifyAkbank3DHash(params);
-      expect(result).toBe(false);
-    });
+  it('formats request date in Istanbul time', () => {
+    expect(formatAkbankDateTime(new Date('2024-04-04T18:11:41.123Z'))).toBe('2024-04-04T21:11:41.000');
   });
 
-  describe('formatAmount', () => {
-    it('should format amount correctly', () => {
-      expect(formatAmount(100)).toBe('10000');
-      expect(formatAmount(100.5)).toBe('10050');
-      expect(formatAmount(100.55)).toBe('10055');
-    });
-  });
-
-  describe('parseAmount', () => {
-    it('should parse amount correctly', () => {
-      expect(parseAmount('10000')).toBe(100);
-      expect(parseAmount('10050')).toBe(100.5);
-      expect(parseAmount('10055')).toBe(100.55);
-    });
+  it('formats amounts, expiry and currency', () => {
+    expect(formatAkbankAmount('1.1')).toBe('1.10');
+    expect(formatAkbankExpiry('1', '2035')).toBe('0135');
+    expect(formatAkbankExpiry('11', '35')).toBe('1135');
+    expect(() => formatAkbankExpiry('13', '35')).toThrow();
+    expect(getAkbankCurrencyCode('TRY')).toBe(949);
+    expect(getAkbankCurrencyCode('usd')).toBe(840);
+    expect(() => getAkbankCurrencyCode('CHF')).toThrow(/not supported/);
   });
 });
