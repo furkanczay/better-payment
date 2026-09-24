@@ -3,9 +3,9 @@ import Link from "next/link";
 import Image from "next/image";
 
 const highlights = [
-  { icon: Lock, label: "OAuth2 Auth", desc: "Token-based authentication" },
+  { icon: Lock, label: "HMAC-SHA512", desc: "Signed requests & callbacks" },
   { icon: CreditCard, label: "2D & 3D Secure", desc: "Both flows supported" },
-  { icon: Shield, label: "Hash Verified", desc: "HMAC request signing" },
+  { icon: Shield, label: "Verified Callbacks", desc: "3D results checked with your key" },
   { icon: Zap, label: "Direct API", desc: "No third-party middleware" },
 ];
 
@@ -16,10 +16,9 @@ const payment = new BetterPayment({
     akbank: {
       enabled: true,
       config: {
-        merchantId: process.env.AKBANK_MERCHANT_ID!,
-        terminalId: process.env.AKBANK_TERMINAL_ID!,
-        storeKey:   process.env.AKBANK_STORE_KEY!,
-        baseUrl:    "https://apiprod.akbank.com",
+        merchantSafeId: process.env.AKBANK_MERCHANT_SAFE_ID!,
+        terminalSafeId: process.env.AKBANK_TERMINAL_SAFE_ID!,
+        secretKey:      process.env.AKBANK_SECRET_KEY!,
       },
     },
   },
@@ -28,15 +27,17 @@ const payment = new BetterPayment({
 // 3D Secure initialization
 const init = await payment.akbank.initThreeDSPayment({
   price: "250.00",
+  paidPrice: "250.00",
   currency: "TRY",
-  callbackUrl: "https://yoursite.com/akbank/callback",
+  conversationId: "ORDER123",
+  callbackUrl: "https://yoursite.com/api/pay/akbank/payment/complete-3ds",
   paymentCard: { ... },
   buyer: { ... },
+  ...
 });
 
-// Complete in callback route
-const result = await payment.akbank
-  .completeThreeDSPayment({ paymentId: body.paymentId });`;
+// Complete in callback route: pass the bank's POST body as is
+const result = await payment.akbank.completeThreeDSPayment(body);`;
 
 const comingSoon = [
   { name: "Garanti BBVA", color: "from-green-600 to-emerald-700" },

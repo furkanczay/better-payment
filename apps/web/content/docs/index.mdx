@@ -3,29 +3,34 @@ title: Introduction
 description: A unified, type-safe payment gateway library for Node.js and Turkish payment providers.
 ---
 
-**better-payment** is a unified payment gateway library that lets you integrate multiple Turkish payment providers—İyzico, PayTR, Akbank, and Parampos—through a single, consistent TypeScript API.
+**better-payment** lets you integrate Turkish payment providers — iyzico, PayTR, Akbank and Parampos — through one TypeScript API.
+
+<Callout type="warn">
+  **0.0.1 resets the version history.** Releases `1.x`–`3.x` contained incorrect provider integrations and callback checks that could be bypassed. Do not use them. See the [changelog](/docs/guides/changelog).
+</Callout>
 
 ## Why better-payment?
 
-Every payment provider has its own SDK, request format, authentication scheme, and error model. Switching providers or supporting multiple ones requires writing adapter code for each. **better-payment** abstracts all of that.
+Every payment provider has its own SDK, request format, signature scheme and error model. **better-payment** hides those differences behind one interface.
 
 <Cards>
-  <Card title="Single API" description="One interface for all providers — createPayment, refund, cancel work the same regardless of which provider processes the transaction." />
-  <Card title="Type-Safe" description="Full TypeScript types for every request and response. No more guessing at field names or response shapes." />
-  <Card title="Framework Agnostic" description="Built-in HTTP handler works with any Node.js framework. Native integrations for Next.js, Express, and more." />
-  <Card title="Multi-Provider" description="Use multiple providers simultaneously. Route specific payment methods to specific providers." />
+  <Card title="Single API" description="createPayment, initThreeDSPayment, refund, cancel and getPayment work the same way for every provider." />
+  <Card title="Verified callbacks" description="3D Secure callbacks are checked with your own credentials before any result is trusted." />
+  <Card title="Secure HTTP handler" description="Framework-agnostic handler that exposes only what you enable, with authorize and server-side amount hooks." />
+  <Card title="Multi-Provider" description="Enable several providers at once and pick one per request." />
 </Cards>
 
 ## Supported Providers
 
-| Provider | 2D Payment | 3D Secure | Refund | Cancel | Installment |
-|----------|-----------|-----------|--------|--------|-------------|
-| İyzico   | ✅ | ✅ | ✅ | ✅ | ✅ |
-| PayTR    | ✅ | ✅ | ✅ | ⚠️ | ✅ |
-| Akbank   | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Parampos | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Provider | Non-3D | 3D Secure | Refund | Cancel | Status | BIN | Installments |
+|----------|--------|-----------|--------|--------|--------|-----|--------------|
+| iyzico   | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| PayTR    | ✅ ¹ | ✅ iFrame | ✅ | ✅ ² | ✅ | ✅ | ✅ |
+| Akbank   | ✅ | ✅ 3D_PAY | ✅ | ✅ | ✅ | — | — |
+| Parampos | ✅ (TRY) | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 
-> **⚠️ PayTR Cancel**: PayTR does not support voids. `cancel()` returns an error; use `refund()` with the original amount instead.
+¹ Your PayTR account must be approved for non-3D payments.
+² PayTR has no void endpoint, so `cancel()` issues a full refund.
 
 ## Quick Example
 
@@ -33,6 +38,7 @@ Every payment provider has its own SDK, request format, authentication scheme, a
 import { BetterPayment, ProviderType } from 'better-payment';
 
 const payment = new BetterPayment({
+  mode: 'sandbox',
   defaultProvider: ProviderType.IYZICO,
   providers: {
     iyzico: {
@@ -40,20 +46,22 @@ const payment = new BetterPayment({
       config: {
         apiKey: process.env.IYZICO_API_KEY!,
         secretKey: process.env.IYZICO_SECRET_KEY!,
-        baseUrl: 'https://sandbox-api.iyzipay.com',
       },
     },
   },
 });
 
-const result = await payment.createPayment({
+const result = await payment.initThreeDSPayment({
   price: '100.00',
   paidPrice: '100.00',
-  currency: Currency.TRY,
+  currency: 'TRY',
+  basketId: 'B1',
+  callbackUrl: 'https://yoursite.com/api/pay/iyzico/payment/complete-3ds',
+  paymentCard: { /* ... */ },
   buyer: { /* ... */ },
   shippingAddress: { /* ... */ },
   billingAddress: { /* ... */ },
   basketItems: [{ /* ... */ }],
-  paymentCard: { /* ... */ },
 });
+// Render result.threeDSHtmlContent in the customer's browser
 ```

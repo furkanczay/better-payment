@@ -9,6 +9,7 @@ description: Make your first payment in under 5 minutes.
 import { BetterPayment, ProviderType } from 'better-payment';
 
 const payment = new BetterPayment({
+  mode: 'sandbox', // sandbox URLs and provider test modes; default is 'production'
   defaultProvider: ProviderType.IYZICO,
   providers: {
     iyzico: {
@@ -16,7 +17,6 @@ const payment = new BetterPayment({
       config: {
         apiKey: process.env.IYZICO_API_KEY!,
         secretKey: process.env.IYZICO_SECRET_KEY!,
-        baseUrl: process.env.IYZICO_BASE_URL ?? 'https://sandbox-api.iyzipay.com',
       },
     },
   },
@@ -24,6 +24,8 @@ const payment = new BetterPayment({
 ```
 
 ## 2. Build a Payment Request
+
+Build the request on the server from your own order data. Never take amounts from the browser.
 
 ```typescript
 import { Currency, BasketItemType } from 'better-payment';
@@ -33,6 +35,8 @@ const request = {
   paidPrice: '100.00',
   currency: Currency.TRY,
   installment: 1,
+  basketId: 'B67832',
+  conversationId: 'ORDER123', // your order id (letters and digits only for PayTR)
   paymentCard: {
     cardHolderName: 'John Doe',
     cardNumber: '5528790000000008',
@@ -44,6 +48,7 @@ const request = {
     id: 'BY789',
     name: 'John',
     surname: 'Doe',
+    gsmNumber: '+905350000000',
     email: 'johndoe@example.com',
     identityNumber: '74300864791',
     registrationAddress: 'Nidakule Göztepe, Merdivenköy Mah.',
@@ -75,38 +80,48 @@ const request = {
 };
 ```
 
-## 3. Create a Payment
+## 3. Start 3D Secure
 
 ```typescript
-const result = await payment.createPayment(request);
+const init = await payment.initThreeDSPayment({
+  ...request,
+  callbackUrl: 'https://yoursite.com/api/pay/iyzico/payment/complete-3ds',
+});
 
-if (result.status === 'success') {
-  console.log('Payment ID:', result.paymentId);
-} else {
-  console.error('Error:', result.errorMessage);
+if (init.status === 'pending') {
+  // Render init.threeDSHtmlContent in the browser
+  // (or redirect to init.redirectUrl when the provider returns one)
 }
 ```
 
-## 4. Initialize 3D Secure
+## 4. Complete 3D Secure
+
+The bank POSTs the result to `callbackUrl`. Pass that POST body as it is:
 
 ```typescript
-const threeDSResult = await payment.initThreeDSPayment({
-  ...request,
-  callbackUrl: 'https://yoursite.com/payment/callback',
-});
+const result = await payment.completeThreeDSPayment(callbackBody);
 
-// Redirect user to threeDSResult.htmlContent or threeDSResult.redirectUrl
+if (result.status === 'success') {
+  // mark the order as paid
+}
 ```
 
-## 5. Complete 3D Secure
+The library checks the callback with your credentials and, when the provider
+requires it, finalizes the payment. A forged or failed callback always returns
+`failure`. The [HTTP handler](/docs/api/handler) does this for you.
 
-```typescript
-// In your callback endpoint:
-const completeResult = await payment.completeThreeDSPayment({
-  paymentId: body.paymentId,        // from provider callback
-  conversationId: body.conversationId,
-});
-```
+## 5. Handle results
+
+| status | meaning |
+|--------|---------|
+| `success` | Confirmed by the provider |
+| `failure` | Rejected; see `errorCode` / `errorMessage` |
+| `pending` | Waiting for the customer, **or** the outcome is unknown (`errorCode: 'NETWORK_ERROR'`) |
+| `cancelled` | Voided or fully refunded (status queries) |
+
+<Callout type="warn">
+  On `NETWORK_ERROR` the payment may still have gone through. Check it with `getPayment(paymentId)` before trying again. Payment, refund and cancel requests are never retried automatically.
+</Callout>
 
 ## Using Multiple Providers
 
@@ -119,13 +134,7 @@ const payment = new BetterPayment({
   },
 });
 
-// Use default provider (iyzico)
-await payment.createPayment(request);
-
-// Use specific provider
-await payment.iyzico.createPayment(request);
-await payment.paytr.initThreeDSPayment(paytrRequest);
-
-// Use .use() for dynamic routing
-await payment.use(ProviderType.PAYTR).initThreeDSPayment(paytrRequest);
+await payment.createPayment(request);                 // default provider
+await payment.paytr.initThreeDSPayment(paytrRequest); // specific provider
+await payment.use(ProviderType.PAYTR).getPayment('ORDER123');
 ```

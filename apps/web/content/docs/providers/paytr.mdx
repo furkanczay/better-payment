@@ -1,9 +1,10 @@
 ---
 title: PayTR
-description: PayTR integration reference — iframe 3D payment, BIN check, installment info and refunds.
+description: PayTR integration reference — iFrame payments, notifications, refunds, status, BIN and installments.
 ---
 
-PayTR uses form-urlencoded requests and HMAC-SHA256 token validation. It supports the iframe 3D Secure flow, BIN/installment queries, and partial or full refunds.
+PayTR uses form-urlencoded requests. Every token is signed as
+`base64(HMAC-SHA256(data + merchant_salt, merchant_key))`.
 
 ## Configuration
 
@@ -14,110 +15,106 @@ paytr: {
     merchantId: process.env.PAYTR_MERCHANT_ID!,
     merchantKey: process.env.PAYTR_MERCHANT_KEY!,
     merchantSalt: process.env.PAYTR_MERCHANT_SALT!,
-    baseUrl: 'https://www.paytr.com', // optional
-    locale: 'tr',
+    // testMode: defaults to mode === 'sandbox' (sends test_mode=1)
+    // timeoutLimit: 30 (minutes)
   },
 }
 ```
 
-## 3D Secure (Iframe)
+## Order ids
 
-PayTR's primary payment flow is iframe-based 3D Secure.
+PayTR's `merchant_oid` may contain **only letters and digits**. Pass your order id
+as `conversationId`. If you leave it out, an id such as `BP1727180000000A1B2C3D4` is
+generated and returned as `paymentId` / `conversationId`. Store it: `refund`,
+`cancel` and `getPayment` use it.
 
-**Get Token:**
+## iFrame payment (3D Secure)
 
 ```typescript
-const result = await payment.paytr.initThreeDSPayment({
-  price: '100.00',
-  paidPrice: '100.00',
-  currency: Currency.TRY,
-  callbackUrl: 'https://yoursite.com/payment/callback',
-  buyer: { id, name, surname, email, ip, /* ... */ },
-  basketItems: [{ id, name, category1, itemType, price }],
+const init = await payment.paytr.initThreeDSPayment({
+  ...paymentRequest,            // buyer.gsmNumber and billingAddress.address are sent to PayTR
+  conversationId: 'ORDER123',
+  callbackUrl: 'https://yoursite.com/orders/ORDER123', // where the customer returns
+  installment: undefined,       // undefined: any; 1: single payment only; n: up to n
 });
 
-// Render the iframe HTML returned in result.threeDSHtmlContent
-// or embed the token directly:
-// <iframe src={`https://www.paytr.com/odeme/guvenli/${result.paymentId}`} />
+// init.threeDSHtmlContent — a page with the PayTR iframe
+// init.redirectUrl        — https://www.paytr.com/odeme/guvenli/<token>
 ```
 
-**Handle Callback (webhook):**
+`payment_amount` is `paidPrice` (in kuruş). Basket items are sent with TL prices.
+
+## Notification (Bildirim URL)
+
+`callbackUrl` does **not** carry the payment result. PayTR sends the result
+server-to-server to the **notification URL** set in the PayTR merchant panel.
+
+1. Set the notification URL to `https://yoursite.com/api/pay/paytr/callback`.
+2. With the [HTTP handler](/docs/api/handler), the notification is verified, passed to `onCallback`, and answered with plain-text `OK`:
 
 ```typescript
-// PayTR POSTs to your callbackUrl with merchant_oid, status, total_amount, hash
+handler: {
+  onCallback: async (result) => {
+    // result.paymentId === merchant_oid
+    // result.status is 'success' or 'failure'
+    await db.orders.updatePayment(result.paymentId, result.status);
+  },
+}
+```
+
+Without the handler:
+
+```typescript
 const result = await payment.paytr.completeThreeDSPayment(req.body);
-
-if (result.status === 'success') {
-  // update order in DB
-}
-
-// Must respond with "OK" to acknowledge
-res.send('OK');
+if (result.errorCode === 'INVALID_HASH') return res.status(400).send('bad hash');
+await db.orders.updatePayment(result.paymentId, result.status); // make this idempotent
+res.type('text/plain').send('OK');
 ```
 
-## BIN Check
-
-Query card network, bank, and card family from the first 6–8 digits.
-
-```typescript
-const info = await payment.paytr.binCheck('552879');
-
-console.log(info.bankName);       // "GARANTİ BANKASI T.A.Ş."
-console.log(info.cardAssociation); // "VISA"
-console.log(info.cardFamily);      // "Bonus"
-console.log(info.cardType);        // "Kredi Kartı"
-```
-
-Via HTTP:
-```bash
-POST /api/pay/paytr/bin-check
-{ "binNumber": "552879" }
-```
-
-## Installment Info
-
-Query available installment options for a BIN number and amount.
-
-```typescript
-const info = await payment.paytr.installmentInfo({
-  binNumber: '552879',
-  price: '100.00',
-});
-
-if (info.status === 'success' && info.installmentDetails) {
-  info.installmentDetails[0].installmentPrices.forEach((opt) => {
-    console.log(`${opt.installmentNumber} taksit: ${opt.totalPrice} TL`);
-  });
-}
-```
-
-Via HTTP:
-```bash
-POST /api/pay/paytr/installment
-{ "binNumber": "552879", "price": "100.00" }
-```
-
-## Refund
-
-```typescript
-await payment.paytr.refund({
-  paymentId: 'merchant-oid',   // your order ID (merchant_oid)
-  price: '50.00',
-  currency: Currency.TRY,
-});
-```
-
-## Cancel
-
-<Callout type="error">
-  PayTR does not support payment voids. `cancel()` returns a FAILURE status with an explanatory message. To reverse a PayTR payment, call `refund()` with the original payment amount.
+<Callout type="warn">
+  PayTR can send the same notification more than once. Make your order update idempotent.
 </Callout>
 
-```typescript
-// This will fail — use refund() instead
-await payment.paytr.cancel({ paymentId: 'order-id' });
-// Returns: { status: 'failure', errorMessage: 'PayTR cancel requires...' }
+## Direct payment (non-3D)
 
-// Correct approach:
-await payment.paytr.refund({ paymentId: 'order-id', price: originalAmount });
+```typescript
+const result = await payment.paytr.createPayment(paymentRequest);
+```
+
+This uses the Direct API with `non_3d=1` and `sync_mode=1`. Your PayTR account
+must be approved for non-3D payments.
+
+## Stored cards (utoken / ctoken)
+
+```typescript
+const init = await payment.paytr.createPaymentWithToken({
+  utoken, ctoken, cvv, price: '100.00',
+  callbackUrl: 'https://yoursite.com/orders/ORDER123',
+  conversationId: 'ORDER123',
+  buyer: { email, name, surname, ip, gsmNumber },
+  basketItems: [{ name: 'Item', price: '100.00', quantity: 1 }],
+});
+// init.threeDSHtmlContent auto-submits a Direct API form from the browser
+```
+
+## Refund, Cancel & Status
+
+```typescript
+await payment.paytr.refund({ paymentId: 'ORDER123', price: '50.00', currency: 'TRY', ip: '1.2.3.4' });
+
+// PayTR has no void; cancel() is a full refund. Without price, the paid amount is looked up.
+await payment.paytr.cancel({ paymentId: 'ORDER123', ip: '1.2.3.4' });
+
+const status = await payment.paytr.getPayment('ORDER123'); // /odeme/durum-sorgu
+// 'success', or 'cancelled' when fully refunded
+```
+
+## BIN & Installments
+
+```typescript
+const bin = await payment.paytr.binCheck('552879');
+// bin.bankName, bin.cardFamily (brand), bin.cardAssociation (schema), bin.cardType
+
+const info = await payment.paytr.installmentInfo({ binNumber: '552879', price: '100.00' });
+// Totals use the commission rates defined on your PayTR account (/odeme/taksit-oranlari)
 ```

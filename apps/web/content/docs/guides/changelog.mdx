@@ -3,68 +3,35 @@ title: Changelog
 description: Release history and breaking changes for better-payment.
 ---
 
-## v3.0.0
+<Callout type="warn">
+  The version history was reset. `0.0.1` is the first release of the reworked package. Releases `1.x`–`3.x` had incorrect provider integrations and callback checks that could be bypassed. Do not use them.
+</Callout>
 
-### Breaking Changes
+## 0.0.1
 
-**Class renames** — all `BetterPay*` exports renamed to `BetterPayment*`:
+### Security
 
-| Before | After |
-|--------|-------|
-| `BetterPay` | `BetterPayment` |
-| `BetterPayConfig` | `BetterPaymentConfig` |
-| `BetterPayHandler` | `BetterPaymentHandler` |
-| `BetterPayRequest` | `BetterPaymentRequest` |
-| `BetterPayResponse` | `BetterPaymentResponse` |
-| `BetterPayClient` | `BetterPaymentClient` |
-| `createBetterPayClient` | `createBetterPaymentClient` |
+- **Parampos:** the 3D callback hash is verified only with the GUID from your configuration. Earlier versions read the GUID from the callback payload, which let anyone forge a successful payment.
+- **Parampos / Akbank:** a 3D callback no longer counts as a successful payment on its own. Parampos finalizes with `TP_WMD_Pay`; Akbank uses the 3D_PAY model with an HMAC-signed result. A missing result code is no longer treated as success.
+- **HTTP handler:** secure by default. By default it exposes only callbacks and card queries. Refund, cancel, payment lookup and subscription management require an `authorize` hook.
+- **Retries** only re-send idempotent requests, so a timeout can no longer cause a double charge or double refund.
+- Signatures are compared in constant time.
 
-**Adapters removed** — `better-payment/adapters/next-js` and `better-payment/adapters/node` no longer exist. Use `BetterPaymentHandler` directly.
+### Provider fixes
 
-**PayTR `cancel()` changed** — no longer silently calls `refund()` with amount 0. Returns `FAILURE` with a descriptive error. Use `refund()` with the original amount instead.
+- **PayTR:** requests are signed with `merchant_key`, with `merchant_salt` appended to the signed data. `user_basket` is base64 JSON with TL prices. `merchant_oid` must be alphanumeric. `test_mode` follows sandbox mode. Refund amounts are in TL. Status queries use `/odeme/durum-sorgu`. Notifications are answered with plain `OK`. Secrets are no longer sent in request bodies.
+- **Parampos:** uses `TP_WMD_UCD` / `TP_WMD_Pay`, comma-decimal amounts and the documented hash. Refunds and cancels use `TP_Islem_Iptal_Iade_Kismi2`, status queries `TP_Islem_Sorgulama4` and BIN lookups `BIN_SanalPos`. Made-up installment rates were removed.
+- **Akbank:** rewritten against the Akbank Sanal POS JSON API.
+- **iyzico:** Checkout Form and PWI results report the payment's own status (`paymentStatus`). 3DS completion requires `mdStatus=1`. `retrieveSubscription` uses GET.
 
-### New Features
+### Breaking changes (compared with 3.x)
 
-- 13 new İyzico-specific handler routes (checkout form, PWI, installment, BIN check, subscriptions)
-- `BetterPaymentHandler` extended with full iyzico API surface
-- `requireIyzico()` type guard for iyzico-only routes
-
-### Migration Guide
-
-```typescript
-// Before
-import { BetterPay } from 'better-payment';
-const pay = new BetterPay({ ... });
-
-// After
-import { BetterPayment } from 'better-payment';
-const pay = new BetterPayment({ ... });
-```
-
-```typescript
-// Before (adapter)
-import { createNextHandler } from 'better-payment/adapters/next-js';
-
-// After (manual integration — see Next.js guide)
-import { getBetterPayment } from '@/lib/payment';
-```
-
-## v2.3.0
-
-- Add Parampos (Param) provider with SOAP/XML support
-- Add Akbank provider with OAuth2 authentication
-- Add installment info query for İyzico and PayTR
-
-## v2.0.0
-
-- Add PayTR provider with iframe 3D Secure
-- Multi-provider configuration (`providers` map)
-- `use(ProviderType)` dynamic provider switching
-- `getEnabledProviders()` and `isProviderEnabled()` helpers
-
-## v1.0.0
-
-- Initial release with İyzico support
-- 2D payment, 3D Secure init/complete
-- Refund and cancel
-- TypeScript-first design
+| Area | Before | Now |
+|------|--------|-----|
+| PayTR config | `apiKey`, `secretKey`, `merchantId`, `merchantSalt` | `merchantId`, `merchantKey`, `merchantSalt`, `testMode?` |
+| Akbank config | `merchantId`, `terminalId`, `storeKey`, … | `merchantSafeId`, `terminalSafeId`, `secretKey` |
+| Parampos config | also required `apiKey`/`secretKey` | `clientCode`, `clientUsername`, `clientPassword`, `guid` |
+| `paymentId` (PayTR/Akbank/Parampos) | provider token / transaction GUID | your order id |
+| Timeouts | `failure` | `pending` + `errorCode: 'NETWORK_ERROR'` |
+| Handler | every route public, always HTTP 200 | opt-in routes, `authorize`, 422 on failure |
+| Unsupported currency | silently TRY | error |

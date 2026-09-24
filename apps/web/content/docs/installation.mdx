@@ -8,6 +8,10 @@ description: Install better-payment and set up your environment.
 - Node.js `>= 20.0.0`
 - TypeScript `>= 5.0` (recommended)
 
+<Callout type="info">
+  The server entry point (`better-payment`) uses `node:crypto` and does not run on edge runtimes such as Vercel Edge or Cloudflare Workers. Use the Node.js runtime for your payment routes. `better-payment/client` is browser-safe.
+</Callout>
+
 ## Install
 
 <Tabs items={["npm", "pnpm", "yarn", "bun"]}>
@@ -38,48 +42,45 @@ description: Install better-payment and set up your environment.
 Create a `.env.local` file (or `.env`) with your provider credentials:
 
 ```bash
-# İyzico
+# iyzico
 IYZICO_API_KEY=your-api-key
 IYZICO_SECRET_KEY=your-secret-key
-IYZICO_BASE_URL=https://sandbox-api.iyzipay.com
 
-# PayTR
+# PayTR (Mağaza Paneli > Bilgi)
 PAYTR_MERCHANT_ID=your-merchant-id
 PAYTR_MERCHANT_KEY=your-merchant-key
 PAYTR_MERCHANT_SALT=your-merchant-salt
 
-# Akbank
-AKBANK_CLIENT_ID=your-client-id
-AKBANK_CLIENT_SECRET=your-client-secret
+# Akbank Sanal POS
 AKBANK_MERCHANT_SAFE_ID=your-merchant-safe-id
+AKBANK_TERMINAL_SAFE_ID=your-terminal-safe-id
+AKBANK_SECRET_KEY=your-secret-key
 
 # Parampos
 PARAMPOS_CLIENT_CODE=your-client-code
 PARAMPOS_CLIENT_USERNAME=your-username
 PARAMPOS_CLIENT_PASSWORD=your-password
+PARAMPOS_GUID=your-guid
 ```
 
 <Callout type="warn">
-  Never commit API keys to version control. Use environment variables and ensure `.env` is in your `.gitignore`.
+  Never commit credentials to version control. Keep them in environment variables and make sure `.env` is in your `.gitignore`.
 </Callout>
 
 ## Verify Installation
 
 ```typescript
-import { BetterPayment } from 'better-payment';
+import { BetterPayment, VERSION } from 'better-payment';
 
 const payment = new BetterPayment({
+  mode: 'sandbox',
   providers: {
     iyzico: {
       enabled: true,
-      config: {
-        apiKey: 'test',
-        secretKey: 'test',
-        baseUrl: 'https://sandbox-api.iyzipay.com',
-      },
+      config: { apiKey: 'test', secretKey: 'test' },
     },
   },
 });
 
-console.log(payment.getEnabledProviders()); // ['iyzico']
+console.log(VERSION, payment.getEnabledProviders()); // '0.0.1' ['iyzico']
 ```

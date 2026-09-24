@@ -3,59 +3,57 @@ title: Type Reference
 description: TypeScript types exported from better-payment.
 ---
 
-## Core Types
+## Requests
 
 ### PaymentRequest
 
 ```typescript
 interface PaymentRequest {
-  price: string;
-  paidPrice: string;
-  currency: Currency;
-  installment?: number;
+  price: string;            // basket total
+  paidPrice: string;        // amount charged (incl. installment commission)
+  currency: Currency | string;
+  basketId: string;
   paymentCard: PaymentCard;
   buyer: Buyer;
   shippingAddress: Address;
   billingAddress: Address;
   basketItems: BasketItem[];
-  conversationId?: string;
+  callbackUrl?: string;
+  conversationId?: string;  // your order id (generated for PayTR/Akbank/Parampos when omitted)
+  installment?: number;     // 1 = single payment
+}
+
+interface ThreeDSPaymentRequest extends PaymentRequest {
+  callbackUrl: string;
 }
 ```
 
-### PaymentCard
+### PaymentCard / Buyer / Address / BasketItem
 
 ```typescript
 interface PaymentCard {
   cardHolderName: string;
   cardNumber: string;
   expireMonth: string;
-  expireYear: string;
+  expireYear: string;       // 'YY' or 'YYYY'
   cvc: string;
-  registerCard?: number;
+  registerCard?: boolean;
 }
-```
 
-### Buyer
-
-```typescript
 interface Buyer {
   id: string;
   name: string;
   surname: string;
   email: string;
+  gsmNumber: string;
   identityNumber: string;
   registrationAddress: string;
   city: string;
   country: string;
   ip: string;
   zipCode?: string;
-  mobilePhoneNumber?: string;
 }
-```
 
-### Address
-
-```typescript
 interface Address {
   contactName: string;
   city: string;
@@ -63,42 +61,38 @@ interface Address {
   address: string;
   zipCode?: string;
 }
-```
 
-### BasketItem
-
-```typescript
 interface BasketItem {
   id: string;
   name: string;
   category1: string;
   category2?: string;
-  itemType: BasketItemType;
+  itemType: BasketItemType | string;
   price: string;
 }
 ```
 
-## Enums
-
-### Currency
+### RefundRequest / CancelRequest
 
 ```typescript
-enum Currency {
-  TRY = 'TRY',
-  USD = 'USD',
-  EUR = 'EUR',
-  GBP = 'GBP',
+interface RefundRequest {
+  paymentId: string;  // iyzico: paymentTransactionId; others: order id
+  price: string;
+  currency: Currency | string;
+  ip: string;
+  conversationId?: string;
+}
+
+interface CancelRequest {
+  paymentId: string;  // iyzico: paymentId; others: order id
+  ip: string;
+  conversationId?: string;
+  price?: string;     // full amount (PayTR/Parampos look it up when omitted)
+  currency?: Currency | string;
 }
 ```
 
-### BasketItemType
-
-```typescript
-enum BasketItemType {
-  PHYSICAL = 'PHYSICAL',
-  VIRTUAL = 'VIRTUAL',
-}
-```
+## Responses
 
 ### PaymentStatus
 
@@ -106,22 +100,10 @@ enum BasketItemType {
 enum PaymentStatus {
   SUCCESS = 'success',
   FAILURE = 'failure',
-  PENDING = 'pending',
+  PENDING = 'pending',     // waiting for the customer, or outcome unknown (NETWORK_ERROR)
+  CANCELLED = 'cancelled', // voided / fully refunded (status queries)
 }
 ```
-
-### ProviderType
-
-```typescript
-enum ProviderType {
-  IYZICO = 'iyzico',
-  PAYTR = 'paytr',
-  AKBANK = 'akbank',
-  PARAMPOS = 'parampos',
-}
-```
-
-## Response Types
 
 ### PaymentResponse
 
@@ -129,10 +111,11 @@ enum ProviderType {
 interface PaymentResponse {
   status: PaymentStatus;
   paymentId?: string;
-  errorMessage?: string;
-  errorCode?: string;
   conversationId?: string;
-  rawResponse?: unknown;
+  errorCode?: string;       // provider code, 'NETWORK_ERROR', 'INVALID_HASH', 'MD_STATUS_x', ...
+  errorMessage?: string;
+  errorGroup?: string;
+  rawResponse?: any;
 }
 ```
 
@@ -140,12 +123,14 @@ interface PaymentResponse {
 
 ```typescript
 interface ThreeDSInitResponse {
-  status: PaymentStatus;
-  htmlContent?: string;     // İyzico — embed in page
-  redirectUrl?: string;     // some providers
-  token?: string;           // PayTR — use in iframe URL
+  status: PaymentStatus;        // 'pending' when the customer must continue
+  threeDSHtmlContent?: string;  // HTML to render (3D form, PayTR iframe page, auto-submit form)
+  redirectUrl?: string;         // PayTR iframe URL
+  paymentId?: string;
+  conversationId?: string;
+  errorCode?: string;
   errorMessage?: string;
-  rawResponse?: unknown;
+  rawResponse?: any;
 }
 ```
 
@@ -154,14 +139,51 @@ interface ThreeDSInitResponse {
 ```typescript
 interface RefundResponse {
   status: PaymentStatus;
-  refundedAmount?: string;
+  refundId?: string;
+  conversationId?: string;
+  errorCode?: string;
   errorMessage?: string;
-  rawResponse?: unknown;
+  rawResponse?: any;
 }
 
 interface CancelResponse {
   status: PaymentStatus;
+  transactionId?: string;
+  conversationId?: string;
+  errorCode?: string;
   errorMessage?: string;
   rawResponse?: unknown;
 }
 ```
+
+## Enums
+
+```typescript
+enum Currency { TRY = 'TRY', USD = 'USD', EUR = 'EUR', GBP = 'GBP' }
+enum BasketItemType { PHYSICAL = 'PHYSICAL', VIRTUAL = 'VIRTUAL' }
+enum ProviderType { IYZICO = 'iyzico', PAYTR = 'paytr', AKBANK = 'akbank', PARAMPOS = 'parampos' }
+```
+
+## Provider configs
+
+```typescript
+interface IyzicoConfig   { apiKey: string; secretKey: string; baseUrl?: string; locale?: string }
+interface PayTRConfig    { merchantId: string; merchantKey: string; merchantSalt: string; testMode?: boolean; timeoutLimit?: number }
+interface AkbankConfig   { merchantSafeId: string; terminalSafeId: string; secretKey: string; subMerchantId?: string; testMode?: boolean; gateway3dUrl?: string }
+interface ParamposConfig { clientCode: string; clientUsername: string; clientPassword: string; guid: string }
+```
+
+All provider configs also accept `baseUrl`, `locale`, `logger` and `retry`.
+
+## Errors
+
+```typescript
+class BetterPaymentError extends Error { code: string; provider?: string }
+class ConfigurationError extends BetterPaymentError {}   // missing/invalid config
+class ProviderNotEnabledError extends BetterPaymentError {}
+class ValidationError extends BetterPaymentError {}
+class PaymentFailedError extends BetterPaymentError {}
+```
+
+Payment operations do not throw for provider declines. They resolve with
+`status: 'failure'`. `binCheck()` throws when the lookup fails or is not supported.
