@@ -32,9 +32,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: '22'
           cache: 'pnpm'
+
+      # Trusted publishing (OIDC) needs npm >= 11.5.1; no NPM_TOKEN is used
+      - name: Update npm
+        run: npm install -g npm@^11.5.1
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -53,15 +56,13 @@ jobs:
       - name: Publish to NPM
         if: ${{ inputs.dry_run == false || inputs.dry_run == 'false' }}
         working-directory: packages/better-payment
-        run: pnpm publish --access public --no-git-checks --tag "$NPM_TAG"
+        run: npm publish --access public --tag "$NPM_TAG"
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TAG: ${{ inputs.npm_tag }}
 
       - name: Dry run publish
         if: ${{ inputs.dry_run == true || inputs.dry_run == 'true' }}
         working-directory: packages/better-payment
-        run: pnpm publish --access public --no-git-checks --tag "$NPM_TAG" --dry-run
+        run: npm publish --access public --tag "$NPM_TAG" --dry-run
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TAG: ${{ inputs.npm_tag }}
