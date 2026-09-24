@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { VERSION } from '../../version';
 
 /**
  * İyzico V2 authorization header oluşturur
@@ -76,7 +77,7 @@ export function createIyzicoHeaders(
     'Content-Type': 'application/json',
     Authorization: authStringV2,
     'x-iyzi-rnd': randomString,
-    'x-iyzi-client-version': 'better-pay-1.0.0',
+    'x-iyzi-client-version': `better-payment-${VERSION}`,
   };
 
   // V1 fallback header ekle (iyzico bazen bunu da kontrol eder)
