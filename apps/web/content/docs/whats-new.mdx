@@ -1,0 +1,181 @@
+---
+title: What's New in 0.0.1
+description: Why the version history was reset, how the library works now, and how to migrate from 3.x.
+---
+
+**better-payment 0.0.1 is a fresh start.** We reset the version number on
+purpose. It is the first release of a library that was rebuilt around one rule:
+**a payment is successful only when the provider confirms it, and every
+callback is verified with your own credentials.**
+
+<Callout type="warn">
+  Releases `1.x`, `2.x` and `3.x` are **deprecated**. They contained provider integrations that did not match the providers' real APIs, and callback checks that could be bypassed. If you use one of them, upgrade to `0.0.1`.
+</Callout>
+
+## Why go back to 0.0.1?
+
+Normally a big release would be `4.0.0`. We did not do that, because a higher
+number would suggest that `4.0.0` builds on `3.x`. It doesn't. A review of the
+package found that the old releases could not be trusted:
+
+| Area | Problem in 1.x–3.x |
+|------|---------------------|
+| Parampos | The 3D callback hash was checked with a GUID **taken from the callback itself**. Anyone could forge a "successful" payment. |
+| Parampos / Akbank | A bank callback was treated as a completed payment. The payment was never finalized with the bank, and Akbank defaulted to "success" when the result code was missing. |
+| PayTR | Signatures used the wrong key. Real notifications were rejected, and `test_mode` never turned on in sandbox. |
+| Akbank | Requests went to endpoints that do not exist on Akbank's API. |
+| iyzico | Checkout Form reported `success` when the API call succeeded, even if the **payment** failed. |
+| HTTP handler | Every route was public, including refunds, cancellations and subscription management. The amount came from the browser. |
+| Retries | A timed-out payment could be sent again and charge the customer twice. |
+
+Fixing these required breaking changes to configs, IDs, statuses and the
+handler. Instead of adding one more major version on top of those releases, we
+started the version history again. **`0.0.1` is the baseline; everything
+before it is legacy.**
+
+<Callout type="info">
+  Because `0.0.1` is lower than `3.0.1`, a range like `"better-payment": "^3.0.1"` will **never** pick up the new version. Upgrade explicitly: `npm install better-payment@latest`.
+</Callout>
+
+## How the new system works
+
+### 1. The provider decides, not the callback
+
+Browser callbacks and 3D Secure returns are only claims. The library checks
+each one before it trusts it:
+
+| Provider | What happens after 3D Secure |
+|----------|------------------------------|
+| iyzico | Requires `status=success` and `mdStatus=1`, then authorizes with iyzico. |
+| Parampos | Verifies `islemHash` with **your** GUID, requires `mdStatus=1`, then finalizes with `TP_WMD_Pay`. Only a returned `Dekont_ID` means success. |
+| Akbank | Verifies the HMAC-SHA512 signature, which must cover the result code, the order id and your terminal. Only `VPS-0000` means success. |
+| PayTR | Verifies the server-to-server notification signed with your `merchant_key`. The browser redirect never carries the result. |
+
+A forged, tampered or failed callback always returns `status: 'failure'`.
+
+### 2. Four clear statuses
+
+| `status` | Meaning | What you do |
+|----------|---------|-------------|
+| `success` | The provider confirmed it | Fulfil the order |
+| `failure` | The provider rejected it | Show `errorMessage`, let the customer retry |
+| `pending` | Waiting for the customer (3DS, bank transfer) **or** the outcome is unknown | See below |
+| `cancelled` | Voided or fully refunded (status queries) | Update the order |
+
+### 3. Unknown is not failure
+
+If a payment request times out, the bank may still have charged the card.
+Such requests now return `status: 'pending'` with `errorCode: 'NETWORK_ERROR'`
+instead of `failure`. Payment, refund and cancel requests are **never retried
+automatically**; only read-only queries are.
+
+```typescript
+const result = await payment.paytr.createPayment(request);
+
+if (result.errorCode === 'NETWORK_ERROR') {
+  const status = await payment.paytr.getPayment(result.paymentId!);
+  // decide based on the real outcome
+}
+```
+
+### 4. Your order id is the payment id
+
+For PayTR, Parampos and Akbank, `paymentId` is **your order id**: the
+`conversationId` you send, or a generated alphanumeric id if you don't send one.
+Store it with your order. `refund()`, `cancel()` and `getPayment()` use it.
+
+### 5. A handler that is closed by default
+
+The HTTP handler exposes only what a payment flow needs from the outside:
+provider callbacks and card queries. Everything else must be enabled by you,
+and sensitive actions also need an `authorize` hook:
+
+```typescript
+handler: {
+  allowedActions: ['payment/init-3ds', 'payment/complete-3ds', 'callback', 'refund'],
+  authorize: async (ctx) => /* your auth */ true,
+  transformRequest: async (ctx) => buildRequestFromOrder(ctx.body.orderId), // amounts from your DB
+  onCallback: async (result) => updateOrder(result.paymentId, result.status),
+}
+```
+
+See [BetterPaymentHandler](/docs/api/handler) for the details.
+
+### 6. One config per provider
+
+Each provider takes only the credentials it actually uses. Missing values fail
+right away with a `ConfigurationError` that lists the missing fields. Setting
+`mode: 'sandbox'` switches to the sandbox URLs and the provider test modes.
+
+## Migrating from 3.x
+
+### Step 1: Install
+
+```bash
+npm install better-payment@latest
+```
+
+Check that `package.json` now shows `"better-payment": "^0.0.1"`.
+
+### Step 2: Update provider configs
+
+```typescript
+// 3.x
+paytr: { enabled: true, config: { apiKey: KEY, secretKey: KEY, merchantId, merchantSalt } }
+akbank: { enabled: true, config: { apiKey, secretKey, merchantId, terminalId, storeKey } }
+parampos: { enabled: true, config: { apiKey: GUID, secretKey: PASS, clientCode, clientUsername, clientPassword, guid } }
+
+// 0.0.1
+paytr: { enabled: true, config: { merchantId, merchantKey, merchantSalt } }
+akbank: { enabled: true, config: { merchantSafeId, terminalSafeId, secretKey } }
+parampos: { enabled: true, config: { clientCode, clientUsername, clientPassword, guid } }
+```
+
+iyzico is unchanged: `{ apiKey, secretKey }`. Add `mode: 'sandbox'` while you test.
+
+<Callout type="info">
+  Akbank now uses the **Sanal POS JSON API**. Get `merchantSafeId`, `terminalSafeId` and the secret key from the Akbank Sanal POS panel. The old `storeKey` values do not work with it.
+</Callout>
+
+### Step 3: Store the order id
+
+Send your order id as `conversationId` (letters and digits only for PayTR), and
+use the returned `paymentId` for `refund`, `cancel` and `getPayment`.
+
+### Step 4: Handle `pending` and `NETWORK_ERROR`
+
+Anywhere you checked `status === 'failure'` after a timeout, check the real
+outcome with `getPayment()` before you tell the customer the payment failed.
+
+### Step 5: Configure the handler
+
+If you use `payment.handler`, list the actions you need in `allowedActions`.
+Add `authorize` if you enable refunds, cancellations, payment lookups or
+subscription management. Set `transformRequest` so that amounts come from your
+server, not from the browser.
+
+### Step 6: Point callbacks at the new routes
+
+| Provider | URL |
+|----------|-----|
+| iyzico / Parampos / Akbank | `callbackUrl`: `https://yoursite.com/api/pay/<provider>/payment/complete-3ds` |
+| PayTR | Notification URL in the PayTR panel: `https://yoursite.com/api/pay/paytr/callback` (answers `OK`) |
+
+### Step 7: Test in sandbox
+
+Run one successful payment, one declined payment, one refund and one status
+query per provider with `mode: 'sandbox'` before you go live.
+
+## FAQ
+
+**Will 3.x keep working?**
+The old releases stay on npm, but they are deprecated and will not receive fixes.
+Several of their provider flows never worked against the real APIs.
+
+**Why not 4.0.0?**
+`4.0.0` would suggest an upgrade path from `3.x`. `0.0.1` makes it clear that
+this is a new baseline, and future releases follow semantic versioning from here.
+
+**Is the API stable?**
+`0.x` releases can still change the API. Breaking changes are always listed in
+the [changelog](/docs/guides/changelog), with migration notes.

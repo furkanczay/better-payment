@@ -95,9 +95,9 @@ export default function Banks() {
 
               {/* Description */}
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Direct integration with Akbank&apos;s Virtual POS API. OAuth2 token authentication,
-                HMAC-signed requests, and full support for both 2D and 3D Secure payment flows —
-                no intermediary gateway.
+                Direct integration with Akbank&apos;s Sanal POS JSON API. HMAC-SHA512 signed
+                requests, signature-verified 3D Secure (3D_PAY) callbacks, refunds, voids and
+                order status queries — no intermediary gateway.
               </p>
 
               {/* Feature highlights */}

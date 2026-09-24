@@ -19,7 +19,7 @@ export const docsNav = [
     group: "Configuration",
     items: [
       {
-        label: "BetterPay Options",
+        label: "BetterPayment Options",
         href: "/docs#configuration",
         id: "configuration",
       },

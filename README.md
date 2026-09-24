@@ -8,11 +8,38 @@ One API for Turkish payment providers — iyzico, PayTR, Parampos and Akbank.
 [![license](https://img.shields.io/npm/l/better-payment)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)](https://www.typescriptlang.org/)
 
-> **0.0.1:** version history was reset. Releases `1.x`–`3.x` contained incorrect
-> provider integrations and bypassable callback checks — do not use them.
-> See [CHANGELOG](./packages/better-payment/CHANGELOG.md).
+> **0.0.1 is a fresh start.** The version history was reset on purpose.
+> Releases `1.x`–`3.x` are deprecated. See [What's new in 0.0.1](#whats-new-in-001).
 
 ---
+
+## What's new in 0.0.1
+
+`0.0.1` is not a patch on top of `3.x`. It is the first release of a rebuilt
+library. A review found that the old releases had provider integrations that
+did not match the providers' APIs, and callback checks that could be bypassed
+(for example, forging a Parampos "success" callback). Fixing that required
+breaking changes. Rather than stacking another major version on top of those
+releases, we reset the version history. `0.0.1` is the new baseline.
+
+What changed:
+
+- **Callbacks are verified, not trusted.** Every 3D Secure callback and PayTR
+  notification is checked with your own credentials. Parampos payments are
+  finalized with the bank before they count as successful.
+- **Real provider APIs.** PayTR signing, Parampos `TP_WMD_*`, the Akbank Sanal POS
+  JSON API and iyzico payment statuses now match the official specifications.
+- **Clear statuses.** `success`, `failure`, `pending` and `cancelled`. A timeout is
+  `pending` with `NETWORK_ERROR` (the outcome is unknown), never a silent failure.
+  Payments are never retried automatically.
+- **Your order id is the payment id** for PayTR, Parampos and Akbank.
+- **Secure-by-default HTTP handler:** routes are opt-in, sensitive actions require
+  `authorize`, and amounts can be set on the server.
+- **One config per provider**, validated at startup.
+
+Upgrading from `3.x`: `npm install better-payment@latest` (a `^3` range will never
+resolve to `0.0.1`), then follow the
+[migration guide](https://better-payment.czaylabs.com/docs/whats-new).
 
 ## Install
 
