@@ -1,6 +1,6 @@
 import type { BetterPayment } from './BetterPayment';
 import { ProviderType } from './BetterPaymentConfig';
-import { ConfigurationError } from './errors';
+import { BetterPaymentError, ConfigurationError } from './errors';
 import { VERSION } from '../version';
 import { PaymentStatus } from '../types';
 import type { PaymentResponse } from '../types';
@@ -57,6 +57,10 @@ export type HandlerAction =
   | 'callback'
   | 'refund'
   | 'cancel'
+  | 'authorize'
+  | 'authorize/init-3ds'
+  | 'capture'
+  | 'void'
   | 'checkout/init'
   | 'checkout/retrieve'
   | 'pwi/init'
@@ -80,6 +84,10 @@ export const ALL_HANDLER_ACTIONS: HandlerAction[] = [
   'callback',
   'refund',
   'cancel',
+  'authorize',
+  'authorize/init-3ds',
+  'capture',
+  'void',
   'checkout/init',
   'checkout/retrieve',
   'pwi/init',
@@ -113,6 +121,8 @@ export const DEFAULT_HANDLER_ACTIONS: HandlerAction[] = [
 export const PRIVILEGED_HANDLER_ACTIONS: HandlerAction[] = [
   'refund',
   'cancel',
+  'capture',
+  'void',
   'payment/get',
   'subscription/cancel',
   'subscription/upgrade',
@@ -205,6 +215,10 @@ export const IDEMPOTENT_KEY_ACTIONS: HandlerAction[] = [
   'payment/token',
   'refund',
   'cancel',
+  'authorize',
+  'authorize/init-3ds',
+  'capture',
+  'void',
   'checkout/init',
   'pwi/init',
   'subscription/initialize',
@@ -278,6 +292,8 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
  * - POST /:provider/callback               -> completeThreeDSPayment() (PayTR: responds "OK")
  * - GET  /:provider/payment/:id            -> getPayment()
  * - POST /:provider/refund | cancel        -> refund() / cancel()
+ * - POST /:provider/authorize[/init-3ds]    -> authorize() / initThreeDSAuthorize()
+ * - POST /:provider/capture | void         -> capture() / voidAuthorization()
  * - POST /:provider/installment | bin-check
  * - iyzico only: checkout/*, pwi/*, subscription/*
  * - GET  /health
@@ -382,6 +398,9 @@ export class BetterPaymentHandler {
     } catch (error: unknown) {
       if (error instanceof HttpError) {
         return this.errorResponse(error.status, error.message);
+      }
+      if (error instanceof BetterPaymentError && error.code === 'NOT_SUPPORTED') {
+        return this.errorResponse(400, error.message);
       }
       const fallback = 'Internal server error';
       return this.errorResponse(
@@ -518,6 +537,22 @@ export class BetterPaymentHandler {
       case 'cancel':
         this.requireMethod(ctx, 'POST');
         return this.resultResponse(await provider.cancel(this.requireBody(ctx)));
+
+      case 'authorize':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(await provider.authorize(this.requireBody(ctx)));
+
+      case 'authorize/init-3ds':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(await provider.initThreeDSAuthorize(this.requireBody(ctx)));
+
+      case 'capture':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(await provider.capture(this.requireBody(ctx)));
+
+      case 'void':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(await provider.voidAuthorization(this.requireBody(ctx)));
 
       case 'installment':
         this.requireMethod(ctx, 'POST');

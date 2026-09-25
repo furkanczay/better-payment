@@ -24,6 +24,8 @@ import {
   CancelRequest,
   CancelResponse,
   BinCheckResponse,
+  CaptureRequest,
+  VoidAuthorizationRequest,
   InstallmentDetail,
   InstallmentInfoRequest,
   InstallmentInfoResponse,
@@ -32,6 +34,7 @@ import {
 import { ParamposResult, Parampos3DSCallbackData, ParamposOrderStatus } from './types';
 import {
   generateParamposPaymentHash,
+  generateParamposPreAuthHash,
   verifyParampos3DSCallback,
   formatParamposAmount,
   formatParamposRefundAmount,
@@ -204,6 +207,49 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
       Data5: '',
     };
   }
+  /**
+   * TP_Islem_Odeme_OnProv_WMD fields (pre-authorization), as Param expects them:
+   * no order description or Data fields, and the URLs only for 3D Secure.
+   */
+  private buildPreAuthFields(
+    request: PaymentRequest,
+    orderId: string,
+    securityType: 'NS' | '3D',
+    installment: number,
+    callbackUrl?: string
+  ): Record<string, XmlValue> {
+    const transactionAmount = formatParamposAmount(request.price);
+    const totalAmount = formatParamposAmount(request.paidPrice ?? request.price);
+    const urls =
+      securityType === '3D' ? { Basarili_URL: callbackUrl ?? '', Hata_URL: callbackUrl ?? '' } : {};
+
+    return {
+      ...this.credentials,
+      Islem_Guvenlik_Tip: securityType,
+      Islem_ID: orderId,
+      IPAdr: request.buyer.ip,
+      Siparis_ID: orderId,
+      Islem_Tutar: transactionAmount,
+      Toplam_Tutar: totalAmount,
+      ...urls,
+      Taksit: installment,
+      KK_Sahibi: request.paymentCard.cardHolderName,
+      KK_No: request.paymentCard.cardNumber,
+      KK_SK_Ay: formatParamposExpiryMonth(request.paymentCard.expireMonth),
+      KK_SK_Yil: formatParamposExpiryYear(request.paymentCard.expireYear),
+      KK_CVC: request.paymentCard.cvc,
+      KK_Sahibi_GSM: formatParamposGsm(request.buyer?.gsmNumber),
+      Islem_Hash: generateParamposPreAuthHash(
+        this.config.clientCode,
+        this.config.guid,
+        transactionAmount,
+        totalAmount,
+        orderId,
+        urls.Hata_URL,
+        urls.Basarili_URL
+      ),
+    };
+  }
 
   /**
    * TP_WMD_UCD only supports TRY. Foreign currency payments require a different
@@ -300,6 +346,140 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
       return this.failure<ThreeDSInitResponse>(error, '3D Secure initialization failed', {
         paymentId: orderId,
         conversationId: orderId,
+      });
+    }
+  }
+  /**
+   * Pre-authorization without 3D Secure (TP_Islem_Odeme_OnProv_WMD, NS).
+   * Blocks the amount; charge it with capture() or release it with voidAuthorization().
+   */
+  async authorize(request: PaymentRequest & { installment?: number }): Promise<PaymentResponse> {
+    const orderId = request.conversationId || generateOrderId();
+    try {
+      this.validatePayment(request, PARAMPOS_CARD_RULES);
+      this.assertTry(request.currency);
+      const installment = Math.max(1, request.installment ?? 1);
+      const fields = this.buildPreAuthFields(request, orderId, 'NS', installment);
+      const result = await this.sendSoapRequest('TP_Islem_Odeme_OnProv_WMD', fields);
+
+      const approved = isParamposSuccess(result.Sonuc) && Number(result.Islem_ID) > 0;
+
+      return this.withErrorCode({
+        status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        paymentId: orderId,
+        conversationId: orderId,
+        errorCode: approved ? undefined : result.Sonuc,
+        errorMessage: approved ? undefined : result.Sonuc_Str || result.Bank_HostMsg,
+        rawResponse: result,
+      });
+    } catch (error) {
+      return this.failure<PaymentResponse>(error, 'Pre-authorization failed', {
+        paymentId: orderId,
+        conversationId: orderId,
+      });
+    }
+  }
+
+  /**
+   * 3D Secure pre-authorization (TP_Islem_Odeme_OnProv_WMD, 3D). The bank posts
+   * to callbackUrl; completeThreeDSPayment() verifies it and finalizes with TP_WMD_Pay.
+   */
+  async initThreeDSAuthorize(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
+    const orderId = request.conversationId || generateOrderId();
+    try {
+      this.validatePayment(request, PARAMPOS_CARD_RULES);
+      this.assertTry(request.currency);
+      if (!request.callbackUrl) {
+        throw new ValidationError('callbackUrl is required for 3D Secure payments');
+      }
+      const installment = Math.max(1, request.installment ?? 1);
+      const fields = this.buildPreAuthFields(
+        request,
+        orderId,
+        '3D',
+        installment,
+        request.callbackUrl
+      );
+      const result = await this.sendSoapRequest('TP_Islem_Odeme_OnProv_WMD', fields);
+
+      if (!isParamposSuccess(result.Sonuc) || !result.UCD_HTML || result.UCD_HTML === 'NONSECURE') {
+        return this.withErrorCode({
+          status: PaymentStatus.FAILURE,
+          paymentId: orderId,
+          conversationId: orderId,
+          errorCode: result.Sonuc,
+          errorMessage: result.Sonuc_Str || '3D Secure form could not be created',
+          rawResponse: result,
+        });
+      }
+
+      return this.withErrorCode({
+        status: PaymentStatus.PENDING,
+        threeDSHtmlContent: result.UCD_HTML,
+        paymentId: orderId,
+        conversationId: orderId,
+        rawResponse: result,
+      });
+    } catch (error) {
+      return this.failure<ThreeDSInitResponse>(error, '3D Secure pre-authorization failed', {
+        paymentId: orderId,
+        conversationId: orderId,
+      });
+    }
+  }
+
+  /**
+   * Capture of a pre-authorization (TP_Islem_Odeme_OnProv_Kapa). `amount` may be
+   * lower than the authorized amount (partial capture).
+   */
+  async capture(request: CaptureRequest): Promise<PaymentResponse> {
+    try {
+      this.validateCapture(request);
+      this.assertTry(request.currency);
+      const result = await this.sendSoapRequest('TP_Islem_Odeme_OnProv_Kapa', {
+        ...this.credentials,
+        Prov_ID: '',
+        Prov_Tutar: formatParamposAmount(request.amount),
+        Siparis_ID: request.paymentId,
+      });
+      const approved = isParamposSuccess(result.Sonuc);
+
+      return this.withErrorCode({
+        status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        paymentId: request.paymentId,
+        conversationId: request.conversationId ?? request.paymentId,
+        errorCode: approved ? undefined : result.Sonuc,
+        errorMessage: approved ? undefined : result.Sonuc_Str || result.Bank_HostMsg,
+        rawResponse: result,
+      });
+    } catch (error) {
+      return this.failure<PaymentResponse>(error, 'Capture failed', {
+        paymentId: request.paymentId,
+        conversationId: request.conversationId ?? request.paymentId,
+      });
+    }
+  }
+
+  /** Releases a pre-authorization (TP_Islem_Iptal_OnProv); nothing is charged */
+  async voidAuthorization(request: VoidAuthorizationRequest): Promise<CancelResponse> {
+    try {
+      const result = await this.sendSoapRequest('TP_Islem_Iptal_OnProv', {
+        ...this.credentials,
+        Prov_ID: '',
+        Siparis_ID: request.paymentId,
+      });
+      const approved = isParamposSuccess(result.Sonuc);
+
+      return this.withErrorCode({
+        status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        conversationId: request.conversationId ?? request.paymentId,
+        errorCode: approved ? undefined : result.Sonuc,
+        errorMessage: approved ? undefined : result.Sonuc_Str,
+        rawResponse: result,
+      });
+    } catch (error) {
+      return this.failure<CancelResponse>(error, 'Void failed', {
+        conversationId: request.conversationId ?? request.paymentId,
       });
     }
   }

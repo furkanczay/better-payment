@@ -19,6 +19,8 @@ import {
   RefundResponse,
   CancelRequest,
   CancelResponse,
+  CaptureRequest,
+  VoidAuthorizationRequest,
 } from '../types';
 import { BetterPaymentHandler, BetterPaymentHandlerOptions } from './BetterPaymentHandler';
 
@@ -240,6 +242,26 @@ export class BetterPayment {
   /**
    * Default provider ile ödeme sorgula
    */
+  /** Pre-authorization with the default provider */
+  async authorize(request: PaymentRequest): Promise<PaymentResponse> {
+    return this.getDefaultProvider().authorize(request);
+  }
+
+  /** 3D Secure pre-authorization with the default provider */
+  async initThreeDSAuthorize(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
+    return this.getDefaultProvider().initThreeDSAuthorize(request);
+  }
+
+  /** Captures a pre-authorization with the default provider */
+  async capture(request: CaptureRequest): Promise<PaymentResponse> {
+    return this.getDefaultProvider().capture(request);
+  }
+
+  /** Voids a pre-authorization with the default provider */
+  async voidAuthorization(request: VoidAuthorizationRequest): Promise<CancelResponse> {
+    return this.getDefaultProvider().voidAuthorization(request);
+  }
+
   async getPayment(paymentId: string): Promise<PaymentResponse> {
     return this.getDefaultProvider().getPayment(paymentId);
   }

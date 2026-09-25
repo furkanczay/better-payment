@@ -16,6 +16,8 @@ import {
   RefundResponse,
   CancelRequest,
   CancelResponse,
+  CaptureRequest,
+  VoidAuthorizationRequest,
   PaymentStatus,
   BinCheckResponse,
   InstallmentInfoRequest,
@@ -51,6 +53,9 @@ import type {
   PayTRStatusResponse,
   PayTRInstallmentRatesResponse,
 } from './types';
+
+const PAYTR_PREAUTH_NOTE =
+  'PayTR pre-authorization is not implemented yet (https://github.com/furkanczay/better-payment/issues/60)';
 
 /** Fields PayTR requires for card and iFrame payments */
 const PAYTR_ORDER_RULES: PaymentValidationRules = {
@@ -541,6 +546,26 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
   /**
    * Payment status query (/odeme/durum-sorgu). `paymentId` is the merchant_oid.
    */
+  /**
+   * Pre-authorization is not implemented for PayTR yet (see
+   * https://github.com/furkanczay/better-payment/issues/60).
+   */
+  async authorize(_request: PaymentRequest): Promise<PaymentResponse> {
+    throw this.notSupported('Pre-authorization', PAYTR_PREAUTH_NOTE);
+  }
+
+  async initThreeDSAuthorize(_request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
+    throw this.notSupported('Pre-authorization', PAYTR_PREAUTH_NOTE);
+  }
+
+  async capture(_request: CaptureRequest): Promise<PaymentResponse> {
+    throw this.notSupported('Capture', PAYTR_PREAUTH_NOTE);
+  }
+
+  async voidAuthorization(_request: VoidAuthorizationRequest): Promise<CancelResponse> {
+    throw this.notSupported('Voiding a pre-authorization', PAYTR_PREAUTH_NOTE);
+  }
+
   async getPayment(paymentId: string): Promise<PaymentResponse> {
     try {
       const data = await this.queryStatus(paymentId);

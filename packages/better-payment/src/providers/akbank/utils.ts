@@ -10,8 +10,11 @@ export const AKBANK_TXN_CODES = {
   SALE: '1000',
   REFUND: '1002',
   VOID: '1003',
+  PRE_AUTH: '1004',
+  POST_AUTH: '1005',
   ORDER_HISTORY: '1010',
   SECURE_SALE: '3000',
+  SECURE_PRE_AUTH: '3004',
 } as const;
 
 export const AKBANK_3D_GATEWAYS = {

@@ -127,6 +127,27 @@ export interface RefundRequest {
 }
 
 /**
+ * Capture of a pre-authorization (post-auth): charges `amount` of the blocked
+ * amount. A smaller amount is a partial capture where the provider allows it.
+ */
+export interface CaptureRequest {
+  /** The paymentId returned by authorize() / the 3D Secure completion */
+  paymentId: string;
+  /** Amount to charge, at most the authorized amount */
+  amount: string;
+  currency?: Currency | string;
+  ip: string;
+  conversationId?: string;
+}
+
+/** Releases a pre-authorization without charging it */
+export interface VoidAuthorizationRequest {
+  paymentId: string;
+  ip: string;
+  conversationId?: string;
+}
+
+/**
  * İade yanıtı
  */
 export interface RefundResponse {

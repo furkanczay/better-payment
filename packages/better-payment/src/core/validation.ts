@@ -198,3 +198,20 @@ export function validateRefundAmount(price: unknown, provider?: string): void {
   v.amount(price, 'price');
   v.assert(provider);
 }
+
+/** Validates a capture: a payment id and a positive amount */
+export function validateCaptureRequest(
+  request: { paymentId?: unknown; amount?: unknown },
+  provider?: string
+): void {
+  const v = new RequestValidator();
+  if (!request || typeof request !== 'object') {
+    v.add('request', 'is required').assert(provider);
+    return;
+  }
+  if (typeof request.paymentId !== 'string' || request.paymentId.trim() === '') {
+    v.add('paymentId', 'is required');
+  }
+  v.amount(request.amount, 'amount');
+  v.assert(provider);
+}

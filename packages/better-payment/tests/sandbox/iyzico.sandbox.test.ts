@@ -80,6 +80,46 @@ describe.skipIf(!env)('iyzico sandbox', () => {
     expect(cancel.status, describeResult(cancel)).toBe(PaymentStatus.SUCCESS);
   });
 
+  it('pre-authorizes and captures part of the amount', async () => {
+    const auth = await withSandboxRetry(() =>
+      iyzico.authorize(paymentRequest(card, { conversationId: orderId('IYZ') }))
+    );
+    record('iyzico', 'preauth', auth.rawResponse);
+    expect(auth.status, describeResult(auth)).toBe(PaymentStatus.SUCCESS);
+
+    const capture = await iyzico.capture({
+      paymentId: auth.paymentId!,
+      amount: '0.60',
+      currency: 'TRY',
+      ip: '85.34.78.112',
+    });
+    record('iyzico', 'postauth', capture.rawResponse);
+    expect(capture.status, describeResult(capture)).toBe(PaymentStatus.SUCCESS);
+  });
+
+  it('pre-authorizes and voids without charging', async () => {
+    const auth = await withSandboxRetry(() =>
+      iyzico.authorize(paymentRequest(card, { conversationId: orderId('IYZ') }))
+    );
+    expect(auth.status, describeResult(auth)).toBe(PaymentStatus.SUCCESS);
+
+    const voided = await iyzico.voidAuthorization({
+      paymentId: auth.paymentId!,
+      ip: '85.34.78.112',
+    });
+    record('iyzico', 'preauth-void', voided.rawResponse);
+    expect(voided.status, describeResult(voided)).toBe(PaymentStatus.SUCCESS);
+  });
+
+  it('starts a 3D Secure pre-authorization', async () => {
+    const result = await iyzico.initThreeDSAuthorize(
+      threeDSRequest(card, { conversationId: orderId('IYZ') })
+    );
+    record('iyzico', 'init-3ds-preauth', result.rawResponse);
+    expect(result.status, describeResult(result)).not.toBe(PaymentStatus.FAILURE);
+    expect(result.threeDSHtmlContent).toMatch(/<form|<html/i);
+  });
+
   it('reports a declined card as failure with the provider error', async () => {
     const payment = await withSandboxRetry(() =>
       iyzico.createPayment(
