@@ -2,6 +2,7 @@ import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import { source } from "@/lib/source";
 import { isLocale, localePath } from "@/lib/i18n/config";
 import { notFound } from "next/navigation";
+import Image from "next/image";
 
 export default async function Layout({ children, params }: LayoutProps<"/[lang]/docs">) {
   const { lang } = await params;
@@ -12,7 +13,12 @@ export default async function Layout({ children, params }: LayoutProps<"/[lang]/
       tree={source.getPageTree(lang)}
       i18n
       nav={{
-        title: "better-payment",
+        title: (
+          <>
+            <Image src="/logo.svg" width={1000} height={897} alt="" className="h-6 w-auto" />
+            better-payment
+          </>
+        ),
         url: localePath(lang, "/"),
       }}
       githubUrl="https://github.com/furkanczay/better-payment"
