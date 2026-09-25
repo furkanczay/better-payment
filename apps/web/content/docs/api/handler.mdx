@@ -111,6 +111,51 @@ Paths are relative to `basePath` (default `/api/pay`).
   PayTR re-sends a notification until it receives exactly `OK`. Return `res.body` as plain text when `res.headers['Content-Type']` is `text/plain`; do not JSON-encode it. If `onCallback` throws, the handler returns 500 and PayTR retries the notification.
 </Callout>
 
+## Duplicate callbacks and Idempotency-Key
+
+Providers deliver callbacks more than once: PayTR resends a notification until it gets `OK`, and customers reload or go back to the 3D Secure return page. The handler processes each callback **once**:
+
+- The first delivery calls the provider (verification, and for Parampos the `TP_WMD_Pay` finalization), runs `onCallback`, and stores the response.
+- An identical delivery gets the stored response (PayTR: `OK`, browser: the same redirect). `onCallback` does not run again, and the provider is not called again.
+- If `onCallback` throws, the handler answers 500 (PayTR retries). The next delivery re-runs `onCallback` with the stored provider result, without calling the provider again.
+- A duplicate that arrives while the first is still running gets `409`, and the provider retries later.
+- Forged callbacks (`INVALID_HASH`) and unknown outcomes (`NETWORK_ERROR`) are never stored.
+
+Duplicates are recognized by a SHA-256 hash of the callback body. A forged body can never match a stored response.
+
+Mutating routes (`payment`, `payment/init-3ds`, `refund`, `cancel`, iyzico checkout/PWI/subscription management) also honor an **`Idempotency-Key`** header. Send a unique key per operation, for example a UUID or `refund-<orderId>`:
+
+- The same key and the same body return the first response, marked `Idempotent-Replayed: true`, without calling the provider again.
+- The same key with a different body returns `422`.
+- A request that fails before a result (validation error, unexpected error) releases its key.
+
+Results are remembered for 24 hours by default. The default store is **in-memory**, so it only deduplicates within one process. With several instances or serverless functions, pass a shared store:
+
+```typescript
+import Redis from 'ioredis';
+import type { IdempotencyStore } from 'better-payment';
+
+const redis = new Redis(process.env.REDIS_URL!);
+
+const redisStore: IdempotencyStore = {
+  get: async (key) => (await redis.get(key)) ?? undefined,
+  set: async (key, value, ttl) => void (await redis.set(key, value, 'EX', ttl)),
+  setIfAbsent: async (key, value, ttl) => (await redis.set(key, value, 'EX', ttl, 'NX')) === 'OK',
+  delete: async (key) => void (await redis.del(key)),
+};
+
+new BetterPayment({
+  providers: { ... },
+  handler: {
+    idempotency: { store: redisStore, ttlSeconds: 7 * 24 * 3600 }, // or `false` to turn it off
+  },
+});
+```
+
+<Callout type="info">
+  `setIfAbsent` must be atomic: Redis `SET ... NX`, or an insert into a table with a unique key in SQL (`INSERT ... ON CONFLICT DO NOTHING` and check the affected rows).
+</Callout>
+
 ## Interfaces
 
 ```typescript

@@ -6,6 +6,8 @@ import { PaymentStatus } from '../types';
 import type { PaymentResponse } from '../types';
 import type { PaymentProvider } from './PaymentProvider';
 import { errorMessage } from './utils';
+import { NETWORK_ERROR_CODE } from './failure';
+import { fingerprint, MemoryIdempotencyStore, type IdempotencyStore } from './idempotency';
 import type {
   CheckoutFormRequest,
   PWIPaymentRequest,
@@ -176,6 +178,59 @@ export interface BetterPaymentHandlerOptions {
   ) => string | undefined | Promise<string | undefined>;
   /** Include error messages of unexpected exceptions in 500 responses. Default: false */
   exposeErrors?: boolean;
+  /**
+   * Deduplication of provider callbacks and `Idempotency-Key` requests.
+   * On by default with an in-memory store; pass a shared store (Redis, DB)
+   * when running several instances, or `false` to turn it off.
+   */
+  idempotency?: false | HandlerIdempotencyOptions;
+}
+
+export interface HandlerIdempotencyOptions {
+  /** Default: MemoryIdempotencyStore (per process) */
+  store?: IdempotencyStore;
+  /** How long results are remembered. Default: 86400 (24 hours) */
+  ttlSeconds?: number;
+  /** How long an in-flight request holds its key if the process dies. Default: 60 */
+  lockSeconds?: number;
+}
+
+/**
+ * Actions that honor an `Idempotency-Key` request header: a repeated key
+ * returns the first response instead of calling the provider again.
+ */
+export const IDEMPOTENT_KEY_ACTIONS: HandlerAction[] = [
+  'payment',
+  'payment/init-3ds',
+  'payment/token',
+  'refund',
+  'cancel',
+  'checkout/init',
+  'pwi/init',
+  'subscription/initialize',
+  'subscription/cancel',
+  'subscription/upgrade',
+  'subscription/card-update',
+  'subscription/product',
+  'subscription/pricing-plan',
+];
+
+type CallbackRecord =
+  | { state: 'processing'; result?: PaymentResponse }
+  | { state: 'verified'; result: PaymentResponse }
+  | { state: 'done'; response: BetterPaymentResponse };
+
+type RequestRecord =
+  | { state: 'processing'; request: string }
+  | { state: 'done'; request: string; response: BetterPaymentResponse };
+
+function parseRecord<T>(value: string | undefined): T | undefined {
+  if (!value) return undefined;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return undefined;
+  }
 }
 
 interface TokenBody {
@@ -233,6 +288,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
 export class BetterPaymentHandler {
   private readonly basePath: string;
   private readonly allowed: Set<HandlerAction>;
+  private readonly idempotency?: Required<HandlerIdempotencyOptions>;
 
   constructor(
     private betterPayment: BetterPayment,
@@ -244,6 +300,14 @@ export class BetterPaymentHandler {
         ? ALL_HANDLER_ACTIONS
         : (options.allowedActions ?? DEFAULT_HANDLER_ACTIONS);
     this.allowed = new Set(allowed);
+
+    if (options.idempotency !== false) {
+      this.idempotency = {
+        store: options.idempotency?.store ?? new MemoryIdempotencyStore(),
+        ttlSeconds: options.idempotency?.ttlSeconds ?? 86_400,
+        lockSeconds: options.idempotency?.lockSeconds ?? 60,
+      };
+    }
 
     const privileged = allowed.filter((a) => PRIVILEGED_HANDLER_ACTIONS.includes(a));
     if (privileged.length > 0 && !options.authorize) {
@@ -307,6 +371,11 @@ export class BetterPaymentHandler {
 
       if (this.options.transformRequest && !CALLBACK_HANDLER_ACTIONS.includes(action)) {
         ctx.body = asRecord(await this.options.transformRequest(ctx));
+      }
+
+      const idempotencyKey = this.header(request, 'idempotency-key');
+      if (this.idempotency && idempotencyKey && IDEMPOTENT_KEY_ACTIONS.includes(action)) {
+        return await this.withIdempotencyKey(ctx, idempotencyKey, this.idempotency);
       }
 
       return await this.handleAction(ctx);
@@ -571,7 +640,60 @@ export class BetterPaymentHandler {
     ctx: HandlerContext,
     provider: PaymentProvider
   ): Promise<BetterPaymentResponse> {
-    const result = await provider.completeThreeDSPayment(this.requireBody(ctx));
+    const body = this.requireBody(ctx);
+    const idem = this.idempotency;
+    if (!idem) {
+      return this.finishCallback(ctx, await provider.completeThreeDSPayment(body));
+    }
+
+    // A repeated delivery (PayTR resend, browser re-post) has the same body. Keying
+    // on the body hash means a forged callback can never match a stored one.
+    const key = `bp:callback:${ctx.provider}:${ctx.action}:${fingerprint(body)}`;
+    const { store, ttlSeconds, lockSeconds } = idem;
+    let result: PaymentResponse | undefined;
+
+    if (!(await store.setIfAbsent(key, JSON.stringify({ state: 'processing' }), lockSeconds))) {
+      const record = parseRecord<CallbackRecord>(await store.get(key));
+      if (record?.state === 'done') return record.response;
+      if (record?.state !== 'verified') {
+        // Another delivery is being processed; the provider will retry later
+        return this.errorResponse(409, 'Callback is already being processed');
+      }
+      // The provider result is known but onCallback failed earlier: run it again
+      // without calling the provider a second time.
+      result = record.result;
+      await store.set(key, JSON.stringify({ state: 'processing', result }), lockSeconds);
+    }
+
+    try {
+      if (!result) {
+        result = await provider.completeThreeDSPayment(body);
+        if (result.errorCode === 'INVALID_HASH' || result.errorCode === NETWORK_ERROR_CODE) {
+          // Nothing trustworthy to remember: forged, or outcome unknown
+          await store.delete(key);
+          return await this.finishCallback(ctx, result);
+        }
+        await store.set(key, JSON.stringify({ state: 'verified', result }), ttlSeconds);
+      }
+
+      const response = await this.finishCallback(ctx, result);
+      await store.set(key, JSON.stringify({ state: 'done', response }), ttlSeconds);
+      return response;
+    } catch (error) {
+      if (result) {
+        await store.set(key, JSON.stringify({ state: 'verified', result }), ttlSeconds);
+      } else {
+        await store.delete(key);
+      }
+      throw error;
+    }
+  }
+
+  /** Runs onCallback and builds the response for a provider callback result */
+  private async finishCallback(
+    ctx: HandlerContext,
+    result: PaymentResponse
+  ): Promise<BetterPaymentResponse> {
     const invalidSignature = result?.errorCode === 'INVALID_HASH';
 
     if (!invalidSignature && this.options.onCallback) {
@@ -597,6 +719,48 @@ export class BetterPaymentHandler {
     }
 
     return this.resultResponse(result);
+  }
+
+  /**
+   * `Idempotency-Key`: the first request with a key runs; repeats with the same
+   * body get the stored response, repeats with a different body are rejected.
+   */
+  private async withIdempotencyKey(
+    ctx: HandlerContext,
+    idempotencyKey: string,
+    { store, ttlSeconds, lockSeconds }: Required<HandlerIdempotencyOptions>
+  ): Promise<BetterPaymentResponse> {
+    if (idempotencyKey.length > 255) {
+      throw new HttpError(400, 'Idempotency-Key must be at most 255 characters');
+    }
+    const key = `bp:request:${ctx.provider}:${ctx.action}:${idempotencyKey}`;
+    const request = fingerprint(ctx.body);
+
+    if (
+      !(await store.setIfAbsent(key, JSON.stringify({ state: 'processing', request }), lockSeconds))
+    ) {
+      const record = parseRecord<RequestRecord>(await store.get(key));
+      if (record && record.request !== request) {
+        return this.errorResponse(422, 'Idempotency-Key was already used with a different request');
+      }
+      if (record?.state === 'done') {
+        return {
+          ...record.response,
+          headers: { ...record.response.headers, 'Idempotent-Replayed': 'true' },
+        };
+      }
+      return this.errorResponse(409, 'A request with this Idempotency-Key is in progress');
+    }
+
+    try {
+      const response = await this.handleAction(ctx);
+      await store.set(key, JSON.stringify({ state: 'done', request, response }), ttlSeconds);
+      return response;
+    } catch (error) {
+      // Rejected before a result (validation, unexpected error): the key can be reused
+      await store.delete(key);
+      throw error;
+    }
   }
 
   /**
