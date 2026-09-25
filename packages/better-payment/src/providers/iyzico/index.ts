@@ -21,6 +21,13 @@ import {
   CancelResponse,
   CaptureRequest,
   VoidAuthorizationRequest,
+  SavedCardTokens,
+  StoredCard,
+  SaveCardRequest,
+  SaveCardResponse,
+  ListCardsResponse,
+  DeleteCardRequest,
+  DeleteCardResponse,
   PaymentStatus,
   CheckoutFormRequest,
   CheckoutFormInitResponse,
@@ -65,6 +72,11 @@ import {
   IyzicoInstallmentInfoResponse,
   IyzicoSubscriptionResponse,
   IyzicoThreeDSCallbackData,
+  IyzicoPaymentCard,
+  IyzicoStoredCardDetails,
+  IyzicoCardResponse,
+  IyzicoCardListResponse,
+  IyzicoResponse,
 } from './types';
 
 /**
@@ -91,7 +103,12 @@ const IYZICO_ORDER_RULES: PaymentValidationRules = {
   ],
 };
 
-const IYZICO_CARD_PAYMENT_RULES: PaymentValidationRules = { ...IYZICO_ORDER_RULES, card: true };
+const IYZICO_CARD_PAYMENT_RULES: PaymentValidationRules = {
+  ...IYZICO_ORDER_RULES,
+  card: true,
+  storedCard: true,
+  saveCard: true,
+};
 
 export interface IyzicoConfig extends PaymentProviderConfig {
   apiKey: string;
@@ -179,7 +196,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
   private async sendRequest<T>(
     endpoint: string,
     data: unknown,
-    options: { method?: 'POST' | 'GET'; retryable?: boolean } = {}
+    options: { method?: 'POST' | 'GET' | 'DELETE'; retryable?: boolean } = {}
   ): Promise<T> {
     const method = options.method ?? 'POST';
     const requestBody = JSON.stringify(data ?? {});
@@ -208,6 +225,41 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
   /**
    * Uygulama request'ini İyzico formatına çevir
    */
+  /**
+   * Card data, or a stored card's tokens (cardUserKey + cardToken). With
+   * `saveCard`, iyzico registers the card and returns its tokens.
+   */
+  private mapPaymentCard(request: PaymentRequest): IyzicoPaymentCard {
+    if (request.storedCard) {
+      return {
+        cardUserKey: request.storedCard.customerToken,
+        cardToken: request.storedCard.cardToken,
+      };
+    }
+    const card = this.cardOf(request);
+    const save = request.saveCard || card.registerCard;
+    const options = typeof request.saveCard === 'object' ? request.saveCard : {};
+    return {
+      cardHolderName: card.cardHolderName,
+      cardNumber: card.cardNumber,
+      expireMonth: card.expireMonth,
+      expireYear: card.expireYear,
+      cvc: card.cvc,
+      registerCard: save ? 1 : 0,
+      ...(save && options.alias ? { cardAlias: options.alias } : {}),
+      ...(save && options.customerToken ? { cardUserKey: options.customerToken } : {}),
+    };
+  }
+
+  /** Tokens of a card saved during a payment, when iyzico returns them */
+  private static savedCardOf(response: { cardUserKey?: string; cardToken?: string }): {
+    storedCard?: SavedCardTokens;
+  } {
+    return response.cardUserKey
+      ? { storedCard: { customerToken: response.cardUserKey, cardToken: response.cardToken } }
+      : {};
+  }
+
   private mapToIyzicoRequest(request: PaymentRequest): IyzicoPaymentRequest {
     return {
       locale: this.config.locale || 'tr',
@@ -219,14 +271,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
       basketId: request.basketId,
       paymentChannel: 'WEB',
       paymentGroup: 'PRODUCT',
-      paymentCard: {
-        cardHolderName: request.paymentCard.cardHolderName,
-        cardNumber: request.paymentCard.cardNumber,
-        expireMonth: request.paymentCard.expireMonth,
-        expireYear: request.paymentCard.expireYear,
-        cvc: request.paymentCard.cvc,
-        registerCard: request.paymentCard.registerCard ? 1 : 0,
-      },
+      paymentCard: this.mapPaymentCard(request),
       buyer: {
         id: request.buyer.id,
         name: request.buyer.name,
@@ -347,6 +392,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         errorCode: response.errorCode,
         errorMessage: response.errorMessage,
         errorGroup: response.errorGroup,
+        ...Iyzico.savedCardOf(response),
         rawResponse: response,
       });
     } catch (error) {
@@ -452,6 +498,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         errorCode: response.errorCode,
         errorMessage: response.errorMessage,
         errorGroup: response.errorGroup,
+        ...Iyzico.savedCardOf(response),
         rawResponse: response,
       });
     } catch (error) {
@@ -841,6 +888,114 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
       return this.mapSubscriptionResponse(response);
     } catch (error) {
       return this.failure(error, 'Pricing plan creation failed');
+    }
+  }
+
+  /**
+   * ===================
+   * CARD STORAGE
+   * ===================
+   */
+
+  private static storedCardOf(details: Partial<IyzicoStoredCardDetails>): StoredCard {
+    return {
+      cardToken: details.cardToken ?? '',
+      alias: details.cardAlias,
+      binNumber: details.binNumber,
+      lastFourDigits: details.lastFourDigits,
+      cardType: details.cardType,
+      cardAssociation: details.cardAssociation,
+      cardFamily: details.cardFamily,
+      bankName: details.cardBankName,
+    };
+  }
+
+  /**
+   * Saves a card without charging it (`/cardstorage/card`). Omit
+   * `customerToken` to create a new customer (cardUserKey).
+   */
+  async saveCard(request: SaveCardRequest): Promise<SaveCardResponse> {
+    try {
+      const response = await this.sendRequest<IyzicoCardResponse>('/cardstorage/card', {
+        locale: this.config.locale || 'tr',
+        conversationId: request.conversationId,
+        externalId: request.externalId,
+        email: request.email,
+        cardUserKey: request.customerToken,
+        card: {
+          cardAlias: request.alias,
+          cardHolderName: request.card.cardHolderName,
+          cardNumber: request.card.cardNumber,
+          expireMonth: request.card.expireMonth,
+          expireYear: request.card.expireYear,
+        },
+      });
+      const status = this.mapStatus(response.status);
+
+      return this.withErrorCode({
+        status,
+        customerToken: response.cardUserKey,
+        card: status === PaymentStatus.SUCCESS ? Iyzico.storedCardOf(response) : undefined,
+        errorCode: response.errorCode,
+        errorMessage: response.errorMessage,
+        rawResponse: response,
+      });
+    } catch (error) {
+      return this.failure<SaveCardResponse>(error, 'Saving the card failed');
+    }
+  }
+
+  /** A customer's saved cards (`/cardstorage/cards`) */
+  async listCards(request: {
+    customerToken: string;
+    conversationId?: string;
+  }): Promise<ListCardsResponse> {
+    try {
+      const response = await this.sendRequest<IyzicoCardListResponse>(
+        '/cardstorage/cards',
+        {
+          locale: this.config.locale || 'tr',
+          conversationId: request.conversationId,
+          cardUserKey: request.customerToken,
+        },
+        { retryable: true }
+      );
+
+      return this.withErrorCode({
+        status: this.mapStatus(response.status),
+        customerToken: response.cardUserKey ?? request.customerToken,
+        cards: (response.cardDetails ?? []).map((d) => Iyzico.storedCardOf(d)),
+        errorCode: response.errorCode,
+        errorMessage: response.errorMessage,
+        rawResponse: response,
+      });
+    } catch (error) {
+      return this.failure<ListCardsResponse>(error, 'Listing cards failed', { cards: [] });
+    }
+  }
+
+  /** Deletes a saved card (`DELETE /cardstorage/card`) */
+  async deleteCard(request: DeleteCardRequest): Promise<DeleteCardResponse> {
+    try {
+      const response = await this.sendRequest<IyzicoResponse>(
+        '/cardstorage/card',
+        {
+          locale: this.config.locale || 'tr',
+          conversationId: request.conversationId,
+          cardUserKey: request.customerToken,
+          cardToken: request.cardToken,
+        },
+        { method: 'DELETE' }
+      );
+
+      return this.withErrorCode({
+        status: this.mapStatus(response.status),
+        errorCode: response.errorCode,
+        errorMessage: response.errorMessage,
+        rawResponse: response,
+      });
+    } catch (error) {
+      return this.failure<DeleteCardResponse>(error, 'Deleting the card failed');
     }
   }
 

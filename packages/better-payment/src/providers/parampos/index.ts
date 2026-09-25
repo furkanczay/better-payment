@@ -168,6 +168,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
     installment: number,
     callbackUrl?: string
   ): Record<string, XmlValue> {
+    const card = this.cardOf(request);
     const transactionAmount = formatParamposAmount(request.price);
     const totalAmount = formatParamposAmount(request.paidPrice ?? request.price);
     const hash = generateParamposPaymentHash(
@@ -181,11 +182,11 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
 
     return {
       ...this.credentials,
-      KK_Sahibi: request.paymentCard.cardHolderName,
-      KK_No: request.paymentCard.cardNumber,
-      KK_SK_Ay: formatParamposExpiryMonth(request.paymentCard.expireMonth),
-      KK_SK_Yil: formatParamposExpiryYear(request.paymentCard.expireYear),
-      KK_CVC: request.paymentCard.cvc,
+      KK_Sahibi: card.cardHolderName,
+      KK_No: card.cardNumber,
+      KK_SK_Ay: formatParamposExpiryMonth(card.expireMonth),
+      KK_SK_Yil: formatParamposExpiryYear(card.expireYear),
+      KK_CVC: card.cvc,
       // Optional per docs, but the service rejects requests without the element
       KK_Sahibi_GSM: formatParamposGsm(request.buyer?.gsmNumber),
       Hata_URL: callbackUrl ?? '',
@@ -218,6 +219,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
     installment: number,
     callbackUrl?: string
   ): Record<string, XmlValue> {
+    const card = this.cardOf(request);
     const transactionAmount = formatParamposAmount(request.price);
     const totalAmount = formatParamposAmount(request.paidPrice ?? request.price);
     const urls =
@@ -233,11 +235,11 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
       Toplam_Tutar: totalAmount,
       ...urls,
       Taksit: installment,
-      KK_Sahibi: request.paymentCard.cardHolderName,
-      KK_No: request.paymentCard.cardNumber,
-      KK_SK_Ay: formatParamposExpiryMonth(request.paymentCard.expireMonth),
-      KK_SK_Yil: formatParamposExpiryYear(request.paymentCard.expireYear),
-      KK_CVC: request.paymentCard.cvc,
+      KK_Sahibi: card.cardHolderName,
+      KK_No: card.cardNumber,
+      KK_SK_Ay: formatParamposExpiryMonth(card.expireMonth),
+      KK_SK_Yil: formatParamposExpiryYear(card.expireYear),
+      KK_CVC: card.cvc,
       KK_Sahibi_GSM: formatParamposGsm(request.buyer?.gsmNumber),
       Islem_Hash: generateParamposPreAuthHash(
         this.config.clientCode,

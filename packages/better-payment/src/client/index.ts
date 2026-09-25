@@ -9,6 +9,11 @@ import {
   CancelResponse,
   CaptureRequest,
   VoidAuthorizationRequest,
+  SaveCardRequest,
+  SaveCardResponse,
+  ListCardsResponse,
+  DeleteCardRequest,
+  DeleteCardResponse,
   BinCheckResponse,
   InstallmentInfoRequest,
   InstallmentInfoResponse,
@@ -170,6 +175,21 @@ class ProviderClient {
    */
   async voidAuthorization(request: VoidAuthorizationRequest): Promise<CancelResponse> {
     return this.request<CancelResponse>('POST', 'void', request);
+  }
+
+  /** Saves a card (`POST /:provider/cards/save`, needs `authorize` on the server) */
+  async saveCard(request: SaveCardRequest): Promise<SaveCardResponse> {
+    return this.request<SaveCardResponse>('POST', 'cards/save', request);
+  }
+
+  /** Lists a customer's saved cards (`POST /:provider/cards/list`, needs `authorize`) */
+  async listCards(request: { customerToken: string }): Promise<ListCardsResponse> {
+    return this.request<ListCardsResponse>('POST', 'cards/list', request);
+  }
+
+  /** Deletes a saved card (`POST /:provider/cards/delete`, needs `authorize`) */
+  async deleteCard(request: DeleteCardRequest): Promise<DeleteCardResponse> {
+    return this.request<DeleteCardResponse>('POST', 'cards/delete', request);
   }
 
   /**

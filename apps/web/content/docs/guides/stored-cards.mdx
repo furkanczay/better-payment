@@ -1,0 +1,104 @@
+---
+title: Stored cards
+description: Save a customer's card with the provider and charge it later by token.
+---
+
+Stored cards let a returning customer pay without typing the card number again. The provider keeps the card; you only store two **tokens**:
+
+- `customerToken`: identifies the customer at the provider (iyzico `cardUserKey`, PayTR `utoken`). One customer can have many cards.
+- `cardToken`: identifies one saved card (iyzico `cardToken`, PayTR `ctoken`).
+
+<Callout type="warn">
+  Never store card numbers or CVCs yourself; that puts your whole system in PCI DSS scope. Store only the tokens, next to your own user id. Save a card only when the customer **explicitly agrees** (for example, a "Remember this card" checkbox), and let them delete it.
+</Callout>
+
+## Save a card during a payment
+
+Pass `saveCard` with a normal card payment. When the payment succeeds, the result carries the tokens:
+
+```typescript
+const result = await payment.use('iyzico').createPayment({
+  ...order,
+  paymentCard: { cardHolderName, cardNumber, expireMonth, expireYear, cvc },
+  saveCard: true, // or { customerToken: user.cardUserKey, alias: 'My card' } to add it to an existing customer
+});
+
+if (result.status === 'success' && result.storedCard) {
+  await db.users.update(user.id, { customerToken: result.storedCard.customerToken });
+  // result.storedCard.cardToken is set when the provider returns it (iyzico)
+}
+```
+
+`saveCard` also works with `initThreeDSPayment()`; the tokens are then in the `completeThreeDSPayment()` result.
+
+## Pay with a saved card
+
+Send `storedCard` instead of `paymentCard`:
+
+```typescript
+await payment.use('iyzico').createPayment({
+  ...order,
+  storedCard: { customerToken: user.customerToken, cardToken: selectedCard.cardToken },
+});
+```
+
+For PayTR, add `cvc` when the listed card has `requiresCvc: true`.
+
+## List and delete
+
+```typescript
+const { cards } = await payment.use('iyzico').listCards({ customerToken: user.customerToken });
+// cards: [{ cardToken, alias, binNumber, lastFourDigits, cardAssociation, bankName, ... }]
+
+await payment.use('iyzico').deleteCard({ customerToken: user.customerToken, cardToken });
+```
+
+Show customers `lastFourDigits`, `bankName` and `alias` to pick a card; never the token itself.
+
+iyzico can also save a card without a payment:
+
+```typescript
+const saved = await payment.use('iyzico').saveCard({
+  customerToken: user.customerToken, // omit for a new customer; use email/externalId instead
+  email: user.email,
+  alias: 'Work card',
+  card: { cardHolderName, cardNumber, expireMonth, expireYear },
+});
+// saved.customerToken, saved.card?.cardToken
+```
+
+## Providers
+
+| Provider | Save during payment | `saveCard()` | `listCards()` | `deleteCard()` | Pay by token |
+| -------- | ------------------- | ------------ | ------------- | -------------- | ------------ |
+| iyzico | `registerCard` | `/cardstorage/card` | `/cardstorage/cards` | `/cardstorage/card` | `cardUserKey` + `cardToken` |
+| PayTR | Direct API `store_card=1` | not supported | `/odeme/capi/list` | `/odeme/capi/delete` | `utoken` + `ctoken` |
+| Parampos | not yet ([#65](https://github.com/furkanczay/better-payment/issues/65)) | — | — | — | — |
+| Akbank | not yet ([#65](https://github.com/furkanczay/better-payment/issues/65)) | — | — | — | — |
+
+- **PayTR** saves cards only during a Direct API payment, and the feature (Kart Saklama) must be enabled on your PayTR account. The `utoken` comes back in the payment result or in the notification (`onCallback`); get the `ctoken` from `listCards()`. The iFrame API cannot save cards.
+- Unsupported providers throw `NOT_SUPPORTED` (for `storedCard`/`saveCard` in a payment request: `INVALID_REQUEST`); the HTTP handler answers `400`.
+
+## HTTP handler
+
+| Route | Action | Needs `authorize` |
+| ----- | ------ | ----------------- |
+| `POST /:provider/cards/save` | `cards/save` | 🔒 |
+| `POST /:provider/cards/list` | `cards/list` | 🔒 |
+| `POST /:provider/cards/delete` | `cards/delete` | 🔒 |
+
+The card routes deal with one customer's cards, so they can only be enabled with an `authorize` hook. In `transformRequest`, take the `customerToken` from **your session**, not from the request body, so that one customer cannot list or delete another customer's cards:
+
+```typescript
+transformRequest: async (ctx) => {
+  if (!ctx.action.startsWith('cards/')) return ctx.body;
+  const user = await getUser(ctx.request.headers.cookie);
+  return { ...ctx.body, customerToken: user.customerToken };
+},
+```
+
+`cards/save` and `cards/delete` accept an `Idempotency-Key` header. The browser client has `client.iyzico.saveCard(...)`, `listCards(...)` and `deleteCard(...)`.
+
+## Verification
+
+The iyzico flow (save during payment, list, pay by token, delete) runs every night against the real iyzico sandbox. The PayTR token formulas follow PayTR's official Postman collection and have not yet been run against a PayTR account ([help wanted](https://github.com/furkanczay/better-payment/issues/62)).

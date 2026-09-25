@@ -120,6 +120,36 @@ describe.skipIf(!env)('iyzico sandbox', () => {
     expect(result.threeDSHtmlContent).toMatch(/<form|<html/i);
   });
 
+  it('saves a card during a payment, charges it by token, lists and deletes it', async () => {
+    const first = await withSandboxRetry(() =>
+      iyzico.createPayment(paymentRequest(card, { conversationId: orderId('IYZ'), saveCard: true }))
+    );
+    record('iyzico', 'payment-save-card', first.rawResponse);
+    expect(first.status, describeResult(first)).toBe(PaymentStatus.SUCCESS);
+    expect(first.storedCard?.customerToken).toBeTruthy();
+    expect(first.storedCard?.cardToken).toBeTruthy();
+    const storedCard = {
+      customerToken: first.storedCard!.customerToken,
+      cardToken: first.storedCard!.cardToken!,
+    };
+
+    const listed = await iyzico.listCards({ customerToken: storedCard.customerToken });
+    record('iyzico', 'card-list', listed.rawResponse);
+    expect(listed.status, describeResult(listed)).toBe(PaymentStatus.SUCCESS);
+    expect(listed.cards.map((c) => c.cardToken)).toContain(storedCard.cardToken);
+
+    const order = paymentRequest(card, { conversationId: orderId('IYZ') });
+    const again = await withSandboxRetry(() =>
+      iyzico.createPayment({ ...order, paymentCard: undefined, storedCard })
+    );
+    record('iyzico', 'payment-stored-card', again.rawResponse);
+    expect(again.status, describeResult(again)).toBe(PaymentStatus.SUCCESS);
+
+    const deleted = await iyzico.deleteCard(storedCard);
+    record('iyzico', 'card-delete', deleted.rawResponse);
+    expect(deleted.status, describeResult(deleted)).toBe(PaymentStatus.SUCCESS);
+  });
+
   it('reports a declined card as failure with the provider error', async () => {
     const payment = await withSandboxRetry(() =>
       iyzico.createPayment(
