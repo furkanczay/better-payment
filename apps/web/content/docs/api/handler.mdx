@@ -192,28 +192,20 @@ interface HandlerContext {
 (or cast after validating) before you use them. `onCallback` and `callbackRedirect`
 receive a `PaymentResponse`.
 
-## Express
+## Frameworks
 
-```typescript
-import express from 'express';
-import { payment } from './lib/payment';
+Adapters connect the handler to your framework and handle the details that are easy to get wrong:
+- raw bodies for form-urlencoded bank callbacks
+- PayTR's plain-text `OK`
+- redirects with no body
 
-const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+| Framework | Import | Usage |
+| --------- | ------ | ----- |
+| Next.js (App Router) | `better-payment/next` | `export const { GET, POST } = toNextJsHandler(getBetterPayment)` |
+| Express | `better-payment/express` | `app.all('/api/pay/*path', toExpressHandler(payment))` |
+| Fastify | `better-payment/fastify` | `app.register(toFastifyPlugin(payment), { prefix: '/api/pay' })` |
+| Hono | `better-payment/hono` | `app.all('/api/pay/*', toHonoHandler(payment))` |
+| `node:http` | `better-payment/express` | `createServer(toNodeHandler(payment))` |
+| Workers, Deno, Bun | `better-payment` | `toFetchHandler(payment)` |
 
-app.all('/api/pay/*', async (req, res) => {
-  const result = await payment.handler.handle({
-    method: req.method,
-    url: req.originalUrl,
-    headers: req.headers as Record<string, string>,
-    body: req.body,
-  });
-
-  res.status(result.status).set(result.headers);
-  if (typeof result.body === 'string') res.send(result.body);
-  else res.json(result.body);
-});
-```
-
-For Next.js, see the [Next.js guide](/docs/integrations/nextjs).
+See [Next.js](/docs/integrations/nextjs), [other frameworks](/docs/integrations/frameworks) and [edge runtimes](/docs/integrations/edge). For any other framework, convert its request into a `BetterPaymentRequest` (pass the body as raw text), call `payment.handler.handle()` and write the `BetterPaymentResponse` back.

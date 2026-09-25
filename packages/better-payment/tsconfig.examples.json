@@ -19,6 +19,21 @@
       ],
       "better-payment/client": [
         "src/client/index.ts"
+      ],
+      "better-payment/testing": [
+        "src/testing/index.ts"
+      ],
+      "better-payment/next": [
+        "src/adapters/next.ts"
+      ],
+      "better-payment/express": [
+        "src/adapters/express.ts"
+      ],
+      "better-payment/hono": [
+        "src/adapters/hono.ts"
+      ],
+      "better-payment/fastify": [
+        "src/adapters/fastify.ts"
       ]
     },
     "noUnusedLocals": false,

@@ -1,0 +1,70 @@
+---
+title: Express, Fastify, Hono
+description: Mount the payment handler in Express, Fastify, Hono or a plain Node.js server.
+---
+
+Each adapter is a separate import and has no dependencies, so you only load the one you use. For Next.js, see the [Next.js guide](/docs/integrations/nextjs); for Workers, Deno and Bun, see [edge runtimes](/docs/integrations/edge).
+
+All adapters:
+- pass JSON and form-urlencoded bodies (the bank callbacks) to the handler
+- send PayTR's `OK` as plain text
+- keep the `Location` header of redirects (`callbackRedirect`)
+
+Register them under the handler's `basePath` (default `/api/pay`).
+
+## Express
+
+```typescript
+import express from 'express';
+import { toExpressHandler } from 'better-payment/express';
+import { payment } from './payment';
+
+const app = express();
+app.all('/api/pay/*path', toExpressHandler(payment)); // Express 4: '/api/pay/*'
+```
+
+You don't need `express.json()` or `express.urlencoded()` for the payment routes, because the adapter reads the raw body. If a body parser runs first, its result is used. Unexpected errors are passed to `next(error)`.
+
+## Fastify
+
+```typescript
+import Fastify from 'fastify';
+import { toFastifyPlugin } from 'better-payment/fastify';
+
+const app = Fastify();
+await app.register(toFastifyPlugin(payment), { prefix: '/api/pay' });
+```
+
+Fastify rejects `application/x-www-form-urlencoded` bodies by default (415), but iyzico, Param, Akbank and PayTR post their callbacks in that format. The plugin accepts it for its own routes only, so your other routes keep Fastify's defaults.
+
+## Hono
+
+```typescript
+import { Hono } from 'hono';
+import { toHonoHandler } from 'better-payment/hono';
+
+const app = new Hono();
+app.all('/api/pay/*', toHonoHandler(payment));
+```
+
+Hono runs on Node.js, Bun, Deno and Cloudflare Workers, like better-payment.
+
+## Plain Node.js
+
+```typescript
+import { createServer } from 'node:http';
+import { toNodeHandler } from 'better-payment/express';
+
+createServer(toNodeHandler(payment)).listen(3000);
+```
+
+## Lazy initialization
+
+Every adapter also accepts a function that returns the `BetterPayment` instance (or its handler). The function is called on each request, so you can create the instance on first use:
+
+```typescript
+let instance: BetterPayment | undefined;
+const getPayment = () => (instance ??= new BetterPayment({ /* ... */ }));
+
+app.all('/api/pay/*path', toExpressHandler(getPayment));
+```

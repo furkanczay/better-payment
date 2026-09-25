@@ -5,6 +5,10 @@ export default defineConfig({
     index: 'src/index.ts',
     'client/index': 'src/client/index.ts',
     'testing/index': 'src/testing/index.ts',
+    'next/index': 'src/adapters/next.ts',
+    'express/index': 'src/adapters/express.ts',
+    'hono/index': 'src/adapters/hono.ts',
+    'fastify/index': 'src/adapters/fastify.ts',
   },
   format: ['cjs', 'esm'],
   dts: {

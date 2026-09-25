@@ -25,7 +25,7 @@ export const runtime = 'edge'; // or 'nodejs'
 ## Cloudflare Workers
 
 ```typescript
-import { BetterPayment, ProviderType } from 'better-payment';
+import { BetterPayment, ProviderType, toFetchHandler } from 'better-payment';
 
 interface Env {
   IYZICO_API_KEY: string;
@@ -33,7 +33,7 @@ interface Env {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  fetch(request: Request, env: Env): Promise<Response> {
     const payment = new BetterPayment({
       mode: 'sandbox',
       providers: {
@@ -43,43 +43,23 @@ export default {
         },
       },
     });
-
-    const res = await payment.handler.handle({
-      method: request.method,
-      url: request.url,
-      headers: Object.fromEntries(request.headers),
-      // JSON and form-urlencoded bodies can be passed as raw text
-      body: request.method === 'GET' ? undefined : await request.text(),
-    });
-
-    return typeof res.body === 'string'
-      ? new Response(res.body, { status: res.status, headers: res.headers })
-      : Response.json(res.body, { status: res.status, headers: res.headers });
+    return toFetchHandler(payment)(request);
   },
 };
 ```
 
-## Deno
+## Deno and Bun
 
 ```typescript
-import { BetterPayment } from 'npm:better-payment';
+import { BetterPayment, toFetchHandler } from 'npm:better-payment';
 
 const payment = new BetterPayment({ /* ... */ });
 
-Deno.serve(async (request) => {
-  const res = await payment.handler.handle({
-    method: request.method,
-    url: request.url,
-    headers: Object.fromEntries(request.headers),
-    body: request.method === 'GET' ? undefined : await request.text(),
-  });
-  return typeof res.body === 'string'
-    ? new Response(res.body, { status: res.status, headers: res.headers })
-    : Response.json(res.body, { status: res.status, headers: res.headers });
-});
+Deno.serve(toFetchHandler(payment));          // Deno
+// Bun.serve({ fetch: toFetchHandler(payment) }); // Bun
 ```
 
-Bun works the same way with `Bun.serve({ fetch })`.
+`toFetchHandler` turns the handler into a `(request: Request) => Promise<Response>` function. [Hono](/docs/integrations/frameworks#hono) has its own adapter.
 
 ## Idempotency on edge and serverless
 
