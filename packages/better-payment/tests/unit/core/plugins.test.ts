@@ -485,6 +485,38 @@ describe('handler with plugins', () => {
     );
   });
 
+  it('runs onResponse hooks in order, and ignores a failing one', async () => {
+    const logger = { debug: vi.fn(), info: vi.fn(), error: vi.fn() };
+    const payment = betterPayment({
+      providers: { mock: new MockProvider() },
+      logger,
+      plugins: [
+        {
+          id: 'header',
+          onResponse: (response) => ({ ...response, headers: { ...response.headers, 'X-A': '1' } }),
+        },
+        {
+          id: 'broken',
+          onResponse: () => {
+            throw new Error('boom');
+          },
+        },
+        { id: 'noop', onResponse: () => undefined },
+      ],
+    });
+    const res = await payment.handler.handle({
+      method: 'GET',
+      url: '/api/pay/health',
+      headers: {},
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers['X-A']).toBe('1');
+    expect(logger.error).toHaveBeenCalledWith(
+      "onResponse of plugin 'broken' failed",
+      expect.any(Error)
+    );
+  });
+
   it('retries callback events with the stored result when a listener fails', async () => {
     const mock = new MockProvider();
     const complete = vi.spyOn(mock, 'completeThreeDSPayment');

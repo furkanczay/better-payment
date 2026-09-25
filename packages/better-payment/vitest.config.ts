@@ -47,6 +47,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       '@tests': path.resolve(__dirname, './tests'),
       'better-payment/testing': path.resolve(__dirname, './src/testing/index.ts'),
+      'better-payment/plugins': path.resolve(__dirname, './src/plugins/index.ts'),
       'better-payment/next': path.resolve(__dirname, './src/adapters/next.ts'),
       'better-payment/express': path.resolve(__dirname, './src/adapters/express.ts'),
       'better-payment/hono': path.resolve(__dirname, './src/adapters/hono.ts'),

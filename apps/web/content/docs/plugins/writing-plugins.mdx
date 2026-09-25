@@ -188,6 +188,8 @@ endpoints: {
 - Mark endpoints that change or reveal payments with `privileged: true`: the handler then refuses to start without an `authorize` hook, like it does for refunds.
 - A path must not start with a provider id or `health`.
 
+To change the handler's responses, use `onResponse`. It runs on every response, including replayed ones, and can return a replacement; [localizedErrors](/docs/plugins/localized-errors) uses it to translate messages for each request's `Accept-Language`. If it throws, the error is logged and the response is sent unchanged.
+
 ## Error codes
 
 Declare the plugin's own error codes with their default (English) messages in `$ERROR_CODES`, like `BLOCKED_BIN` above. They are merged into `payment.$ERROR_CODES` and typed there, so that applications and translation plugins can use them. Put the code in the result's `errorCode`; keep `code` one of the [normalized error codes](/docs/api/error-codes).
@@ -242,6 +244,7 @@ interface BetterPaymentPlugin {
   events?: { [type in PaymentEventType | '*']?: (event: PaymentEvent) => void | Promise<void> };
   methods?: (ctx: PluginContext) => Record<string, unknown>;
   endpoints?: Record<string, PaymentEndpoint>;
+  onResponse?: (response: BetterPaymentResponse, ctx: { request: BetterPaymentRequest }) => BetterPaymentResponse | void | Promise<BetterPaymentResponse | void>;
   $ERROR_CODES?: Record<string, string>;
 }
 
@@ -260,6 +263,7 @@ interface BeforeHookResult {
 
 interface PluginContext {
   providerIds: readonly string[];
+  errorCodes: Readonly<Record<string, string>>; // $ERROR_CODES of all plugins
   defaultProvider: string | undefined;
   mode: 'sandbox' | 'production';
   logger: BetterPaymentLogger | undefined;

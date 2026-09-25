@@ -131,6 +131,8 @@ export interface AfterHook {
 export interface PluginContext {
   /** Ids of the configured providers */
   readonly providerIds: readonly string[];
+  /** Error codes declared by the plugins (`$ERROR_CODES`), with their default messages */
+  readonly errorCodes: Readonly<Record<string, string>>;
   /** The default provider, if any */
   readonly defaultProvider: string | undefined;
   readonly mode: 'sandbox' | 'production';
@@ -162,6 +164,11 @@ export interface PaymentEndpoint {
    */
   privileged?: boolean;
   handler: (ctx: EndpointContext) => Awaitable<unknown>;
+}
+
+/** What `onResponse` gets besides the response */
+export interface ResponseContext {
+  request: BetterPaymentRequest;
 }
 
 /**
@@ -198,6 +205,15 @@ export interface BetterPaymentPlugin {
   methods?: (ctx: PluginContext) => Record<string, unknown>;
   /** HTTP routes added to the handler */
   endpoints?: Record<string, PaymentEndpoint>;
+  /**
+   * Runs on every response of the HTTP handler (also replayed ones) and can
+   * return a replacement. If it throws, the error is logged and the response is
+   * sent unchanged.
+   */
+  onResponse?: (
+    response: BetterPaymentResponse,
+    ctx: ResponseContext
+  ) => Awaitable<BetterPaymentResponse | void>;
   /** The plugin's error codes and their default (English) messages */
   $ERROR_CODES?: Record<string, string>;
 }

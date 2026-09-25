@@ -64,6 +64,8 @@ export interface SubscriptionInitializeResponse {
   /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
+  /** The original message when a plugin replaced `errorMessage` (e.g. `localizedErrors`) */
+  providerMessage?: string;
   data?: {
     referenceCode: string;
     parentReferenceCode?: string;
@@ -97,6 +99,8 @@ export interface SubscriptionCancelResponse {
   /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
+  /** The original message when a plugin replaced `errorMessage` (e.g. `localizedErrors`) */
+  providerMessage?: string;
   data?: {
     referenceCode: string;
     subscriptionStatus: SubscriptionStatus;
@@ -124,6 +128,8 @@ export interface SubscriptionUpgradeResponse {
   /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
+  /** The original message when a plugin replaced `errorMessage` (e.g. `localizedErrors`) */
+  providerMessage?: string;
   data?: {
     referenceCode: string;
     pricingPlanReferenceCode: string;
@@ -149,6 +155,8 @@ export interface SubscriptionRetrieveResponse {
   /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
+  /** The original message when a plugin replaced `errorMessage` (e.g. `localizedErrors`) */
+  providerMessage?: string;
   data?: {
     referenceCode: string;
     parentReferenceCode?: string;
@@ -186,6 +194,8 @@ export interface SubscriptionCardUpdateResponse {
   /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
+  /** The original message when a plugin replaced `errorMessage` (e.g. `localizedErrors`) */
+  providerMessage?: string;
   token?: string;
   checkoutFormContent?: string;
   tokenExpireTime?: number;
@@ -213,6 +223,8 @@ export interface SubscriptionProductResponse {
   /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
+  /** The original message when a plugin replaced `errorMessage` (e.g. `localizedErrors`) */
+  providerMessage?: string;
   data?: {
     referenceCode: string;
     name: string;
@@ -248,6 +260,8 @@ export interface PricingPlanResponse {
   /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
+  /** The original message when a plugin replaced `errorMessage` (e.g. `localizedErrors`) */
+  providerMessage?: string;
   data?: {
     referenceCode: string;
     productReferenceCode: string;

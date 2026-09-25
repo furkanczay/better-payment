@@ -380,6 +380,10 @@ export class BetterPaymentHandler {
    * Main request handler
    */
   async handle(request: BetterPaymentRequest): Promise<BetterPaymentResponse> {
+    return this.core.respond(await this.route(request), { request });
+  }
+
+  private async route(request: BetterPaymentRequest): Promise<BetterPaymentResponse> {
     try {
       const path = this.getPath(request.url);
       if (path === null) {

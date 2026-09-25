@@ -23,6 +23,9 @@
       "better-payment/testing": [
         "src/testing/index.ts"
       ],
+      "better-payment/plugins": [
+        "src/plugins/index.ts"
+      ],
       "better-payment/next": [
         "src/adapters/next.ts"
       ],

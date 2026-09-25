@@ -6,7 +6,11 @@ import type {
   ProviderSetupContext,
 } from './BetterPaymentConfig';
 import { ProviderNotEnabledError, ConfigurationError } from './errors';
-import { BetterPaymentHandler, type BetterPaymentHandlerOptions } from './BetterPaymentHandler';
+import {
+  BetterPaymentHandler,
+  type BetterPaymentHandlerOptions,
+  type BetterPaymentResponse,
+} from './BetterPaymentHandler';
 import {
   PAYMENT_OPERATIONS,
   type AfterHook,
@@ -17,6 +21,7 @@ import {
   type PaymentOperation,
   type PaymentOperations,
   type PluginContext,
+  type ResponseContext,
 } from './plugin';
 import {
   eventFor,
@@ -77,6 +82,10 @@ export class PaymentCore<P extends Record<string, ProviderEntry> = Record<string
   private readonly plugins: readonly BetterPaymentPlugin[];
   private readonly beforeHooks: BeforeHook[] = [];
   private readonly afterHooks: AfterHook[] = [];
+  private readonly responseHooks: {
+    pluginId: string;
+    hook: NonNullable<BetterPaymentPlugin['onResponse']>;
+  }[] = [];
   private readonly listeners = new Map<PaymentEventName, AnyListener[]>();
   private readonly defaultProviderId?: string;
   private initialized?: Promise<void>;
@@ -126,6 +135,7 @@ export class PaymentCore<P extends Record<string, ProviderEntry> = Record<string
 
     this.context = {
       providerIds: ids,
+      errorCodes: this.$ERROR_CODES,
       defaultProvider: this.defaultProviderId,
       mode,
       logger: options.logger,
@@ -143,6 +153,8 @@ export class PaymentCore<P extends Record<string, ProviderEntry> = Record<string
       pluginIds.add(plugin.id);
       this.beforeHooks.push(...(plugin.hooks?.before ?? []));
       this.afterHooks.push(...(plugin.hooks?.after ?? []));
+      if (plugin.onResponse)
+        this.responseHooks.push({ pluginId: plugin.id, hook: plugin.onResponse });
       for (const [type, listener] of Object.entries(plugin.events ?? {})) {
         if (listener) this.addListener(type as PaymentEventName, listener as AnyListener);
       }
@@ -281,6 +293,24 @@ export class PaymentCore<P extends Record<string, ProviderEntry> = Record<string
         throw new EventListenerError(event, result, cause);
       }
     }
+  }
+
+  /** @internal Runs the plugins' onResponse hooks on a handler response */
+  async respond(
+    response: BetterPaymentResponse,
+    ctx: ResponseContext
+  ): Promise<BetterPaymentResponse> {
+    for (const { pluginId, hook } of this.responseHooks) {
+      try {
+        response = (await hook(response, ctx)) ?? response;
+      } catch (error) {
+        this.context.logger?.error(
+          `onResponse of plugin '${pluginId}' failed`,
+          error instanceof Error ? error : new Error(String(error))
+        );
+      }
+    }
+    return response;
   }
 
   private addListener(type: PaymentEventName, listener: AnyListener): void {

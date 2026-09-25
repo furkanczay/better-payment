@@ -5,6 +5,7 @@ export default defineConfig({
     index: 'src/index.ts',
     'client/index': 'src/client/index.ts',
     'testing/index': 'src/testing/index.ts',
+    'plugins/index': 'src/plugins/index.ts',
     'next/index': 'src/adapters/next.ts',
     'express/index': 'src/adapters/express.ts',
     'hono/index': 'src/adapters/hono.ts',
@@ -18,7 +19,7 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   treeshake: true,
-  // better-payment/testing imports classes from the main entry at runtime
+  // better-payment/testing and /plugins import classes from the main entry at runtime
   external: ['better-payment'],
   // Smaller published bundles; sourcemaps keep stack traces readable.
   minify: true,
