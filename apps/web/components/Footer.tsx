@@ -57,6 +57,7 @@ export default function Footer({ lang, t }: { lang: Locale; t: Dictionary["foote
               href={localePath(lang, "/")}
               className="flex items-center gap-2.5 mb-4 w-fit group"
             >
+              <Image src="/logo.svg" width={1000} height={897} alt="" className="h-9 w-auto" />
               <Image
                 src="/better-payment-logo.svg"
                 width={304}

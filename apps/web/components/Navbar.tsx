@@ -102,6 +102,7 @@ export default function Navbar({
       <nav className="max-w-6xl mx-auto px-5 sm:px-8 flex items-center justify-between h-14">
         {/* Logo */}
         <Link href={localePath(lang, "/")} className="flex items-center gap-2 group">
+          <Image src="/logo.svg" width={1000} height={897} alt="" priority className="h-8 w-auto" />
           <Image
             src="/better-payment-logo.svg"
             width={304}
