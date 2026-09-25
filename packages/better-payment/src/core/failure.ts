@@ -28,6 +28,15 @@ export function responseDataOf(error: unknown): unknown {
   return (response as { data?: unknown }).data;
 }
 
+/** " (ECONNRESET: socket hang up)" for transport errors, to make them diagnosable */
+function networkCause(error: unknown): string {
+  const e = error as { code?: unknown; message?: unknown };
+  const code = typeof e.code === 'string' ? e.code : undefined;
+  const message = typeof e.message === 'string' ? e.message : undefined;
+  if (!code && !message) return '';
+  return ` (${[code, message].filter(Boolean).join(': ')})`;
+}
+
 /**
  * Builds the result returned when a provider call throws.
  *
@@ -48,7 +57,7 @@ export function failureResult<T extends FailureResult>(
     return {
       status: PaymentStatus.PENDING,
       errorCode: NETWORK_ERROR_CODE,
-      errorMessage: `No response from ${providerName}. The transaction may have been processed; verify it with getPayment() before retrying.`,
+      errorMessage: `No response from ${providerName}${networkCause(error)}. The transaction may have been processed; verify it with getPayment() before retrying.`,
       ...extra,
     } as T;
   }
