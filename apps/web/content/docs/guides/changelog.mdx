@@ -7,6 +7,20 @@ description: Release history and breaking changes for better-payment.
   The version history was reset. `0.0.1` is the first release of the reworked package. Releases `1.x`–`3.x` had incorrect provider integrations and callback checks that could be bypassed. Do not use them. See [What's New in 0.0.1](/docs/whats-new) for the reasoning and a step-by-step migration guide.
 </Callout>
 
+## 0.4.0
+
+Testing without a sandbox and one-line framework integration. Existing 0.3.0 code keeps working.
+
+### Added
+
+- **[`better-payment/testing`](/docs/guides/testing):** `MockProvider`, an in-memory provider for application tests, with no credentials and no network access. Magic card numbers cover declines, 3D Secure failures, lost responses and failing refunds; 3D Secure callbacks go through the real handler.
+- **[Framework adapters](/docs/integrations/frameworks):** `better-payment/next`, `better-payment/express`, `better-payment/fastify` and `better-payment/hono` mount the handler in one line; `toFetchHandler` covers Workers, Deno and Bun.
+- The documentation is available in Turkish.
+
+### Changed
+
+- `PROVIDER_DEFAULT_URLS` is keyed by `RemoteProviderType` (every provider except `mock`).
+
 ## 0.3.0
 
 Edge runtimes and zero runtime dependencies. Application code keeps working unchanged.
