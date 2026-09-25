@@ -7,6 +7,25 @@ description: Release history and breaking changes for better-payment.
   The version history was reset. `0.0.1` is the first release of the reworked package. Releases `1.x`–`3.x` had incorrect provider integrations and callback checks that could be bypassed. Do not use them. See [What's New in 0.0.1](/docs/whats-new) for the reasoning and a step-by-step migration guide.
 </Callout>
 
+## 0.1.0
+
+The first feature release after the reset. Existing 0.0.1 code keeps working; behavior changes are listed under "Changed". The iyzico integration is now tested against the real iyzico sandbox every night.
+
+### Added
+
+- **[Unified error codes](/docs/api/error-codes):** every failed result carries `code` (`INSUFFICIENT_FUNDS`, `CARD_DECLINED`, `THREEDS_FAILED`, `INVALID_HASH`, ...). `errorCode` keeps the provider's raw code.
+- **[Request validation](/docs/configuration#request-validation)** before the provider is called. Invalid requests return `code: 'INVALID_REQUEST'` with every invalid field listed. Turn it off with `validate: false`.
+- **[Parampos installments](/docs/providers/parampos#installments):** `installmentInfo()`, `calculatePaidPrice()` and `getInstallmentRates()` use your Param rates.
+- **[Duplicate callbacks are processed once](/docs/api/handler#duplicate-callbacks-and-idempotency-key)**, and mutating handler routes accept an `Idempotency-Key` header. The `IdempotencyStore` is in-memory by default; use Redis or a database with several instances.
+- `PaymentErrorCode` and `PaymentStatus` are exported from `better-payment/client`.
+
+### Changed
+
+- Request validation errors return `errorCode: 'VALIDATION_ERROR'`; `errorCode` used to be empty.
+- Stricter public types, with no `any`: `rawResponse` and the handler bodies are `unknown`, and `onCallback` / `callbackRedirect` receive a `PaymentResponse`.
+- `NETWORK_ERROR` messages name the transport error (`ECONNRESET`, timeout, ...).
+- The published build is minified: about 19 kB gzip instead of 29.6 kB.
+
 ## 0.0.1
 
 ### Security

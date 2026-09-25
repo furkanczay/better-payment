@@ -19,8 +19,8 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
-      id-token: write
+      contents: write # create the version tag and GitHub release
+      id-token: write # npm trusted publishing
 
     steps:
       - name: Checkout code
@@ -41,6 +41,30 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Read version and release notes
+        id: release
+        working-directory: packages/better-payment
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # The "## <version>" section of CHANGELOG.md becomes the release notes
+          awk -v v="## $VERSION" '$0 == v {found=1; next} found && /^## / {exit} found {print}' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+          if [ ! -s "$RUNNER_TEMP/release-notes.md" ]; then
+            echo "::error::CHANGELOG.md has no '## $VERSION' section"
+            exit 1
+          fi
+
+      - name: Check the release does not exist yet
+        if: ${{ inputs.dry_run == false || inputs.dry_run == 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.release.outputs.version }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::Release $TAG already exists; bump the version first"
+            exit 1
+          fi
 
       - name: Lint, typecheck and test
         working-directory: packages/better-payment
@@ -66,3 +90,19 @@ jobs:
         run: npm publish --access public --tag "$NPM_TAG" --dry-run
         env:
           NPM_TAG: ${{ inputs.npm_tag }}
+
+      - name: Create GitHub release
+        if: ${{ inputs.dry_run == false || inputs.dry_run == 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.release.outputs.version }}
+          NPM_TAG: ${{ inputs.npm_tag }}
+        run: |
+          # Only releases on the npm "latest" tag become GitHub's latest release
+          if [ "$NPM_TAG" = "latest" ]; then FLAGS="--latest"; else FLAGS="--prerelease --latest=false"; fi
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" $FLAGS
+
+      - name: Show release notes (dry run)
+        if: ${{ inputs.dry_run == true || inputs.dry_run == 'true' }}
+        run: cat "$RUNNER_TEMP/release-notes.md"
