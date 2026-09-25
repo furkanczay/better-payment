@@ -6,6 +6,46 @@ earlier `1.x`–`3.x` releases are superseded and should not be used (see "Why t
 Upgrading from `3.x`? Read the migration guide:
 https://better-payment.czaylabs.com/docs/whats-new
 
+## 0.4.0
+
+Testing without a sandbox and one-line framework integration. Existing 0.3.0 code keeps working;
+the only type-level change is `PROVIDER_DEFAULT_URLS` (see "Changed").
+
+### Added
+
+- **`better-payment/testing`:** `MockProvider`, an in-memory provider for application tests, with no
+  credentials and no network access. Enable it with
+  `providers.mock: { enabled: true, provider: new MockProvider() }`; handler routes are
+  `/api/pay/mock/...` and the browser client has `client.mock`.
+  - Magic card numbers (`MOCK_CARDS`) for success, declines per `PaymentErrorCode`, 3D Secure
+    required or failed, lost responses (`NETWORK_ERROR` while the payment went through) and failing
+    refunds. `failNext()` / `networkErrorNext()` override the next operation.
+  - Payments, refunds, pre-authorizations and saved cards are kept in memory, so `getPayment()`,
+    `refund()` and `cancel()` reflect earlier calls; `getRecord()` exposes them for assertions.
+  - 3D Secure callbacks are HMAC-signed and go through the real handler (signature check, duplicate
+    callbacks, `onCallback`).
+  See https://better-payment.czaylabs.com/docs/guides/testing
+- **Framework adapters** that mount the HTTP handler in one line, with raw bodies for form-urlencoded
+  bank callbacks, PayTR's plain-text `OK`, and redirects that keep `Location`:
+  - `better-payment/next`: `export const { GET, POST } = toNextJsHandler(getBetterPayment)`
+  - `better-payment/express`: `toExpressHandler(payment)` (no body parser needed) and `toNodeHandler`
+    for plain `node:http`
+  - `better-payment/fastify`: `toFastifyPlugin(payment)`, with a form-urlencoded parser scoped to its
+    own routes (Fastify rejects that content type by default)
+  - `better-payment/hono`: `toHonoHandler(payment)`
+  - `toFetchHandler(payment)` in the main entry for Cloudflare Workers, Deno and Bun
+  Adapters accept a handler, a `BetterPayment` instance or a function returning either (lazy
+  initialization), and have no dependencies.
+  See https://better-payment.czaylabs.com/docs/integrations/frameworks
+- `ProviderType.MOCK`.
+
+### Changed
+
+- `PROVIDER_DEFAULT_URLS` is keyed by the new `RemoteProviderType` (every provider except `mock`).
+  Code that indexes it with a plain `ProviderType` needs the narrower type.
+
+The documentation is now also available in Turkish: https://better-payment.czaylabs.com/tr/docs
+
 ## 0.3.0
 
 Edge runtimes and zero runtime dependencies. The server entry point now uses only `fetch` and
