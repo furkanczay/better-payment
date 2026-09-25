@@ -6,6 +6,36 @@ earlier `1.x`–`3.x` releases are superseded and should not be used (see "Why t
 Upgrading from `3.x`? Read the migration guide:
 https://better-payment.czaylabs.com/docs/whats-new
 
+## 0.3.0
+
+Edge runtimes and zero runtime dependencies. The server entry point now uses only `fetch` and
+WebCrypto, so the same package runs on Node.js 20+, Vercel Edge, Cloudflare Workers, Deno and Bun.
+Application code that uses `BetterPayment`, the providers or the HTTP handler keeps working
+unchanged. Only custom providers that extend `PaymentProvider` need an update (see "Changed").
+
+### Added
+
+- **Edge runtime support.** Signatures, callback verification and hashes use WebCrypto
+  (`crypto.subtle`); no `node:crypto` or `Buffer`. Every release runs the built bundle in the
+  Vercel Edge Runtime VM and checks the signatures of all four providers against `node:crypto`.
+  See https://better-payment.czaylabs.com/docs/integrations/edge
+- **`fetch` option** (top level or per provider) to use a custom fetch implementation, for example
+  a proxy-aware fetch or a stub in tests.
+- `HttpClient`, `HttpError` and the `HttpRequestConfig` / `HttpResponse` / `HttpMethod` types are
+  exported for custom providers.
+
+### Changed
+
+- **No runtime dependencies:** axios is removed. Provider calls use an internal fetch client with
+  the same timeouts (30 s; 60 s for Parampos), logging (method, URL and status, never bodies) and
+  retry rules (only idempotent requests are retried).
+- Custom providers that extend `PaymentProvider`: `setupAxiosLogging()` and `setupAxiosRetry()` are
+  replaced by `createHttpClient(name, { timeout, headers })`. Transport errors are `HttpError`s
+  (`isNetworkError`, `code`, `response`); results keep reporting them as `PENDING` with
+  `NETWORK_ERROR`.
+- Log metadata reports the HTTP method in upper case (`POST` instead of `post`).
+- The published bundle is 23.1 kB gzip (it now includes the HTTP client that replaced axios).
+
 ## 0.2.0
 
 Pre-authorization and stored cards. Existing 0.1.0 code keeps working; the only type-level
