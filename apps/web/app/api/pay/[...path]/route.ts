@@ -1,19 +1,24 @@
-import { NextRequest, NextResponse } from "next/server";
 import { getBetterPayment } from "@/lib/payment";
 import type { BetterPaymentRequest } from "better-payment";
 
-async function handler(req: NextRequest): Promise<NextResponse> {
+// better-payment uses node:crypto
+export const runtime = "nodejs";
+
+async function handler(req: Request): Promise<Response> {
   const contentType = req.headers.get("content-type") ?? "";
   let body: unknown;
 
   if (req.method !== "GET" && req.method !== "HEAD") {
+    const text = await req.text();
     if (contentType.includes("application/json")) {
-      body = await req.json().catch(() => undefined);
-    } else if (contentType.includes("application/x-www-form-urlencoded")) {
-      const fd = await req.formData();
-      const obj: Record<string, string> = {};
-      fd.forEach((v, k) => { obj[k] = v as string; });
-      body = obj;
+      try {
+        body = text ? JSON.parse(text) : undefined;
+      } catch {
+        return Response.json({ error: true, message: "Invalid JSON body" }, { status: 400 });
+      }
+    } else {
+      // Form-urlencoded provider callbacks are passed as raw text; the handler parses them
+      body = text;
     }
   }
 
@@ -26,10 +31,14 @@ async function handler(req: NextRequest): Promise<NextResponse> {
 
   const res = await getBetterPayment().handler.handle(betterPayReq);
 
-  return NextResponse.json(res.body, {
-    status: res.status,
-    headers: res.headers,
-  });
+  // Redirects (callbackRedirect) carry no body
+  if (res.status >= 300 && res.status < 400) {
+    return new Response(null, { status: res.status, headers: res.headers });
+  }
+
+  // Text responses (e.g. the PayTR "OK" acknowledgement) must not be JSON-encoded
+  const payload = typeof res.body === "string" ? res.body : JSON.stringify(res.body);
+  return new Response(payload, { status: res.status, headers: res.headers });
 }
 
 export const GET = handler;
