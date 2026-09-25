@@ -6,6 +6,7 @@ import {
   CALLBACK_HANDLER_ACTIONS,
 } from '../../../src/core/BetterPaymentHandler';
 import { ProviderType } from '../../../src/core/BetterPaymentConfig';
+import { fakePayment } from '../../helpers/fake-payment';
 import { Iyzico } from '../../../src/providers/iyzico';
 import { VERSION } from '../../../src/version';
 
@@ -22,11 +23,7 @@ function buildMockPayment(providerOverrides: Record<string, any> = {}, enabled =
     ...providerOverrides,
   };
 
-  const payment: any = {
-    isProviderEnabled: vi.fn().mockReturnValue(enabled),
-    getEnabledProviders: vi.fn().mockReturnValue([ProviderType.IYZICO]),
-    use: vi.fn().mockReturnValue(mockProvider),
-  };
+  const payment = fakePayment(mockProvider, { enabled: enabled });
 
   return { payment, mockProvider };
 }
@@ -316,10 +313,7 @@ describe('BetterPaymentHandler', () => {
       ['subscription/pricing-plan', 'createPricingPlan'],
     ])('%s calls %s', async (path, method) => {
       const fn = vi.fn().mockResolvedValue({ status: 'success' });
-      const payment: any = {
-        isProviderEnabled: () => true,
-        use: () => iyzicoLike({ [method]: fn }),
-      };
+      const payment = fakePayment(iyzicoLike({ [method]: fn }));
       const res = await new BetterPaymentHandler(payment, allowAll).handle(
         req('POST', `/api/pay/iyzico/${path}`, { token: 't', conversationId: 'c' })
       );

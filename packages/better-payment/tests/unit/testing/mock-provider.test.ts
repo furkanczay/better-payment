@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-  BetterPayment,
+  betterPayment,
   PaymentErrorCode,
   PaymentStatus,
   ProviderType,
@@ -32,8 +32,8 @@ afterEach(() => {
 
 function setup(options: { onCallback?: (status: string) => void } = {}) {
   const mock = new MockProvider();
-  const payment = new BetterPayment({
-    providers: { [ProviderType.MOCK]: { enabled: true, provider: mock } },
+  const payment = betterPayment({
+    providers: { [ProviderType.MOCK]: mock },
     handler: {
       allowedActions: 'all',
       authorize: () => true,
@@ -358,11 +358,10 @@ describe('MockProvider', () => {
   });
 
   it('requires a provider instance in the config', () => {
-    expect(
-      () =>
-        new BetterPayment({
-          providers: { mock: { enabled: true, provider: {} as never } },
-        })
+    expect(() =>
+      betterPayment({
+        providers: { mock: {} as never },
+      })
     ).toThrow(/MockProvider/);
   });
 });

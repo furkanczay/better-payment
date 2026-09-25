@@ -2,7 +2,7 @@
  * better-payment/testing
  *
  * An in-memory payment provider for application tests: no network access, no
- * provider sandbox. Plug it into BetterPayment as the `mock` provider and drive
+ * provider sandbox. Pass it to betterPayment() as a provider (`providers: { mock: new MockProvider() }`) and drive
  * outcomes with magic card numbers or with `failNext()` / `networkErrorNext()`.
  */
 // Classes and enums come from the main entry point (kept external in the build), so
@@ -171,13 +171,12 @@ interface InternalRecord extends MockPaymentRecord {
  *
  * @example
  * ```ts
- * import { BetterPayment } from 'better-payment';
+ * import { betterPayment } from 'better-payment';
  * import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
  *
- * const mock = new MockProvider();
- * const payment = new BetterPayment({ providers: { mock: { enabled: true, provider: mock } } });
+ * const payment = betterPayment({ providers: { mock: new MockProvider() } });
  *
- * const result = await payment.use('mock').createPayment({
+ * const result = await payment.mock.createPayment({
  *   ...order,
  *   paymentCard: { ...card, cardNumber: MOCK_CARDS.INSUFFICIENT_FUNDS },
  * });

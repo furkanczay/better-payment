@@ -4,6 +4,12 @@
  * SOAP-based integration with Param (TurkPOS).
  */
 
+import {
+  defineProvider,
+  withProviderDefaults,
+  ProviderType,
+  type ProviderDefinition,
+} from '../../core/BetterPaymentConfig';
 import type { HttpClient, HttpRequestConfig } from '../../core/http';
 import { PaymentProvider, PaymentProviderConfig } from '../../core/PaymentProvider';
 import { ConfigurationError, ValidationError } from '../../core/errors';
@@ -811,3 +817,10 @@ export function mapParamposOrderStatus(durum: ParamposOrderStatus | undefined): 
       return PaymentStatus.PENDING;
   }
 }
+
+/**
+ * The Parampos provider, for `betterPayment({ providers: { parampos: parampos({ clientCode, clientUsername, clientPassword, guid }) } })`.
+ * The base URL follows `mode` unless `baseUrl` is set.
+ */
+export const parampos = (config: ParamposConfig): ProviderDefinition<Parampos> =>
+  defineProvider((ctx) => new Parampos(withProviderDefaults(ProviderType.PARAMPOS, config, ctx)));

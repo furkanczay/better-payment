@@ -1,4 +1,27 @@
-export { BetterPayment } from './core/BetterPayment';
+export { betterPayment } from './core/BetterPayment';
+export type { BetterPayment, PluginMethods, PluginErrorCodes } from './core/BetterPayment';
+export { definePlugin, PAYMENT_OPERATIONS } from './core/plugin';
+export type {
+  BetterPaymentPlugin,
+  PaymentOperations,
+  PaymentOperation,
+  OperationContext,
+  OperationResultContext,
+  BeforeHook,
+  BeforeHookResult,
+  AfterHook,
+  PluginContext,
+  PaymentEndpoint,
+  EndpointContext,
+} from './core/plugin';
+export { EventListenerError, PAYMENT_EVENT_TYPES } from './core/events';
+export type {
+  PaymentEvent,
+  PaymentEventType,
+  PaymentEventName,
+  PaymentEventListener,
+  PaymentEventListeners,
+} from './core/events';
 export type { BetterPaymentLogger } from './core/logger';
 export type { RetryConfig } from './core/retry';
 export {
@@ -10,15 +33,13 @@ export {
 } from './core/errors';
 export type { ValidationIssue } from './core/errors';
 
-export { ProviderType, PROVIDER_DEFAULT_URLS } from './core/BetterPaymentConfig';
+export { ProviderType, PROVIDER_DEFAULT_URLS, defineProvider } from './core/BetterPaymentConfig';
 export type {
-  BetterPaymentConfig,
-  ProviderConfig,
-  ProviderInstances,
-  IyzicoProviderConfig,
-  PayTRProviderConfig,
-  AkbankProviderConfig,
-  ParamposProviderConfig,
+  BetterPaymentOptions,
+  ProviderDefinition,
+  ProviderEntry,
+  ProviderInstance,
+  ProviderSetupContext,
 } from './core/BetterPaymentConfig';
 
 export { PaymentProvider } from './core/PaymentProvider';
@@ -49,7 +70,10 @@ export type {
   BetterPaymentResponse,
   BetterPaymentHandlerOptions,
   HandlerAction,
+  BuiltInHandlerAction,
+  PluginEndpointAction,
   HandlerContext,
+  CallbackContext,
   HandlerIdempotencyOptions,
 } from './core/BetterPaymentHandler';
 
@@ -106,17 +130,17 @@ export {
   PricingPlanResponse,
 } from './types';
 
-export { Iyzico } from './providers/iyzico';
+export { Iyzico, iyzico } from './providers/iyzico';
 export type { IyzicoConfig } from './providers/iyzico';
-export { PayTR } from './providers/paytr';
+export { PayTR, paytr } from './providers/paytr';
 export type {
   PayTRConfig,
   PayTRTokenPaymentRequest,
   PayTRCallbackData,
 } from './providers/paytr/types';
-export { Akbank } from './providers/akbank';
+export { Akbank, akbank } from './providers/akbank';
 export type { AkbankConfig, Akbank3DCallbackData } from './providers/akbank/types';
-export { Parampos } from './providers/parampos';
+export { Parampos, parampos } from './providers/parampos';
 export type { ParamposConfig } from './providers/parampos';
 export type { Parampos3DSCallbackData } from './providers/parampos/types';
 

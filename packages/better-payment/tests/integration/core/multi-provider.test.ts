@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { BetterPayment } from '../../../src/core/BetterPayment';
+import { betterPayment, iyzico, paytr, type BetterPayment } from '../../../src';
 import { ProviderType } from '../../../src/core/BetterPaymentConfig';
 import { mockPaymentRequest } from '../../fixtures/payment-data';
 
@@ -20,27 +20,21 @@ describe('BetterPayment Multi-Provider Integration', () => {
   beforeEach(() => {
     capturedRequests = [];
 
-    betterPay = new BetterPayment({
+    betterPay = betterPayment({
       providers: {
-        iyzico: {
-          enabled: true,
-          config: {
-            apiKey: 'iyzico-key',
-            secretKey: 'iyzico-secret',
-            baseUrl: 'https://sandbox-api.iyzipay.com',
-            locale: 'tr',
-          },
-        },
-        paytr: {
-          enabled: true,
-          config: {
-            merchantId: '123456',
-            merchantKey: 'paytr-key',
-            merchantSalt: 'paytr-salt',
-            baseUrl: 'https://www.paytr.com',
-            locale: 'tr',
-          },
-        },
+        iyzico: iyzico({
+          apiKey: 'iyzico-key',
+          secretKey: 'iyzico-secret',
+          baseUrl: 'https://sandbox-api.iyzipay.com',
+          locale: 'tr',
+        }),
+        paytr: paytr({
+          merchantId: '123456',
+          merchantKey: 'paytr-key',
+          merchantSalt: 'paytr-salt',
+          baseUrl: 'https://www.paytr.com',
+          locale: 'tr',
+        }),
       },
       defaultProvider: ProviderType.IYZICO,
     });
@@ -186,20 +180,17 @@ describe('BetterPayment Multi-Provider Integration', () => {
     });
 
     it('should throw error when accessing disabled provider', () => {
-      const singleProvider = new BetterPayment({
+      const singleProvider = betterPayment({
         providers: {
-          iyzico: {
-            enabled: true,
-            config: {
-              apiKey: 'test',
-              secretKey: 'test',
-              baseUrl: 'https://sandbox-api.iyzipay.com',
-            },
-          },
+          iyzico: iyzico({
+            apiKey: 'test',
+            secretKey: 'test',
+            baseUrl: 'https://sandbox-api.iyzipay.com',
+          }),
         },
       });
 
-      expect(() => singleProvider.paytr).toThrow();
+      expect(() => singleProvider.use('paytr')).toThrow();
       expect(singleProvider.isProviderEnabled(ProviderType.PAYTR)).toBe(false);
     });
   });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BetterPayment } from '../../src';
+import { betterPayment, paytr } from '../../src';
 import { PaymentStatus } from '../../src/types';
 import { describeResult, orderId, record, requireEnv, sandboxCard, threeDSRequest } from './setup';
 
@@ -21,17 +21,14 @@ const card = sandboxCard('PAYTR_SANDBOX', {
 describe.skipIf(!env)('PayTR sandbox (test_mode=1)', () => {
   const paytr = !env
     ? (undefined as never)
-    : new BetterPayment({
+    : betterPayment({
         mode: 'sandbox',
         providers: {
-          paytr: {
-            enabled: true,
-            config: {
-              merchantId: env!.PAYTR_SANDBOX_MERCHANT_ID,
-              merchantKey: env!.PAYTR_SANDBOX_MERCHANT_KEY,
-              merchantSalt: env!.PAYTR_SANDBOX_MERCHANT_SALT,
-            },
-          },
+          paytr: paytr({
+            merchantId: env!.PAYTR_SANDBOX_MERCHANT_ID,
+            merchantKey: env!.PAYTR_SANDBOX_MERCHANT_KEY,
+            merchantSalt: env!.PAYTR_SANDBOX_MERCHANT_SALT,
+          }),
         },
       }).paytr;
 

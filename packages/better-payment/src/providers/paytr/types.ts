@@ -7,7 +7,7 @@ export interface PayTRConfig extends PaymentProviderConfig {
   merchantId: string;
   merchantKey: string;
   merchantSalt: string;
-  /** Sends test_mode=1. BetterPayment sets this automatically when mode is 'sandbox'. */
+  /** Sends test_mode=1. betterPayment() sets this automatically when mode is 'sandbox'. */
   testMode?: boolean;
   /** iFrame timeout in minutes (default 30) */
   timeoutLimit?: number;

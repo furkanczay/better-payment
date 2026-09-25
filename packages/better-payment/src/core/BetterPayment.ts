@@ -1,17 +1,31 @@
-import { PaymentProvider, PaymentProviderConfig } from './PaymentProvider';
-import {
-  BetterPaymentConfig,
-  ProviderType,
-  ProviderInstances,
-  PROVIDER_DEFAULT_URLS,
-  type RemoteProviderType,
+import type { PaymentProvider } from './PaymentProvider';
+import type {
+  BetterPaymentOptions,
+  ProviderEntry,
+  ProviderInstance,
+  ProviderSetupContext,
 } from './BetterPaymentConfig';
 import { ProviderNotEnabledError, ConfigurationError } from './errors';
-import { Iyzico } from '../providers/iyzico';
-import { PayTR } from '../providers/paytr';
-import { Akbank } from '../providers/akbank';
-import { Parampos } from '../providers/parampos';
+import { BetterPaymentHandler, type BetterPaymentHandlerOptions } from './BetterPaymentHandler';
 import {
+  PAYMENT_OPERATIONS,
+  type AfterHook,
+  type BeforeHook,
+  type BetterPaymentPlugin,
+  type OperationContext,
+  type PaymentEndpoint,
+  type PaymentOperation,
+  type PaymentOperations,
+  type PluginContext,
+} from './plugin';
+import {
+  eventFor,
+  EventListenerError,
+  type PaymentEvent,
+  type PaymentEventListener,
+  type PaymentEventName,
+} from './events';
+import type {
   PaymentRequest,
   PaymentResponse,
   ThreeDSPaymentRequest,
@@ -28,73 +42,281 @@ import {
   DeleteCardRequest,
   DeleteCardResponse,
 } from '../types';
-import { BetterPaymentHandler, BetterPaymentHandlerOptions } from './BetterPaymentHandler';
+
+type AnyListener = (event: PaymentEvent) => unknown;
+type OperationFn = (request: unknown) => Promise<unknown>;
+
+const OPERATIONS = new Set<string>(PAYMENT_OPERATIONS);
+
+/** @internal A plugin endpoint with the id of the plugin that added it */
+export interface RegisteredEndpoint extends PaymentEndpoint {
+  pluginId: string;
+  name: string;
+}
+
+/** @internal Options of `run()` */
+interface RunOptions {
+  routable: boolean;
+  /** Emit events for the result. The handler defers them for callbacks. */
+  emit?: boolean;
+}
+
+function isProviderInstance(entry: ProviderEntry): entry is PaymentProvider {
+  return typeof (entry as Partial<PaymentProvider>).createPayment === 'function';
+}
 
 /**
- * BetterPayment - Merkezi ödeme yönetim sınıfı
- *
- * Config dosyası ile tüm payment provider'ları tek yerden yönetmenizi sağlar.
- *
- * @example
- * ```typescript
- * const betterPay = new BetterPayment({
- *   providers: {
- *     iyzico: {
- *       enabled: true,
- *       config: {
- *         apiKey: 'your-api-key',
- *         secretKey: 'your-secret-key',
- *       }
- *     },
- *     paytr: {
- *       enabled: true,
- *       config: {
- *         merchantId: 'your-merchant-id',
- *         merchantKey: 'your-merchant-key',
- *         merchantSalt: 'your-merchant-salt',
- *       }
- *     }
- *   },
- *   defaultProvider: ProviderType.IYZICO,
- *   mode: 'sandbox',
- * });
- *
- * // Kullanım şekilleri:
- *
- * // 1. Default provider kullanarak (defaultProvider: 'iyzico' olarak ayarlanmış)
- * const result = await betterPay.createPayment({ ... });
- *
- * // 2. Belirli bir provider kullanarak (use metodu)
- * const result = await betterPay.use('paytr').createPayment({ ... });
- *
- * // 3. Provider'a doğrudan erişim (önerilen yöntem)
- * const iyzicoResult = await betterPay.iyzico.createPayment({ ... });
- * const paytrResult = await betterPay.paytr.createPayment({ ... });
- *
- * // 4. Multi-provider kullanımı (aynı uygulamada farklı provider'lar)
- * const payment1 = await betterPay.iyzico.initThreeDSPayment({ ... });
- * const payment2 = await betterPay.paytr.initThreeDSPayment({ ... });
- * ```
+ * The payment object returned by `betterPayment()`. Its providers and the
+ * members added by plugins are defined on it at runtime; `BetterPayment<...>`
+ * types them.
  */
-export class BetterPayment {
-  private config: BetterPaymentConfig;
-  private providers: ProviderInstances = {};
-  private defaultProvider?: ProviderType;
+export class PaymentCore<P extends Record<string, ProviderEntry> = Record<string, ProviderEntry>> {
+  private readonly handlerOptions?: BetterPaymentHandlerOptions;
+  private readonly providers = new Map<string, PaymentProvider>();
+  private readonly proxies = new Map<string, PaymentProvider>();
+  private readonly plugins: readonly BetterPaymentPlugin[];
+  private readonly beforeHooks: BeforeHook[] = [];
+  private readonly afterHooks: AfterHook[] = [];
+  private readonly listeners = new Map<PaymentEventName, AnyListener[]>();
+  private readonly defaultProviderId?: string;
+  private initialized?: Promise<void>;
+  private initializedPlugins = 0;
   private _handler?: BetterPaymentHandler;
 
-  constructor(config: BetterPaymentConfig) {
-    this.config = config;
-    this.defaultProvider = config.defaultProvider;
-    this.initializeProviders();
+  /** @internal */
+  readonly endpoints: RegisteredEndpoint[] = [];
+  /** @internal */
+  readonly context: PluginContext;
+  /** Error codes added by plugins, with their default messages */
+  readonly $ERROR_CODES: Record<string, string> = {};
+
+  constructor(options: BetterPaymentOptions<P>) {
+    this.handlerOptions = options.handler;
+    this.plugins = options.plugins ?? [];
+    const mode = options.mode ?? 'production';
+
+    for (const [id, entry] of Object.entries(options.providers ?? {})) {
+      this.reserve(id, `Provider id '${id}'`);
+      if (!entry || (!isProviderInstance(entry) && typeof entry.create !== 'function')) {
+        throw new ConfigurationError(
+          `providers.${id} must be a provider, e.g. iyzico({ ... }) or new MockProvider()`
+        );
+      }
+      const setup: ProviderSetupContext = {
+        id,
+        mode,
+        logger: options.logger,
+        retry: options.retry,
+        fetch: options.fetch,
+        validate: options.validate,
+      };
+      const provider = isProviderInstance(entry) ? entry : entry.create(setup);
+      this.providers.set(id, provider);
+      this.proxies.set(id, this.proxy(id, provider));
+      Object.defineProperty(this, id, { value: this.proxies.get(id), enumerable: true });
+    }
+
+    const ids = [...this.providers.keys()];
+    if (options.defaultProvider && !this.providers.has(options.defaultProvider)) {
+      throw new ConfigurationError(
+        `Default provider '${options.defaultProvider}' is not enabled or configured`
+      );
+    }
+    this.defaultProviderId = options.defaultProvider ?? (ids.length === 1 ? ids[0] : undefined);
+
+    this.context = {
+      providerIds: ids,
+      defaultProvider: this.defaultProviderId,
+      mode,
+      logger: options.logger,
+      use: (id) => this.use(id),
+    };
+
+    const pluginIds = new Set<string>();
+    for (const plugin of this.plugins) {
+      if (!plugin || typeof plugin.id !== 'string' || !plugin.id) {
+        throw new ConfigurationError('Every plugin needs an id');
+      }
+      if (pluginIds.has(plugin.id)) {
+        throw new ConfigurationError(`Plugin '${plugin.id}' is registered twice`);
+      }
+      pluginIds.add(plugin.id);
+      this.beforeHooks.push(...(plugin.hooks?.before ?? []));
+      this.afterHooks.push(...(plugin.hooks?.after ?? []));
+      for (const [type, listener] of Object.entries(plugin.events ?? {})) {
+        if (listener) this.addListener(type as PaymentEventName, listener as AnyListener);
+      }
+      for (const [name, endpoint] of Object.entries(plugin.endpoints ?? {})) {
+        this.endpoints.push({ ...endpoint, pluginId: plugin.id, name });
+      }
+      Object.assign(this.$ERROR_CODES, plugin.$ERROR_CODES);
+      for (const [key, value] of Object.entries(plugin.methods?.(this.context) ?? {})) {
+        this.reserve(key, `'${key}' added by plugin '${plugin.id}'`);
+        Object.defineProperty(this, key, { value, enumerable: true });
+      }
+    }
+  }
+
+  private reserve(key: string, what: string): void {
+    if (key in this) {
+      throw new ConfigurationError(`${what} clashes with a member of the payment object`);
+    }
   }
 
   /**
-   * HTTP handler configured with `config.handler` options.
+   * A provider whose operations run with the plugin hooks and emit events. Other
+   * members (provider-specific methods, MockProvider helpers) are the provider's own.
+   */
+  private proxy(id: string, provider: PaymentProvider): PaymentProvider {
+    return new Proxy(provider, {
+      get: (target, key, receiver) => {
+        if (typeof key === 'string' && OPERATIONS.has(key)) {
+          return (request: unknown) =>
+            this.run(key as PaymentOperation, id, request, { routable: false });
+        }
+        return Reflect.get(target, key, receiver);
+      },
+    });
+  }
+
+  /**
+   * Runs the plugins' `init` once, in order. If one fails, the operation fails and
+   * the next operation retries from that plugin on.
+   */
+  private ready(): Promise<void> {
+    if (!this.initialized) {
+      this.initialized = (async () => {
+        for (; this.initializedPlugins < this.plugins.length; this.initializedPlugins++) {
+          await this.plugins[this.initializedPlugins].init?.(this.context);
+        }
+      })();
+      this.initialized.catch(() => {
+        this.initialized = undefined;
+      });
+    }
+    return this.initialized;
+  }
+
+  /**
+   * @internal Runs an operation: before hooks, the provider, after hooks, events.
+   */
+  async run(
+    operation: PaymentOperation,
+    providerId: string | undefined,
+    request: unknown,
+    { routable, emit = true }: RunOptions
+  ): Promise<unknown> {
+    await this.ready();
+    let ctx = { operation, request, provider: providerId, routable } as OperationContext;
+    let result: unknown;
+
+    for (const hook of this.beforeHooks) {
+      if (hook.matcher && !hook.matcher(ctx)) continue;
+      const out = await hook.handler(ctx);
+      if (!out) continue;
+      if (out.provider !== undefined && out.provider !== ctx.provider) {
+        if (!routable) {
+          throw new ConfigurationError(
+            `A plugin hook tried to move a '${operation}' call made on provider '${ctx.provider}' ` +
+              `to '${out.provider}'. Only calls made on the payment object can be routed.`
+          );
+        }
+        if (!this.providers.has(out.provider)) throw new ProviderNotEnabledError(out.provider);
+        ctx = { ...ctx, provider: out.provider };
+      }
+      if (out.request !== undefined) ctx = { ...ctx, request: out.request } as OperationContext;
+      if (out.result !== undefined) {
+        result = out.result;
+        break;
+      }
+    }
+
+    if (result === undefined) {
+      const provider = this.resolve(ctx.provider);
+      result = await (provider[operation] as OperationFn).call(provider, ctx.request);
+    }
+
+    let after = { ...ctx, provider: ctx.provider ?? '', result } as Parameters<
+      AfterHook['handler']
+    >[0];
+    for (const hook of this.afterHooks) {
+      if (hook.matcher && !hook.matcher(after)) continue;
+      const out = await hook.handler(after);
+      if (out) after = { ...after, result: out.result } as typeof after;
+    }
+
+    if (emit) await this.emit(operation, after.provider, after.request, after.result);
+    return after.result;
+  }
+
+  private resolve(providerId: string | undefined): PaymentProvider {
+    if (!providerId) {
+      throw new ConfigurationError(
+        'No default provider set. Call the operation on a provider (payment.use(id), ' +
+          'payment.iyzico) or set defaultProvider.'
+      );
+    }
+    const provider = this.providers.get(providerId);
+    if (!provider) throw new ProviderNotEnabledError(providerId);
+    return provider;
+  }
+
+  /** @internal Emits the event of an operation result, if it has one */
+  async emit(
+    operation: PaymentOperation,
+    provider: string,
+    request: unknown,
+    result: unknown
+  ): Promise<void> {
+    const event = eventFor(operation, provider, request, result);
+    if (!event) return;
+    const listeners = [
+      ...(this.listeners.get(event.type) ?? []),
+      ...(this.listeners.get('*') ?? []),
+    ];
+    for (const listener of listeners) {
+      try {
+        await listener(event);
+      } catch (cause) {
+        throw new EventListenerError(event, result, cause);
+      }
+    }
+  }
+
+  private addListener(type: PaymentEventName, listener: AnyListener): void {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+
+  /**
+   * Listens to a payment event (`*` for all). Listeners run in order after the
+   * operation; if one throws, the operation throws an `EventListenerError` that
+   * carries the result. Returns a function that removes the listener.
+   *
+   * @example
+   * ```ts
+   * payment.on('payment.succeeded', async (event) => {
+   *   await orders.markPaid(event.conversationId, event.paymentId);
+   * });
+   * ```
+   */
+  on<T extends PaymentEventName>(type: T, listener: PaymentEventListener<T>): () => void {
+    const fn = listener as AnyListener;
+    this.addListener(type, fn);
+    return () => {
+      this.listeners.set(
+        type,
+        (this.listeners.get(type) ?? []).filter((l) => l !== fn)
+      );
+    };
+  }
+
+  /**
+   * HTTP handler configured with `options.handler`.
    * Created lazily; see BetterPaymentHandlerOptions for the security defaults.
    */
   get handler(): BetterPaymentHandler {
     if (!this._handler) {
-      this._handler = new BetterPaymentHandler(this, this.config.handler);
+      this._handler = new BetterPaymentHandler(this, this.handlerOptions);
     }
     return this._handler;
   }
@@ -107,264 +329,170 @@ export class BetterPayment {
     return new BetterPaymentHandler(this, options);
   }
 
-  private withDefaults<T extends PaymentProviderConfig>(
-    providerType: RemoteProviderType,
-    config: T
-  ): T {
-    const mode = this.config.mode || 'production';
-    const defaults = PROVIDER_DEFAULT_URLS[providerType];
-    return {
-      ...config,
-      baseUrl: config.baseUrl ?? defaults[mode],
-      logger: config.logger ?? this.config.logger,
-      retry: config.retry ?? this.config.retry,
-      fetch: config.fetch ?? this.config.fetch,
-      validate: config.validate ?? this.config.validate,
-    };
-  }
-
-  /**
-   * Provider'ları başlat. Eksik/hatalı yapılandırmada provider constructor'ı
-   * ConfigurationError fırlatır.
-   */
-  private initializeProviders(): void {
-    const { providers } = this.config;
-    const sandbox = this.config.mode === 'sandbox';
-
-    if (providers[ProviderType.IYZICO]?.enabled) {
-      this.providers[ProviderType.IYZICO] = new Iyzico(
-        this.withDefaults(ProviderType.IYZICO, providers[ProviderType.IYZICO].config)
-      );
-    }
-
-    if (providers[ProviderType.PAYTR]?.enabled) {
-      const config = this.withDefaults(ProviderType.PAYTR, providers[ProviderType.PAYTR].config);
-      this.providers[ProviderType.PAYTR] = new PayTR({
-        ...config,
-        testMode: config.testMode ?? sandbox,
-      });
-    }
-
-    if (providers[ProviderType.AKBANK]?.enabled) {
-      const config = this.withDefaults(ProviderType.AKBANK, providers[ProviderType.AKBANK].config);
-      this.providers[ProviderType.AKBANK] = new Akbank({
-        ...config,
-        testMode: config.testMode ?? sandbox,
-      });
-    }
-
-    if (providers[ProviderType.PARAMPOS]?.enabled) {
-      this.providers[ProviderType.PARAMPOS] = new Parampos(
-        this.withDefaults(ProviderType.PARAMPOS, providers[ProviderType.PARAMPOS].config)
-      );
-    }
-
-    const mock = providers[ProviderType.MOCK];
-    if (mock?.enabled) {
-      if (typeof mock.provider?.createPayment !== 'function') {
-        throw new ConfigurationError(
-          "providers.mock.provider must be a provider instance, e.g. new MockProvider() from 'better-payment/testing'"
-        );
-      }
-      this.providers[ProviderType.MOCK] = mock.provider;
-    }
-
-    if (this.defaultProvider && !this.providers[this.defaultProvider]) {
-      throw new ConfigurationError(
-        `Default provider '${this.defaultProvider}' is not enabled or configured`
-      );
-    }
-
-    // Eğer sadece bir provider varsa onu default yap
-    if (!this.defaultProvider) {
-      const enabledProviders = Object.keys(this.providers) as ProviderType[];
-      if (enabledProviders.length === 1) {
-        this.defaultProvider = enabledProviders[0];
-      }
-    }
-  }
-
-  use(provider: ProviderType.IYZICO | 'iyzico'): Iyzico;
-  use(provider: ProviderType.PAYTR | 'paytr'): PayTR;
-  use(provider: ProviderType.AKBANK | 'akbank'): Akbank;
-  use(provider: ProviderType.PARAMPOS | 'parampos'): Parampos;
-  use(provider: ProviderType | string): PaymentProvider;
-  use(providerType: ProviderType | string): PaymentProvider {
-    const provider = this.providers[providerType as ProviderType];
-    if (!provider) {
-      throw new ProviderNotEnabledError(providerType);
-    }
+  /** A provider by id. Its operations run with the plugin hooks and emit events. */
+  use<K extends keyof P & string>(providerId: K): ProviderInstance<P[K]>;
+  use(providerId: string): PaymentProvider;
+  use(providerId: string): PaymentProvider {
+    const provider = this.proxies.get(providerId);
+    if (!provider) throw new ProviderNotEnabledError(providerId);
     return provider;
   }
 
-  /**
-   * Default provider'ı getir
-   */
-  private getDefaultProvider(): PaymentProvider {
-    if (!this.defaultProvider) {
-      throw new ConfigurationError(
-        'No default provider set. Please specify a provider using .use() method ' +
-          'or set defaultProvider in configuration.'
-      );
-    }
-    return this.use(this.defaultProvider);
+  /** @internal The provider without hooks */
+  rawProvider(providerId: string): PaymentProvider {
+    return this.resolve(providerId);
   }
 
-  /**
-   * Aktif provider'ları listele
-   */
-  getEnabledProviders(): ProviderType[] {
-    return Object.keys(this.providers) as ProviderType[];
+  /** Ids of the configured providers */
+  getEnabledProviders(): string[] {
+    return [...this.providers.keys()];
   }
 
-  /**
-   * Belirli bir provider'ın aktif olup olmadığını kontrol et
-   */
-  isProviderEnabled(providerType: ProviderType): boolean {
-    return !!this.providers[providerType];
+  isProviderEnabled(providerId: string): boolean {
+    return this.providers.has(providerId);
   }
 
-  /**
-   * Default provider ile ödeme oluştur
-   */
-  async createPayment(request: PaymentRequest): Promise<PaymentResponse> {
-    return this.getDefaultProvider().createPayment(request);
+  private call<K extends PaymentOperation>(
+    operation: K,
+    request: PaymentOperations[K]['request']
+  ): Promise<PaymentOperations[K]['result']> {
+    return this.run(operation, this.defaultProviderId, request, { routable: true }) as Promise<
+      PaymentOperations[K]['result']
+    >;
   }
 
-  /**
-   * Default provider ile 3DS ödeme başlat
-   */
-  async initThreeDSPayment(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
-    return this.getDefaultProvider().initThreeDSPayment(request);
+  /** Payment without 3D Secure, with the default provider */
+  createPayment(request: PaymentRequest): Promise<PaymentResponse> {
+    return this.call('createPayment', request);
   }
 
-  /**
-   * Default provider ile 3DS ödeme tamamla
-   */
-  async completeThreeDSPayment(callbackData: unknown): Promise<PaymentResponse> {
-    return this.getDefaultProvider().completeThreeDSPayment(callbackData);
+  /** Starts a 3D Secure payment with the default provider */
+  initThreeDSPayment(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
+    return this.call('initThreeDSPayment', request);
   }
 
-  /**
-   * Default provider ile iade yap
-   */
-  async refund(request: RefundRequest): Promise<RefundResponse> {
-    return this.getDefaultProvider().refund(request);
+  /** Completes a 3D Secure payment with the default provider */
+  completeThreeDSPayment(callbackData: unknown): Promise<PaymentResponse> {
+    return this.call('completeThreeDSPayment', callbackData);
   }
 
-  /**
-   * Default provider ile ödeme iptal et
-   */
-  async cancel(request: CancelRequest): Promise<CancelResponse> {
-    return this.getDefaultProvider().cancel(request);
+  /** Refunds with the default provider */
+  refund(request: RefundRequest): Promise<RefundResponse> {
+    return this.call('refund', request);
   }
 
-  /**
-   * Default provider ile ödeme sorgula
-   */
+  /** Cancels with the default provider */
+  cancel(request: CancelRequest): Promise<CancelResponse> {
+    return this.call('cancel', request);
+  }
+
   /** Pre-authorization with the default provider */
-  async authorize(request: PaymentRequest): Promise<PaymentResponse> {
-    return this.getDefaultProvider().authorize(request);
+  authorize(request: PaymentRequest): Promise<PaymentResponse> {
+    return this.call('authorize', request);
   }
 
   /** 3D Secure pre-authorization with the default provider */
-  async initThreeDSAuthorize(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
-    return this.getDefaultProvider().initThreeDSAuthorize(request);
+  initThreeDSAuthorize(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
+    return this.call('initThreeDSAuthorize', request);
   }
 
   /** Captures a pre-authorization with the default provider */
-  async capture(request: CaptureRequest): Promise<PaymentResponse> {
-    return this.getDefaultProvider().capture(request);
+  capture(request: CaptureRequest): Promise<PaymentResponse> {
+    return this.call('capture', request);
   }
 
   /** Voids a pre-authorization with the default provider */
-  async voidAuthorization(request: VoidAuthorizationRequest): Promise<CancelResponse> {
-    return this.getDefaultProvider().voidAuthorization(request);
+  voidAuthorization(request: VoidAuthorizationRequest): Promise<CancelResponse> {
+    return this.call('voidAuthorization', request);
   }
 
   /** Saves a card with the default provider */
-  async saveCard(request: SaveCardRequest): Promise<SaveCardResponse> {
-    return this.getDefaultProvider().saveCard(request);
+  saveCard(request: SaveCardRequest): Promise<SaveCardResponse> {
+    return this.call('saveCard', request);
   }
 
   /** Lists a customer's saved cards with the default provider */
-  async listCards(request: { customerToken: string }): Promise<ListCardsResponse> {
-    return this.getDefaultProvider().listCards(request);
+  listCards(request: { customerToken: string }): Promise<ListCardsResponse> {
+    return this.call('listCards', request);
   }
 
   /** Deletes a saved card with the default provider */
-  async deleteCard(request: DeleteCardRequest): Promise<DeleteCardResponse> {
-    return this.getDefaultProvider().deleteCard(request);
+  deleteCard(request: DeleteCardRequest): Promise<DeleteCardResponse> {
+    return this.call('deleteCard', request);
   }
 
-  async getPayment(paymentId: string): Promise<PaymentResponse> {
-    return this.getDefaultProvider().getPayment(paymentId);
+  /** Queries a payment with the default provider */
+  getPayment(paymentId: string): Promise<PaymentResponse> {
+    return this.call('getPayment', paymentId);
   }
+}
 
-  /**
-   * İyzico provider'ına doğrudan erişim
-   *
-   * @example
-   * ```typescript
-   * const result = await betterPay.iyzico.createPayment({ ... });
-   * const checkout = await betterPay.iyzico.initCheckoutForm({ ... });
-   * ```
-   *
-   * @throws Error if Iyzico provider is not enabled or configured
-   */
-  get iyzico(): Iyzico {
-    const provider = this.providers[ProviderType.IYZICO];
-    if (!provider) throw new ProviderNotEnabledError('iyzico');
-    return provider as Iyzico;
-  }
+// `unknown` would swallow the other members of the union
+type Empty = Record<never, never>;
 
-  /**
-   * PayTR provider'ına doğrudan erişim
-   *
-   * @example
-   * ```typescript
-   * const result = await betterPay.paytr.createPayment({ ... });
-   * ```
-   *
-   * @throws Error if PayTR provider is not enabled or configured
-   */
-  get paytr(): PayTR {
-    const provider = this.providers[ProviderType.PAYTR];
-    if (!provider) throw new ProviderNotEnabledError('paytr');
-    return provider as PayTR;
-  }
+/** Providers as members, unless the provider ids are not known (`BetterPayment` without arguments) */
+type ProviderMembers<P extends Record<string, ProviderEntry>> = string extends keyof P
+  ? Empty
+  : { readonly [K in keyof P]: ProviderInstance<P[K]> };
 
-  /**
-   * Akbank provider'ına doğrudan erişim
-   *
-   * @example
-   * ```typescript
-   * const result = await betterPay.akbank.createPayment({ ... });
-   * const threeDSResult = await betterPay.akbank.initThreeDSPayment({ ... });
-   * ```
-   *
-   * @throws Error if Akbank provider is not enabled or configured
-   */
-  get akbank(): Akbank {
-    const provider = this.providers[ProviderType.AKBANK];
-    if (!provider) throw new ProviderNotEnabledError('akbank');
-    return provider as Akbank;
-  }
+type UnionToIntersection<U> = (U extends unknown ? (u: U) => void : never) extends (
+  i: infer I
+) => void
+  ? I
+  : never;
 
-  /**
-   * Parampos provider'ına doğrudan erişim
-   *
-   * @example
-   * ```typescript
-   * const result = await betterPay.parampos.createPayment({ ... });
-   * const threeDSResult = await betterPay.parampos.initThreeDSPayment({ ... });
-   * ```
-   *
-   * @throws Error if Parampos provider is not enabled or configured
-   */
-  get parampos(): Parampos {
-    const provider = this.providers[ProviderType.PARAMPOS];
-    if (!provider) throw new ProviderNotEnabledError('parampos');
-    return provider as Parampos;
-  }
+/** Members the plugins add with `methods` */
+export type PluginMethods<Plugins extends readonly BetterPaymentPlugin[]> = UnionToIntersection<
+  {
+    [I in keyof Plugins]: Plugins[I] extends { methods: (...args: never[]) => infer M } ? M : Empty;
+  }[number]
+>;
+
+/** Error codes the plugins add with `$ERROR_CODES` */
+export type PluginErrorCodes<Plugins extends readonly BetterPaymentPlugin[]> = UnionToIntersection<
+  {
+    [I in keyof Plugins]: Plugins[I] extends { $ERROR_CODES: infer C } ? C : Empty;
+  }[number]
+>;
+
+/**
+ * The payment object: operations with the default provider, the providers by id
+ * (`payment.iyzico`), `on()` for events, the handler, and what plugins add.
+ */
+export type BetterPayment<
+  P extends Record<string, ProviderEntry> = Record<string, ProviderEntry>,
+  Plugins extends readonly BetterPaymentPlugin[] = readonly BetterPaymentPlugin[],
+> = PaymentCore<P> &
+  ProviderMembers<P> &
+  PluginMethods<Plugins> & {
+    readonly $ERROR_CODES: Record<string, string> & PluginErrorCodes<Plugins>;
+  };
+
+/**
+ * Creates the payment object.
+ *
+ * @example
+ * ```ts
+ * import { betterPayment, iyzico, paytr } from 'better-payment';
+ *
+ * export const payment = betterPayment({
+ *   providers: {
+ *     iyzico: iyzico({ apiKey: process.env.IYZICO_API_KEY!, secretKey: process.env.IYZICO_SECRET_KEY! }),
+ *     paytr: paytr({ merchantId: '...', merchantKey: '...', merchantSalt: '...' }),
+ *   },
+ *   defaultProvider: 'iyzico',
+ *   mode: 'sandbox',
+ *   plugins: [],
+ * });
+ *
+ * await payment.createPayment({ ... });        // default provider
+ * await payment.paytr.initThreeDSPayment({ ... }); // a specific provider
+ * payment.on('payment.succeeded', (event) => { ... });
+ * ```
+ */
+export function betterPayment<
+  P extends Record<string, ProviderEntry>,
+  const Plugins extends readonly BetterPaymentPlugin[] = [],
+>(options: BetterPaymentOptions<P, Plugins>): BetterPayment<P, Plugins> {
+  return new PaymentCore<P>(options) as BetterPayment<P, Plugins>;
 }

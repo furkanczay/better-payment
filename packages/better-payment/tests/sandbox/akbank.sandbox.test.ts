@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BetterPayment } from '../../src';
+import { betterPayment, akbank } from '../../src';
 import { PaymentStatus } from '../../src/types';
 import { describeResult, orderId, paymentRequest, record, requireEnv, sandboxCard } from './setup';
 
@@ -14,17 +14,14 @@ const card = sandboxCard('AKBANK_SANDBOX');
 describe.skipIf(!env)('Akbank sandbox', () => {
   const akbank = !env
     ? (undefined as never)
-    : new BetterPayment({
+    : betterPayment({
         mode: 'sandbox',
         providers: {
-          akbank: {
-            enabled: true,
-            config: {
-              merchantSafeId: env!.AKBANK_SANDBOX_MERCHANT_SAFE_ID,
-              terminalSafeId: env!.AKBANK_SANDBOX_TERMINAL_SAFE_ID,
-              secretKey: env!.AKBANK_SANDBOX_SECRET_KEY,
-            },
-          },
+          akbank: akbank({
+            merchantSafeId: env!.AKBANK_SANDBOX_MERCHANT_SAFE_ID,
+            terminalSafeId: env!.AKBANK_SANDBOX_TERMINAL_SAFE_ID,
+            secretKey: env!.AKBANK_SANDBOX_SECRET_KEY,
+          }),
         },
       }).akbank;
 

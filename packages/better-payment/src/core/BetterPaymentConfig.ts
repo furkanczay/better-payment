@@ -1,17 +1,13 @@
 import type { BetterPaymentLogger } from './logger';
 import type { RetryConfig } from './retry';
 export type { RetryConfig } from './retry';
-import type { Iyzico, IyzicoConfig } from '../providers/iyzico';
-import type { PayTR } from '../providers/paytr';
-import type { PayTRConfig } from '../providers/paytr/types';
-import type { Akbank } from '../providers/akbank';
-import type { AkbankConfig } from '../providers/akbank/types';
-import type { Parampos, ParamposConfig } from '../providers/parampos';
 import type { BetterPaymentHandlerOptions } from './BetterPaymentHandler';
-import type { PaymentProvider } from './PaymentProvider';
+import type { PaymentProvider, PaymentProviderConfig } from './PaymentProvider';
+import type { BetterPaymentPlugin } from './plugin';
 
 /**
- * Provider türleri
+ * Ids of the built-in providers. They are the usual keys of `providers`, but any
+ * key works: the key is the provider's id in `payment.use(id)` and in handler URLs.
  */
 export enum ProviderType {
   IYZICO = 'iyzico',
@@ -22,65 +18,61 @@ export enum ProviderType {
   MOCK = 'mock',
 }
 
-/**
- * İyzico provider config
- */
-export interface IyzicoProviderConfig {
-  enabled: boolean;
-  config: IyzicoConfig;
+/** Settings shared by all providers, passed to provider definitions */
+export interface ProviderSetupContext {
+  /** The provider's key in `providers` */
+  id: string;
+  mode: 'sandbox' | 'production';
+  logger?: BetterPaymentLogger;
+  retry?: RetryConfig;
+  fetch?: typeof fetch;
+  validate?: boolean;
 }
 
 /**
- * PayTR provider config
+ * Creates a provider once the shared settings (mode, logger, retry, fetch) are
+ * known. `iyzico({...})`, `paytr({...})` and the other built-in factories return one.
  */
-export interface PayTRProviderConfig {
-  enabled: boolean;
-  config: PayTRConfig;
+export interface ProviderDefinition<P extends PaymentProvider = PaymentProvider> {
+  create(ctx: ProviderSetupContext): P;
 }
 
+/** A provider instance, or a definition that creates one */
+export type ProviderEntry = PaymentProvider | ProviderDefinition;
+
+/** The provider type an entry of `providers` resolves to */
+export type ProviderInstance<E> =
+  E extends ProviderDefinition<infer P> ? P : E extends PaymentProvider ? E : never;
+
 /**
- * Akbank provider config
+ * Wraps a function that creates a custom provider from the shared settings.
+ *
+ * @example
+ * ```ts
+ * export const myPos = (config: MyPosConfig) =>
+ *   defineProvider((ctx) => new MyPos({ ...config, logger: config.logger ?? ctx.logger }));
+ * ```
  */
-export interface AkbankProviderConfig {
-  enabled: boolean;
-  config: AkbankConfig;
+export function defineProvider<P extends PaymentProvider>(
+  create: (ctx: ProviderSetupContext) => P
+): ProviderDefinition<P> {
+  return { create };
 }
 
-/**
- * Parampos provider config
- */
-export interface ParamposProviderConfig {
-  enabled: boolean;
-  config: ParamposConfig;
-}
-
-/**
- * Test provider (`MockProvider` from `better-payment/testing`), passed as an instance
- */
-export interface MockProviderEntry {
-  enabled: boolean;
-  provider: PaymentProvider;
-}
-
-/**
- * Herhangi bir provider için config
- */
-export type ProviderConfig =
-  | IyzicoProviderConfig
-  | PayTRProviderConfig
-  | AkbankProviderConfig
-  | ParamposProviderConfig;
-
-export interface BetterPaymentConfig {
-  providers: {
-    [ProviderType.IYZICO]?: IyzicoProviderConfig;
-    [ProviderType.PAYTR]?: PayTRProviderConfig;
-    [ProviderType.AKBANK]?: AkbankProviderConfig;
-    [ProviderType.PARAMPOS]?: ParamposProviderConfig;
-    /** `{ enabled: true, provider: new MockProvider() }` in tests */
-    [ProviderType.MOCK]?: MockProviderEntry;
-  };
-  defaultProvider?: ProviderType;
+export interface BetterPaymentOptions<
+  P extends Record<string, ProviderEntry> = Record<string, ProviderEntry>,
+  Plugins extends readonly BetterPaymentPlugin[] = readonly BetterPaymentPlugin[],
+> {
+  /**
+   * Providers by id: `{ iyzico: iyzico({...}), paytr: paytr({...}) }`. A custom
+   * provider can be passed as an instance of a `PaymentProvider` subclass.
+   */
+  providers: P;
+  /**
+   * Provider used by the operations on the payment object (`payment.createPayment()`).
+   * Default: the only provider, when there is exactly one.
+   */
+  defaultProvider?: keyof P & string;
   /**
    * 'sandbox' selects test URLs and turns on provider test modes (PayTR
    * test_mode, Akbank test gateways). Defaults to 'production'.
@@ -95,11 +87,13 @@ export interface BetterPaymentConfig {
   fetch?: typeof fetch;
   /**
    * Validate requests before calling providers. Default: true.
-   * Can be overridden per provider with `config.validate`.
+   * Can be overridden per provider with `validate` in its config.
    */
   validate?: boolean;
-  /** Options for `betterPayment.handler` */
+  /** Options for `payment.handler` */
   handler?: BetterPaymentHandlerOptions;
+  /** Plugins, applied in order */
+  plugins?: Plugins;
 }
 
 /** Providers that call a remote API (all except the in-memory `mock`) */
@@ -128,13 +122,18 @@ export const PROVIDER_DEFAULT_URLS: Record<
   },
 };
 
-/**
- * Provider instance map
- */
-export interface ProviderInstances {
-  [ProviderType.IYZICO]?: Iyzico;
-  [ProviderType.PAYTR]?: PayTR;
-  [ProviderType.AKBANK]?: Akbank;
-  [ProviderType.PARAMPOS]?: Parampos;
-  [ProviderType.MOCK]?: PaymentProvider;
+/** Fills the base URL for the mode and the shared settings the config leaves out */
+export function withProviderDefaults<T extends PaymentProviderConfig>(
+  type: RemoteProviderType,
+  config: T,
+  ctx: ProviderSetupContext
+): T {
+  return {
+    ...config,
+    baseUrl: config.baseUrl ?? PROVIDER_DEFAULT_URLS[type][ctx.mode],
+    logger: config.logger ?? ctx.logger,
+    retry: config.retry ?? ctx.retry,
+    fetch: config.fetch ?? ctx.fetch,
+    validate: config.validate ?? ctx.validate,
+  };
 }

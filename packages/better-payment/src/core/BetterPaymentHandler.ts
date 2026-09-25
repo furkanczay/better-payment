@@ -1,6 +1,8 @@
-import type { BetterPayment } from './BetterPayment';
+import type { PaymentCore, RegisteredEndpoint } from './BetterPayment';
 import { ProviderType } from './BetterPaymentConfig';
 import { BetterPaymentError, ConfigurationError } from './errors';
+import { EventListenerError } from './events';
+import type { EndpointContext } from './plugin';
 import { VERSION } from '../version';
 import { PaymentStatus } from '../types';
 import type { PaymentResponse } from '../types';
@@ -21,7 +23,7 @@ import type {
   PricingPlanCreateRequest,
 } from '../types';
 import { Iyzico } from '../providers/iyzico';
-import type { PayTR } from '../providers/paytr';
+import { PayTR } from '../providers/paytr';
 
 /**
  * HTTP Request interface for framework-agnostic handling
@@ -45,10 +47,15 @@ export interface BetterPaymentResponse {
   body: unknown;
 }
 
+/** A plugin endpoint, as `plugin:<plugin id>/<endpoint name>` */
+export type PluginEndpointAction = `plugin:${string}`;
+
 /**
- * Handler actions (URL path after `/:provider/`)
+ * Handler actions (URL path after `/:provider/`), and plugin endpoints
  */
-export type HandlerAction =
+export type HandlerAction = BuiltInHandlerAction | PluginEndpointAction;
+
+export type BuiltInHandlerAction =
   | 'payment'
   | 'payment/init-3ds'
   | 'payment/token'
@@ -78,7 +85,7 @@ export type HandlerAction =
   | 'subscription/product'
   | 'subscription/pricing-plan';
 
-export const ALL_HANDLER_ACTIONS: HandlerAction[] = [
+export const ALL_HANDLER_ACTIONS: BuiltInHandlerAction[] = [
   'payment',
   'payment/init-3ds',
   'payment/token',
@@ -148,7 +155,8 @@ export const PRIVILEGED_HANDLER_ACTIONS: HandlerAction[] = [
 export const CALLBACK_HANDLER_ACTIONS: HandlerAction[] = ['payment/complete-3ds', 'callback'];
 
 export interface HandlerContext {
-  provider: ProviderType;
+  /** The provider id of the route; undefined for plugin endpoints */
+  provider: string | undefined;
   action: HandlerAction;
   params: Record<string, string>;
   request: BetterPaymentRequest;
@@ -186,14 +194,14 @@ export interface BetterPaymentHandlerOptions {
    * Called with the verified result of a provider callback. Update your order here.
    * Errors thrown here make the handler return 500 (PayTR will then retry the notification).
    */
-  onCallback?: (result: PaymentResponse, ctx: HandlerContext) => void | Promise<void>;
+  onCallback?: (result: PaymentResponse, ctx: CallbackContext) => void | Promise<void>;
   /**
    * For browser callbacks (3D Secure return), return a URL to redirect the
    * customer to (303). When undefined, the result is returned as JSON.
    */
   callbackRedirect?: (
     result: PaymentResponse,
-    ctx: HandlerContext
+    ctx: CallbackContext
   ) => string | undefined | Promise<string | undefined>;
   /** Include error messages of unexpected exceptions in 500 responses. Default: false */
   exposeErrors?: boolean;
@@ -204,6 +212,9 @@ export interface BetterPaymentHandlerOptions {
    */
   idempotency?: false | HandlerIdempotencyOptions;
 }
+
+/** The context of a provider callback: the provider is always known */
+export type CallbackContext = HandlerContext & { provider: string };
 
 export interface HandlerIdempotencyOptions {
   /** Default: MemoryIdempotencyStore (per process) */
@@ -276,7 +287,7 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 interface RouteContext {
-  provider: ProviderType;
+  provider: string;
   action: HandlerAction | string;
   params: Record<string, string>;
 }
@@ -317,9 +328,10 @@ export class BetterPaymentHandler {
   private readonly basePath: string;
   private readonly allowed: Set<HandlerAction>;
   private readonly idempotency?: Required<HandlerIdempotencyOptions>;
+  private readonly endpoints: Map<string, RegisteredEndpoint>;
 
   constructor(
-    private betterPayment: BetterPayment,
+    private core: PaymentCore,
     private options: BetterPaymentHandlerOptions = {}
   ) {
     this.basePath = '/' + (options.basePath ?? '/api/pay').replace(/^\/+|\/+$/g, '');
@@ -337,7 +349,25 @@ export class BetterPaymentHandler {
       };
     }
 
-    const privileged = allowed.filter((a) => PRIVILEGED_HANDLER_ACTIONS.includes(a));
+    this.endpoints = new Map();
+    for (const endpoint of core.endpoints) {
+      const path = '/' + endpoint.path.replace(/^\/+|\/+$/g, '');
+      const first = path.split('/')[1];
+      if (core.isProviderEnabled(first) || first === 'health' || first === 'ok') {
+        throw new ConfigurationError(
+          `Endpoint '${endpoint.name}' of plugin '${endpoint.pluginId}' uses the reserved path ${path}`
+        );
+      }
+      if (this.endpoints.has(path)) {
+        throw new ConfigurationError(`Two plugin endpoints use the path ${path}`);
+      }
+      this.endpoints.set(path, endpoint);
+    }
+
+    const privileged: string[] = allowed.filter((a) => PRIVILEGED_HANDLER_ACTIONS.includes(a));
+    for (const endpoint of this.endpoints.values()) {
+      if (endpoint.privileged) privileged.push(`plugin:${endpoint.pluginId}/${endpoint.name}`);
+    }
     if (privileged.length > 0 && !options.authorize) {
       throw new ConfigurationError(
         `Handler actions [${privileged.join(', ')}] require an 'authorize' hook. ` +
@@ -360,12 +390,17 @@ export class BetterPaymentHandler {
         return this.healthCheck();
       }
 
+      const endpoint = this.endpoints.get(path);
+      if (endpoint) {
+        return await this.handleEndpoint(endpoint, request);
+      }
+
       const route = this.parseRoute(path);
       if (!route) {
         return this.errorResponse(404, 'Route not found');
       }
 
-      const action = route.action as HandlerAction;
+      const action = route.action as BuiltInHandlerAction;
       if (!ALL_HANDLER_ACTIONS.includes(action)) {
         return this.errorResponse(404, `Action '${route.action}' not found`);
       }
@@ -373,7 +408,7 @@ export class BetterPaymentHandler {
         return this.errorResponse(404, `Action '${route.action}' is not enabled`);
       }
 
-      if (!this.betterPayment.isProviderEnabled(route.provider)) {
+      if (!this.core.isProviderEnabled(route.provider)) {
         return this.errorResponse(400, `Provider '${route.provider}' is not enabled or configured`);
       }
 
@@ -385,16 +420,8 @@ export class BetterPaymentHandler {
         body: asRecord(this.parseBody(request)),
       };
 
-      if (this.options.authorize) {
-        let ok = false;
-        try {
-          ok = await this.options.authorize(ctx);
-        } catch {
-          ok = false;
-        }
-        if (!ok) {
-          return this.errorResponse(403, 'Forbidden');
-        }
+      if (!(await this.isAuthorized(ctx))) {
+        return this.errorResponse(403, 'Forbidden');
       }
 
       if (this.options.transformRequest && !CALLBACK_HANDLER_ACTIONS.includes(action)) {
@@ -406,7 +433,7 @@ export class BetterPaymentHandler {
         return await this.withIdempotencyKey(ctx, idempotencyKey, this.idempotency);
       }
 
-      return await this.handleAction(ctx);
+      return await this.runAction(ctx);
     } catch (error: unknown) {
       if (error instanceof HttpError) {
         return this.errorResponse(error.status, error.message);
@@ -419,6 +446,73 @@ export class BetterPaymentHandler {
         500,
         this.options.exposeErrors ? errorMessage(error, fallback) : fallback
       );
+    }
+  }
+
+  private async isAuthorized(ctx: HandlerContext): Promise<boolean> {
+    if (!this.options.authorize) return true;
+    try {
+      return await this.options.authorize(ctx);
+    } catch {
+      return false;
+    }
+  }
+
+  private async handleEndpoint(
+    endpoint: RegisteredEndpoint,
+    request: BetterPaymentRequest
+  ): Promise<BetterPaymentResponse> {
+    if (request.method.toUpperCase() !== endpoint.method) {
+      return this.errorResponse(405, 'Method not allowed');
+    }
+    const body = asRecord(this.parseBody(request));
+    const ctx: HandlerContext = {
+      provider: undefined,
+      action: `plugin:${endpoint.pluginId}/${endpoint.name}`,
+      params: {},
+      request,
+      body,
+    };
+    if (!(await this.isAuthorized(ctx))) {
+      return this.errorResponse(403, 'Forbidden');
+    }
+    const responses = new WeakSet<BetterPaymentResponse>();
+    const endpointContext: EndpointContext = {
+      ...this.core.context,
+      request,
+      body,
+      query: new URL(request.url, 'http://localhost').searchParams,
+      json: (value, status = 200) => {
+        const response = this.jsonResponse(status, value);
+        responses.add(response);
+        return response;
+      },
+    };
+    const result = await endpoint.handler(endpointContext);
+    if (result && typeof result === 'object' && responses.has(result as BetterPaymentResponse)) {
+      return result as BetterPaymentResponse;
+    }
+    return this.jsonResponse(200, result);
+  }
+
+  /**
+   * Runs an action. When an event listener fails after the provider returned a
+   * result, the result is still returned: the payment happened, and answering
+   * with an error could make the client pay twice. (Callbacks are different: they
+   * answer 500, so the provider re-sends them and the listeners run again.)
+   */
+  private async runAction(ctx: HandlerContext): Promise<BetterPaymentResponse> {
+    try {
+      return await this.handleAction(ctx);
+    } catch (error) {
+      if (error instanceof EventListenerError && !CALLBACK_HANDLER_ACTIONS.includes(ctx.action)) {
+        this.core.context.logger?.error('Payment event listener failed', error, {
+          provider: ctx.provider,
+          action: ctx.action,
+        });
+        return this.resultResponse(error.result);
+      }
+      throw error;
     }
   }
 
@@ -445,8 +539,9 @@ export class BetterPaymentHandler {
       .map((s) => decodeURIComponent(s));
     if (segments.length < 2) return null;
 
-    const provider = segments[0] as ProviderType;
-    if (!Object.values(ProviderType).includes(provider)) {
+    const provider = segments[0];
+    const builtIn = (Object.values(ProviderType) as string[]).includes(provider);
+    if (!builtIn && !this.core.isProviderEnabled(provider)) {
       return null;
     }
 
@@ -507,15 +602,20 @@ export class BetterPaymentHandler {
   }
 
   private requireIyzico(ctx: HandlerContext): Iyzico {
-    const provider = this.betterPayment.use(ctx.provider);
+    const provider = this.core.use(this.providerOf(ctx));
     if (!(provider instanceof Iyzico)) {
       throw new HttpError(400, 'Route only available for iyzico provider');
     }
     return provider;
   }
 
+  private providerOf(ctx: HandlerContext): string {
+    if (!ctx.provider) throw new HttpError(404, 'Route not found');
+    return ctx.provider;
+  }
+
   private async handleAction(ctx: HandlerContext): Promise<BetterPaymentResponse> {
-    const provider = this.betterPayment.use(ctx.provider);
+    const provider = this.core.use(this.providerOf(ctx));
 
     switch (ctx.action) {
       case 'payment':
@@ -536,7 +636,7 @@ export class BetterPaymentHandler {
       case 'payment/complete-3ds':
       case 'callback':
         this.requireMethod(ctx, 'POST');
-        return this.handleCallback(ctx, provider);
+        return this.handleCallback({ ...ctx, provider: this.providerOf(ctx) });
 
       case 'payment/get':
         this.requireMethod(ctx, 'GET');
@@ -695,14 +795,18 @@ export class BetterPaymentHandler {
    * otherwise PayTR keeps re-sending them. Browser callbacks (3D return) can be
    * redirected with `callbackRedirect`.
    */
-  private async handleCallback(
-    ctx: HandlerContext,
-    provider: PaymentProvider
-  ): Promise<BetterPaymentResponse> {
+  private async handleCallback(ctx: CallbackContext): Promise<BetterPaymentResponse> {
     const body = this.requireBody(ctx);
+    // Events are emitted in finishCallback, next to onCallback, so that a failing
+    // listener is retried with the stored result instead of calling the provider again
+    const complete = async () =>
+      (await this.core.run('completeThreeDSPayment', ctx.provider, body, {
+        routable: false,
+        emit: false,
+      })) as PaymentResponse;
     const idem = this.idempotency;
     if (!idem) {
-      return this.finishCallback(ctx, await provider.completeThreeDSPayment(body));
+      return this.finishCallback(ctx, await complete());
     }
 
     // A repeated delivery (PayTR resend, browser re-post) has the same body. Keying
@@ -726,7 +830,7 @@ export class BetterPaymentHandler {
 
     try {
       if (!result) {
-        result = await provider.completeThreeDSPayment(body);
+        result = await complete();
         if (result.errorCode === 'INVALID_HASH' || result.errorCode === NETWORK_ERROR_CODE) {
           // Nothing trustworthy to remember: forged, or outcome unknown
           await store.delete(key);
@@ -750,16 +854,17 @@ export class BetterPaymentHandler {
 
   /** Runs onCallback and builds the response for a provider callback result */
   private async finishCallback(
-    ctx: HandlerContext,
+    ctx: CallbackContext,
     result: PaymentResponse
   ): Promise<BetterPaymentResponse> {
     const invalidSignature = result?.errorCode === 'INVALID_HASH';
 
-    if (!invalidSignature && this.options.onCallback) {
-      await this.options.onCallback(result, ctx);
+    if (!invalidSignature) {
+      await this.core.emit('completeThreeDSPayment', ctx.provider, ctx.body, result);
+      if (this.options.onCallback) await this.options.onCallback(result, ctx);
     }
 
-    if (ctx.provider === ProviderType.PAYTR && ctx.action === 'callback') {
+    if (this.core.rawProvider(ctx.provider) instanceof PayTR && ctx.action === 'callback') {
       if (invalidSignature) {
         return {
           status: 400,
@@ -812,7 +917,7 @@ export class BetterPaymentHandler {
     }
 
     try {
-      const response = await this.handleAction(ctx);
+      const response = await this.runAction(ctx);
       await store.set(key, JSON.stringify({ state: 'done', request, response }), ttlSeconds);
       return response;
     } catch (error) {

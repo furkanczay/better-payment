@@ -1,10 +1,11 @@
+import { fakePayment } from '../../helpers/fake-payment';
 import { describe, it, expect, vi } from 'vitest';
 import crypto from 'crypto';
 import { Iyzico } from '../../../src/providers/iyzico';
 import { PayTR } from '../../../src/providers/paytr';
 import { Parampos } from '../../../src/providers/parampos';
 import { Akbank } from '../../../src/providers/akbank';
-import { BetterPayment } from '../../../src/core/BetterPayment';
+import { betterPayment, iyzico as iyzicoProvider } from '../../../src';
 import { BetterPaymentHandler } from '../../../src/core/BetterPaymentHandler';
 import { BetterPaymentClient } from '../../../src/client';
 import { ProviderType } from '../../../src/core/BetterPaymentConfig';
@@ -292,23 +293,21 @@ describe('providers without card storage', () => {
 
 describe('entry points', () => {
   it('BetterPayment facade, handler routes (privileged) and client', async () => {
-    const payment = new BetterPayment({
-      providers: { iyzico: { enabled: true, config: { apiKey: 'k', secretKey: 's' } } },
+    const payment = betterPayment({
+      providers: { iyzico: iyzicoProvider({ apiKey: 'k', secretKey: 's' }) },
     });
+    // Operations on payment.iyzico run through the plugin hooks: keep the spies
     const provider = payment.iyzico as any;
+    const spies: Record<string, ReturnType<typeof vi.fn>> = {};
     for (const m of ['saveCard', 'listCards', 'deleteCard'])
-      provider[m] = vi.fn().mockResolvedValue({ status: 'success', cards: [] });
+      provider[m] = spies[m] = vi.fn().mockResolvedValue({ status: 'success', cards: [] });
     await payment.saveCard({ card: {} as any });
     await payment.listCards({ customerToken: 'U' });
     await payment.deleteCard({ customerToken: 'U', cardToken: 'C' });
     for (const m of ['saveCard', 'listCards', 'deleteCard'])
-      expect(provider[m]).toHaveBeenCalledTimes(1);
+      expect(spies[m]).toHaveBeenCalledTimes(1);
 
-    const mockPayment: any = {
-      isProviderEnabled: () => true,
-      getEnabledProviders: () => [ProviderType.IYZICO],
-      use: () => provider,
-    };
+    const mockPayment = fakePayment(provider);
     expect(() => new BetterPaymentHandler(mockPayment, { allowedActions: ['cards/list'] })).toThrow(
       /authorize/
     );
@@ -323,7 +322,7 @@ describe('entry points', () => {
       body: { customerToken: 'U' },
     });
     expect(res.status).toBe(200);
-    expect(provider.listCards).toHaveBeenCalledTimes(2);
+    expect(spies.listCards).toHaveBeenCalledTimes(2);
 
     const urls: string[] = [];
     const fetch = vi.fn((url: string) => {

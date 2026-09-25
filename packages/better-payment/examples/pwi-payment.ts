@@ -5,21 +5,17 @@
  * Kullanıcılar havale/EFT ile ödeme yapar ve ödeme onaylandığında satıcıya aktarılır.
  */
 
-import { BetterPayment, ProviderType, Currency, BasketItemType, PWIPaymentStatus } from 'better-payment';
+import { betterPayment, iyzico, Currency, BasketItemType, PWIPaymentStatus } from 'better-payment';
 
-// 1. BetterPayment'ı yapılandır
-const betterPay = new BetterPayment({
+// 1. betterPayment() ile yapılandır
+const betterPay = betterPayment({
   providers: {
-    iyzico: {
-      enabled: true,
-      config: {
-        apiKey: process.env.IYZICO_API_KEY!,
-        secretKey: process.env.IYZICO_SECRET_KEY!,
-        baseUrl: process.env.IYZICO_BASE_URL || 'https://sandbox-api.iyzipay.com',
-      },
-    },
+    iyzico: iyzico({
+      apiKey: process.env.IYZICO_API_KEY!,
+      secretKey: process.env.IYZICO_SECRET_KEY!,
+      baseUrl: process.env.IYZICO_BASE_URL || 'https://sandbox-api.iyzipay.com',
+    }),
   },
-  defaultProvider: ProviderType.IYZICO,
 });
 
 // 2. PWI Ödeme başlatma fonksiyonu

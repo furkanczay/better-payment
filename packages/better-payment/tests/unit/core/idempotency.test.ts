@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { BetterPaymentHandler } from '../../../src/core/BetterPaymentHandler';
 import { MemoryIdempotencyStore, fingerprint } from '../../../src/core/idempotency';
-import { ProviderType } from '../../../src/core/BetterPaymentConfig';
+import { fakePayment } from '../../helpers/fake-payment';
 
 function setup(providerOverrides: Record<string, any> = {}) {
   const provider: Record<string, any> = {
@@ -10,11 +10,7 @@ function setup(providerOverrides: Record<string, any> = {}) {
     installmentInfo: vi.fn().mockResolvedValue({ status: 'success', installmentDetails: [] }),
     ...providerOverrides,
   };
-  const payment: any = {
-    isProviderEnabled: vi.fn().mockReturnValue(true),
-    getEnabledProviders: vi.fn().mockReturnValue([ProviderType.PAYTR]),
-    use: vi.fn().mockReturnValue(provider),
-  };
+  const payment = fakePayment(provider, { enabled: true });
   return { payment, provider };
 }
 

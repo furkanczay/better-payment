@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { HttpClient, HttpError } from '../../../src/core/http';
 import { isNetworkError } from '../../../src/core/utils';
 import { failureResult } from '../../../src/core/failure';
-import { BetterPayment, PaymentStatus, ProviderType } from '../../../src';
+import { betterPayment, PaymentStatus, ProviderType, iyzico } from '../../../src';
 import type { BetterPaymentLogger } from '../../../src/core/logger';
 
 function recordingFetch(response: () => Response | Promise<Response>) {
@@ -163,11 +163,11 @@ describe('HttpClient', () => {
           JSON.stringify({ status: 'success', binNumber: '552879', cardType: 'CREDIT_CARD' })
         )
     );
-    const payment = new BetterPayment({
+    const payment = betterPayment({
       mode: 'sandbox',
       fetch: fetchImpl,
       providers: {
-        [ProviderType.IYZICO]: { enabled: true, config: { apiKey: 'k', secretKey: 's' } },
+        [ProviderType.IYZICO]: iyzico({ apiKey: 'k', secretKey: 's' }),
       },
     });
     const result = await payment.use(ProviderType.IYZICO).binCheck('552879');
