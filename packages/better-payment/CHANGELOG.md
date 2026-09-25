@@ -6,6 +6,52 @@ earlier `1.x`–`3.x` releases are superseded and should not be used (see "Why t
 Upgrading from `3.x`? Read the migration guide:
 https://better-payment.czaylabs.com/docs/whats-new
 
+## 0.1.0
+
+The first feature release after the reset. Existing 0.0.1 code keeps working; behavior
+changes are listed under "Changed". The iyzico integration is now tested against
+the real iyzico sandbox every night.
+
+### Added
+
+- **Unified error codes.** Every failed result carries `code`, a provider-independent
+  `PaymentErrorCode` (`INSUFFICIENT_FUNDS`, `CARD_DECLINED`, `INVALID_CARD`, `EXPIRED_CARD`,
+  `INVALID_CVC`, `THREEDS_FAILED`, `FRAUD_SUSPECTED`, `LIMIT_EXCEEDED`, `DUPLICATE_ORDER`,
+  `CANCELLED_BY_CUSTOMER`, `INVALID_REQUEST`, `NETWORK_ERROR`, `INVALID_HASH`, `PROVIDER_ERROR`,
+  `UNKNOWN`). `errorCode` keeps the provider's raw code. iyzico payment errors, PayTR
+  `failed_reason_code` and Akbank's ISO 8583 host codes are mapped; unmapped codes are
+  `UNKNOWN`. See https://better-payment.czaylabs.com/docs/api/error-codes
+- **Request validation** before the provider is called: card number (Luhn), expiry, CVC,
+  amounts, iyzico basket totals, buyer email/IP/GSM formats and provider-required fields.
+  Invalid requests return `code: 'INVALID_REQUEST'` and list every invalid field, without an
+  HTTP call. `ValidationError` carries `issues` and `field`. Turn it off with `validate: false`.
+- **Parampos installments:** `installmentInfo()` returns the card's available installment
+  counts with Param's totals, `calculatePaidPrice()` computes `paidPrice` (Toplam_Tutar), and
+  `getInstallmentRates()` returns the rate table. `InstallmentDetail` gains `commissionRate`.
+- **Duplicate callbacks are processed once.** A repeated PayTR notification or browser
+  re-post gets the stored response, without calling the provider or `onCallback` again, so
+  Parampos payments are never finalized twice. If `onCallback` fails, the retry reuses the
+  stored provider result.
+- **`Idempotency-Key` header** on payment, refund, cancel and iyzico management routes of the
+  HTTP handler. A repeated key replays the first response.
+- `IdempotencyStore` interface with an in-memory default (use Redis or a database with
+  several instances). Configure with `handler.idempotency`, or turn off with `idempotency: false`.
+- `PaymentErrorCode` and `PaymentStatus` are exported from `better-payment/client`.
+
+### Changed
+
+- Request validation errors (missing `callbackUrl`, unsupported currency, invalid amount,
+  invalid PayTR order id, ...) return `errorCode: 'VALIDATION_ERROR'`; `errorCode` used to be empty.
+- Stricter public types, with no `any`: `rawResponse` is `unknown`, and the handler request and
+  response bodies are `unknown`. `HandlerContext.body` is `Record<string, unknown> | undefined`,
+  and `onCallback` / `callbackRedirect` receive a `PaymentResponse`. Code that read fields of
+  `rawResponse` without narrowing needs a cast.
+- `NETWORK_ERROR` messages name the transport error, e.g. `No response from iyzico
+  (ECONNRESET: read ECONNRESET)`.
+- Akbank `installmentInfo()` explains that Akbank's API has no installment-rate query.
+- The published build is minified (names kept, source maps included): about 19 kB gzip
+  instead of 29.6 kB; the browser client is 1.2 kB.
+
 ## 0.0.1
 
 ### Why the reset
