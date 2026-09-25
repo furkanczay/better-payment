@@ -1,0 +1,81 @@
+name: Sandbox
+
+# Runs the package against the providers' real test environments.
+# Each provider suite is skipped when its secrets are not set.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      record:
+        description: 'Save redacted provider responses as a build artifact'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox
+  cancel-in-progress: false
+
+jobs:
+  sandbox:
+    name: Provider sandboxes
+    if: github.repository == 'furkanczay/better-payment'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: packages/better-payment
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Run sandbox tests
+        run: pnpm test:sandbox
+        env:
+          SANDBOX_RECORD: ${{ inputs.record && '1' || '' }}
+          IYZICO_SANDBOX_API_KEY: ${{ secrets.IYZICO_SANDBOX_API_KEY }}
+          IYZICO_SANDBOX_SECRET_KEY: ${{ secrets.IYZICO_SANDBOX_SECRET_KEY }}
+          PAYTR_SANDBOX_MERCHANT_ID: ${{ secrets.PAYTR_SANDBOX_MERCHANT_ID }}
+          PAYTR_SANDBOX_MERCHANT_KEY: ${{ secrets.PAYTR_SANDBOX_MERCHANT_KEY }}
+          PAYTR_SANDBOX_MERCHANT_SALT: ${{ secrets.PAYTR_SANDBOX_MERCHANT_SALT }}
+          PARAMPOS_SANDBOX_CLIENT_CODE: ${{ secrets.PARAMPOS_SANDBOX_CLIENT_CODE }}
+          PARAMPOS_SANDBOX_CLIENT_USERNAME: ${{ secrets.PARAMPOS_SANDBOX_CLIENT_USERNAME }}
+          PARAMPOS_SANDBOX_CLIENT_PASSWORD: ${{ secrets.PARAMPOS_SANDBOX_CLIENT_PASSWORD }}
+          PARAMPOS_SANDBOX_GUID: ${{ secrets.PARAMPOS_SANDBOX_GUID }}
+          PARAMPOS_SANDBOX_CARD_NUMBER: ${{ secrets.PARAMPOS_SANDBOX_CARD_NUMBER }}
+          PARAMPOS_SANDBOX_CARD_EXPIRE_MONTH: ${{ secrets.PARAMPOS_SANDBOX_CARD_EXPIRE_MONTH }}
+          PARAMPOS_SANDBOX_CARD_EXPIRE_YEAR: ${{ secrets.PARAMPOS_SANDBOX_CARD_EXPIRE_YEAR }}
+          PARAMPOS_SANDBOX_CARD_CVC: ${{ secrets.PARAMPOS_SANDBOX_CARD_CVC }}
+          AKBANK_SANDBOX_MERCHANT_SAFE_ID: ${{ secrets.AKBANK_SANDBOX_MERCHANT_SAFE_ID }}
+          AKBANK_SANDBOX_TERMINAL_SAFE_ID: ${{ secrets.AKBANK_SANDBOX_TERMINAL_SAFE_ID }}
+          AKBANK_SANDBOX_SECRET_KEY: ${{ secrets.AKBANK_SANDBOX_SECRET_KEY }}
+          AKBANK_SANDBOX_CARD_NUMBER: ${{ secrets.AKBANK_SANDBOX_CARD_NUMBER }}
+          AKBANK_SANDBOX_CARD_EXPIRE_MONTH: ${{ secrets.AKBANK_SANDBOX_CARD_EXPIRE_MONTH }}
+          AKBANK_SANDBOX_CARD_EXPIRE_YEAR: ${{ secrets.AKBANK_SANDBOX_CARD_EXPIRE_YEAR }}
+          AKBANK_SANDBOX_CARD_CVC: ${{ secrets.AKBANK_SANDBOX_CARD_CVC }}
+
+      - name: Upload recorded responses
+        if: ${{ inputs.record && always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-recordings
+          path: packages/better-payment/tests/fixtures/recorded/
+          if-no-files-found: ignore

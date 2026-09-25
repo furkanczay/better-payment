@@ -20,6 +20,9 @@ tests/
 │       ├── iyzico.test.ts   # Iyzico request format, signature, vb.
 │       └── paytr.test.ts    # PayTR hash, basket encoding, vb.
 │
+├── sandbox/                  # Gerçek sağlayıcı test ortamları (pnpm test:sandbox,
+│                             # kimlik bilgisi yoksa atlanır; bkz. CONTRIBUTING.md)
+│
 ├── e2e/                      # End-to-end testler
 │   └── payment-flows.test.ts # Tam ödeme akışları
 │
