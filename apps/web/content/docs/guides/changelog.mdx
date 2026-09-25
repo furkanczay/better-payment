@@ -7,6 +7,21 @@ description: Release history and breaking changes for better-payment.
   The version history was reset. `0.0.1` is the first release of the reworked package. Releases `1.x`–`3.x` had incorrect provider integrations and callback checks that could be bypassed. Do not use them. See [What's New in 0.0.1](/docs/whats-new) for the reasoning and a step-by-step migration guide.
 </Callout>
 
+## 0.2.0
+
+Pre-authorization and stored cards. Existing 0.1.0 code keeps working. Both features are tested against the real iyzico sandbox every night.
+
+### Added
+
+- **[Pre-authorization](/docs/guides/pre-authorization):** `authorize()` / `initThreeDSAuthorize()` block an amount, `capture()` charges it (partial capture supported) and `voidAuthorization()` releases it. iyzico, Parampos and Akbank; PayTR is not supported yet.
+- **[Stored cards](/docs/guides/stored-cards):** save a card with `saveCard` during a payment, pay later with `storedCard: { customerToken, cardToken }`, and manage cards with `saveCard()`, `listCards()` and `deleteCard()`. iyzico and PayTR; Parampos and Akbank are not supported yet.
+- [Handler routes](/docs/api/handler#routes) and browser client methods for both. Capture, void and the card routes require an `authorize` hook.
+
+### Changed
+
+- `PaymentRequest.paymentCard` is optional in the types; one of `paymentCard` or `storedCard` is required at runtime.
+- The handler answers `400` instead of `500` when a provider does not support an operation.
+
 ## 0.1.0
 
 The first feature release after the reset. Existing 0.0.1 code keeps working; behavior changes are listed under "Changed". The iyzico integration is now tested against the real iyzico sandbox every night.
