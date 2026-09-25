@@ -6,6 +6,62 @@ earlier `1.x`–`3.x` releases are superseded and should not be used (see "Why t
 Upgrading from `3.x`? Read the migration guide:
 https://better-payment.czaylabs.com/docs/whats-new
 
+## 0.5.0
+
+Plugins and typed payment events. **Breaking:** the payment object is created with
+`betterPayment()` instead of `new BetterPayment()`, and providers with factories. Provider methods,
+results, handler options, adapters and the browser client are unchanged. Migration guide:
+https://better-payment.czaylabs.com/docs/guides/migration-0-5
+
+```ts
+// 0.4
+new BetterPayment({ providers: { iyzico: { enabled: true, config: { apiKey, secretKey } } } });
+// 0.5
+betterPayment({ providers: { iyzico: iyzico({ apiKey, secretKey }) } });
+```
+
+### Changed (breaking)
+
+- `betterPayment(options)` replaces the `BetterPayment` class. `BetterPayment` is now a type, and
+  `BetterPaymentConfig` is `BetterPaymentOptions`.
+- Providers are created with `iyzico()`, `paytr()`, `akbank()` and `parampos()`; `MockProvider` is
+  passed as an instance (`mock: new MockProvider()`). The `enabled` flag is gone: leave a provider
+  out instead. The per-provider config types (`IyzicoProviderConfig`, ...) and `ProviderInstances`
+  are removed.
+- Any key of `providers` is a provider id (`payment.use(id)`, handler routes). `payment.<id>` exists
+  only for configured providers and is typed per provider; `payment.use(id)` throws
+  `ProviderNotEnabledError` for other ids.
+- `getEnabledProviders()` returns `string[]`. `HandlerContext.provider` is a `string` (`undefined` for
+  plugin endpoints); `onCallback` and `callbackRedirect` get a `CallbackContext`.
+
+### Added
+
+- **Plugins** (`plugins: [...]`): an object with an `id` and the parts it needs, created with
+  `definePlugin()` to keep its type.
+  - `hooks.before` / `hooks.after` for the provider operations, called on the payment object, on a
+    provider or through the handler. A before hook can replace the request, return a result without
+    calling the provider, or choose the provider (for calls made on the payment object only). An
+    after hook can replace the result.
+  - `init`, `methods` (typed members of the payment object), handler `endpoints` (the `authorize`
+    hook runs for them; `privileged` ones require it), `onResponse` for handler responses and
+    `$ERROR_CODES`.
+  See https://better-payment.czaylabs.com/docs/plugins/writing-plugins
+- **Typed payment events:** `payment.succeeded`, `payment.authorized`, `payment.pending`,
+  `payment.failed`, `payment.cancelled`, `refund.succeeded`, `refund.failed`, with `payment.on()` or
+  a plugin's `events`. Emitted for every provider and flow, only for verified results. A failing
+  listener throws `EventListenerError`, which carries the result; the handler retries callback
+  events with the stored result and never answers a payment route with an error after the payment
+  went through. See https://better-payment.czaylabs.com/docs/plugins/events
+- **`better-payment/plugins`** with the first official plugin, **`localizedErrors()`**: customer-facing
+  `errorMessage` by normalized error code, in English and Turkish, with your own wording or
+  languages, and per request from `Accept-Language` in the handler. The provider's text moves to the
+  new `providerMessage` field. See https://better-payment.czaylabs.com/docs/plugins/localized-errors
+- **Custom providers:** `defineProvider()` gives a `PaymentProvider` subclass the shared settings
+  (mode, logger, retry, fetch). WebCrypto helpers (`hmac`, `digest`, `safeEqual`, `toHex`,
+  `toBase64`, `randomHex`) are exported for signing and verifying.
+  See https://better-payment.czaylabs.com/docs/plugins/custom-providers
+- `client.use(id)` in `better-payment/client` for provider ids other than the built-in ones.
+
 ## 0.4.0
 
 Testing without a sandbox and one-line framework integration. Existing 0.3.0 code keeps working;

@@ -7,6 +7,22 @@ description: Release history and breaking changes for better-payment.
   The version history was reset. `0.0.1` is the first release of the reworked package. Releases `1.x`–`3.x` had incorrect provider integrations and callback checks that could be bypassed. Do not use them. See [What's New in 0.0.1](/docs/whats-new) for the reasoning and a step-by-step migration guide.
 </Callout>
 
+## 0.5.0
+
+Plugins and typed payment events. **Breaking:** `betterPayment()` replaces `new BetterPayment()`, and providers are created with factories. See [Migrating to 0.5](/docs/guides/migration-0-5).
+
+### Changed (breaking)
+
+- `betterPayment({ providers, plugins })` replaces the `BetterPayment` class, and providers are created with `iyzico()`, `paytr()`, `akbank()` and `parampos()`. The `enabled` flag is gone.
+- Any key of `providers` is a provider id; `payment.<id>` is typed per provider. `getEnabledProviders()` returns `string[]`.
+
+### Added
+
+- **[Plugins](/docs/plugins):** before/after hooks for provider operations, typed methods, handler endpoints and error codes. [Write your own](/docs/plugins/writing-plugins) in a few lines.
+- **[Payment events](/docs/plugins/events):** one typed listener for every provider and flow, emitted only for verified results.
+- **[Localized error messages](/docs/plugins/localized-errors):** the first official plugin, in `better-payment/plugins`. Customer-facing messages in English and Turkish.
+- **[Custom providers](/docs/plugins/custom-providers)** with `defineProvider()`, and WebCrypto helpers for signing.
+
 ## 0.4.0
 
 Testing without a sandbox and one-line framework integration. Existing 0.3.0 code keeps working.
