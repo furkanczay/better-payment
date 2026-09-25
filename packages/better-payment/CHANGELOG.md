@@ -6,6 +6,40 @@ earlier `1.x`–`3.x` releases are superseded and should not be used (see "Why t
 Upgrading from `3.x`? Read the migration guide:
 https://better-payment.czaylabs.com/docs/whats-new
 
+## 0.2.0
+
+Pre-authorization and stored cards. Existing 0.1.0 code keeps working; the only type-level
+change is that `PaymentRequest.paymentCard` is now optional (see "Changed"). Both features are
+tested against the real iyzico sandbox every night.
+
+### Added
+
+- **Pre-authorization:** `authorize()` and `initThreeDSAuthorize()` block an amount on the card,
+  `capture({ paymentId, amount, ip })` charges it (partial capture supported) and
+  `voidAuthorization({ paymentId, ip })` releases it. Supported on iyzico, Parampos and Akbank;
+  PayTR throws `NOT_SUPPORTED` for now (#60).
+  See https://better-payment.czaylabs.com/docs/guides/pre-authorization
+- **Stored cards:** pass `saveCard` with a payment to save the card with the provider, then pay
+  with `storedCard: { customerToken, cardToken }` instead of `paymentCard`. Results carry the
+  tokens in `storedCard`. `saveCard()`, `listCards()` and `deleteCard()` manage saved cards
+  (iyzico card storage API; PayTR Kart Saklama `capi/list` and `capi/delete`, cards are saved
+  during a Direct API payment). Only tokens are stored, never card numbers. Parampos and Akbank
+  reject stored cards for now (#65).
+  See https://better-payment.czaylabs.com/docs/guides/stored-cards
+- HTTP handler routes `authorize`, `authorize/init-3ds`, `capture`, `void`, `cards/save`,
+  `cards/list` and `cards/delete`. Capture, void and the card routes require an `authorize` hook;
+  the mutating ones accept an `Idempotency-Key` header.
+- Browser client methods for all of the above (`client.iyzico.capture(...)`,
+  `client.iyzico.listCards(...)`, ...).
+
+### Changed
+
+- `PaymentRequest.paymentCard` is optional in the types. At runtime one of `paymentCard` or
+  `storedCard` is still required; code that reads `request.paymentCard` from a `PaymentRequest`
+  needs a check.
+- The HTTP handler answers `400` (instead of `500`) when a provider does not support the
+  requested operation (`NOT_SUPPORTED`).
+
 ## 0.1.0
 
 The first feature release after the reset. Existing 0.0.1 code keeps working; behavior
@@ -47,7 +81,7 @@ the real iyzico sandbox every night.
   and `onCallback` / `callbackRedirect` receive a `PaymentResponse`. Code that read fields of
   `rawResponse` without narrowing needs a cast.
 - `NETWORK_ERROR` messages name the transport error, e.g. `No response from iyzico
-  (ECONNRESET: read ECONNRESET)`.
+(ECONNRESET: read ECONNRESET)`.
 - Akbank `installmentInfo()` explains that Akbank's API has no installment-rate query.
 - The published build is minified (names kept, source maps included): about 19 kB gzip
   instead of 29.6 kB; the browser client is 1.2 kB.
