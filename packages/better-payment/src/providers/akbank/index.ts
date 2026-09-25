@@ -1,3 +1,9 @@
+import {
+  defineProvider,
+  withProviderDefaults,
+  ProviderType,
+  type ProviderDefinition,
+} from '../../core/BetterPaymentConfig';
 import type { HttpClient, HttpRequestConfig } from '../../core/http';
 import { PaymentProvider } from '../../core/PaymentProvider';
 import { BetterPaymentError, ConfigurationError, ValidationError } from '../../core/errors';
@@ -534,3 +540,13 @@ export function mapAkbankTxnStatus(tx: AkbankTxnDetail | undefined): PaymentStat
         : PaymentStatus.PENDING;
   }
 }
+
+/**
+ * The Akbank provider, for `betterPayment({ providers: { akbank: akbank({ merchantSafeId, terminalSafeId, secretKey }) } })`.
+ * The base URL follows `mode` unless `baseUrl` is set.
+ */
+export const akbank = (config: AkbankConfig): ProviderDefinition<Akbank> =>
+  defineProvider((ctx) => {
+    const options = withProviderDefaults(ProviderType.AKBANK, config, ctx);
+    return new Akbank({ ...options, testMode: config.testMode ?? ctx.mode === 'sandbox' });
+  });

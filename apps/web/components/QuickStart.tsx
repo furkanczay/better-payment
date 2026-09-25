@@ -13,18 +13,15 @@ const steps = [
   {
     number: "02",
     file: "lib/payment.ts",
-    code: `import { BetterPayment } from "better-payment";
+    code: `import { betterPayment, iyzico } from "better-payment";
 
-export const payment = new BetterPayment({
+export const payment = betterPayment({
   mode: "sandbox", // test URLs and provider test modes
   providers: {
-    iyzico: {
-      enabled: true,
-      config: {
-        apiKey: process.env.IYZICO_API_KEY!,
-        secretKey: process.env.IYZICO_SECRET_KEY!,
-      },
-    },
+    iyzico: iyzico({
+      apiKey: process.env.IYZICO_API_KEY!,
+      secretKey: process.env.IYZICO_SECRET_KEY!,
+    }),
   },
 });`,
   },

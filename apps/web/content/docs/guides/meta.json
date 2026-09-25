@@ -1,4 +1,10 @@
 {
   "title": "Guides",
-  "pages": ["pre-authorization", "stored-cards", "testing", "changelog"]
+  "pages": [
+    "migration-0-5",
+    "pre-authorization",
+    "stored-cards",
+    "testing",
+    "changelog"
+  ]
 }

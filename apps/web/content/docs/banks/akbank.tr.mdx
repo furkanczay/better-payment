@@ -8,17 +8,20 @@ Akbank'ın Sanal POS JSON API'sini kullanır. Her istek bir `auth-hash` başlı�
 ## Yapılandırma [#configuration]
 
 ```typescript
-akbank: {
-  enabled: true,
-  config: {
-    merchantSafeId: process.env.AKBANK_MERCHANT_SAFE_ID!,
-    terminalSafeId: process.env.AKBANK_TERMINAL_SAFE_ID!,
-    secretKey: process.env.AKBANK_SECRET_KEY!,
-    // subMerchantId?: string
-    // testMode: defaults to mode === 'sandbox' (test 3D gateway)
-    // baseUrl: defaults from mode (apipre.akbank.com / api.akbank.com)
+import { betterPayment, akbank } from 'better-payment';
+
+const payment = betterPayment({
+  providers: {
+    akbank: akbank({
+      merchantSafeId: process.env.AKBANK_MERCHANT_SAFE_ID!,
+      terminalSafeId: process.env.AKBANK_TERMINAL_SAFE_ID!,
+      secretKey: process.env.AKBANK_SECRET_KEY!,
+      // subMerchantId?: string
+      // testMode: defaults to mode === 'sandbox' (test 3D gateway)
+      // baseUrl: defaults from mode (apipre.akbank.com / api.akbank.com)
+    }),
   },
-}
+});
 ```
 
 `paymentId` sipariş numaranızdır: verdiğiniz `conversationId` ya da üretilen bir numara.

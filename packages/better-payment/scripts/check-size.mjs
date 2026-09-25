@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
 const budgets = [
-  { file: 'dist/index.mjs', maxGzipKb: 25 },
-  { file: 'dist/index.js', maxGzipKb: 25 },
+  // 27 kB since the plugin system (hooks, events, plugin endpoints)
+  { file: 'dist/index.mjs', maxGzipKb: 27 },
+  { file: 'dist/index.js', maxGzipKb: 27 },
   { file: 'dist/client/index.mjs', maxGzipKb: 2 },
   { file: 'dist/client/index.js', maxGzipKb: 2 },
   { file: 'dist/testing/index.mjs', maxGzipKb: 8 },

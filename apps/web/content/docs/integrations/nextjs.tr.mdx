@@ -7,38 +7,32 @@ description: better-payment'i Next.js App Router ile entegre etme.
 
 ```typescript
 // lib/payment.ts
-import { BetterPayment, ProviderType } from 'better-payment';
+import { betterPayment, iyzico } from 'better-payment';
 
-let _instance: BetterPayment | null = null;
+const createPayment = () =>
+  betterPayment({
+    mode: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
+    providers: {
+      iyzico: iyzico({
+        apiKey: process.env.IYZICO_API_KEY!,
+        secretKey: process.env.IYZICO_SECRET_KEY!,
+      }),
+    },
+    handler: {
+      allowedActions: ['payment/init-3ds', 'payment/complete-3ds', 'callback'],
+      transformRequest: async (ctx) => buildPaymentRequestFromOrder(ctx.body?.orderId, ctx.body?.paymentCard),
+      onCallback: async (result) => markOrder(result.paymentId, result.status),
+      callbackRedirect: (result) => `/orders/${result.paymentId}?payment=${result.status}`,
+    },
+  });
 
-export function getBetterPayment(): BetterPayment {
-  if (!_instance) {
-    _instance = new BetterPayment({
-      mode: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
-      defaultProvider: ProviderType.IYZICO,
-      providers: {
-        iyzico: {
-          enabled: true,
-          config: {
-            apiKey: process.env.IYZICO_API_KEY!,
-            secretKey: process.env.IYZICO_SECRET_KEY!,
-          },
-        },
-      },
-      handler: {
-        allowedActions: ['payment/init-3ds', 'payment/complete-3ds', 'callback'],
-        transformRequest: async (ctx) => buildPaymentRequestFromOrder(ctx.body?.orderId, ctx.body?.paymentCard),
-        onCallback: async (result) => markOrder(result.paymentId, result.status),
-        callbackRedirect: (result) => `/orders/${result.paymentId}?payment=${result.status}`,
-      },
-    });
-  }
-  return _instance;
-}
+let instance: ReturnType<typeof createPayment> | undefined;
+
+export const getBetterPayment = () => (instance ??= createPayment());
 ```
 
 <Callout type="warn">
-  Örneği tembel (lazy) oluşturun: modül seviyesinde bir `new BetterPayment(...)` yerine bir fonksiyon içinde. Aksi hâlde ortam değişkenleri yokken Next.js'in statik üretimi hata verebilir.
+  Örneği tembel (lazy) oluşturun: modül seviyesinde bir `betterPayment(...)` çağrısı yerine bir fonksiyon içinde. Aksi hâlde ortam değişkenleri yokken Next.js'in statik üretimi hata verebilir.
 </Callout>
 
 ## 2. Catch-all route handler'ı oluşturun [#2-create-the-catch-all-route-handler]

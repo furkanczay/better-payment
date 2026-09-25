@@ -14,7 +14,7 @@ export interface AkbankConfig extends PaymentProviderConfig {
   secretKey: string;
   subMerchantId?: string;
   /**
-   * Selects the test 3D gateway. BetterPayment sets this automatically when
+   * Selects the test 3D gateway. betterPayment() sets this automatically when
    * mode is 'sandbox'.
    */
   testMode?: boolean;

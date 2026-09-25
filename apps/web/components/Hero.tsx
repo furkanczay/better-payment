@@ -6,21 +6,21 @@ import Code from "@/components/Code";
 import type { Dictionary } from "@/lib/i18n/dictionary";
 import { localePath, type Locale } from "@/lib/i18n/config";
 
-const heroCode = `import { BetterPayment } from "better-payment";
+const heroCode = `import { betterPayment, iyzico, paytr } from "better-payment";
 
-const payment = new BetterPayment({
+const payment = betterPayment({
   providers: {
-    iyzico: { enabled: true, config: { ... } },
-    paytr:  { enabled: true, config: { ... } },
+    iyzico: iyzico({ ... }),
+    paytr:  paytr({ ... }),
   },
+  plugins: [/* events, routing, your own */],
 });
 
 // Same request and result types on every provider
-const result = await payment.use("iyzico").initThreeDSPayment(order);
+const result = await payment.iyzico.initThreeDSPayment(order);
 
-// Callbacks are verified with your credentials
-const paid = await payment.iyzico.completeThreeDSPayment(body);
-if (paid.status === "success") await markOrderPaid(paid.paymentId);`;
+// One listener for every provider, after the callback is verified
+payment.on("payment.succeeded", (e) => markOrderPaid(e.conversationId));`;
 
 export default function Hero({
   version,

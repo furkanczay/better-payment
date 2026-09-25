@@ -25,7 +25,7 @@ export const runtime = 'edge'; // or 'nodejs'
 ## Cloudflare Workers
 
 ```typescript
-import { BetterPayment, ProviderType, toFetchHandler } from 'better-payment';
+import { betterPayment, iyzico, toFetchHandler } from 'better-payment';
 
 interface Env {
   IYZICO_API_KEY: string;
@@ -34,13 +34,10 @@ interface Env {
 
 export default {
   fetch(request: Request, env: Env): Promise<Response> {
-    const payment = new BetterPayment({
+    const payment = betterPayment({
       mode: 'sandbox',
       providers: {
-        [ProviderType.IYZICO]: {
-          enabled: true,
-          config: { apiKey: env.IYZICO_API_KEY, secretKey: env.IYZICO_SECRET_KEY },
-        },
+        iyzico: iyzico({ apiKey: env.IYZICO_API_KEY, secretKey: env.IYZICO_SECRET_KEY }),
       },
     });
     return toFetchHandler(payment)(request);
@@ -51,9 +48,9 @@ export default {
 ## Deno ve Bun [#deno-and-bun]
 
 ```typescript
-import { BetterPayment, toFetchHandler } from 'npm:better-payment';
+import { betterPayment, toFetchHandler } from 'npm:better-payment';
 
-const payment = new BetterPayment({ /* ... */ });
+const payment = betterPayment({ /* ... */ });
 
 Deno.serve(toFetchHandler(payment));          // Deno
 // Bun.serve({ fetch: toFetchHandler(payment) }); // Bun
@@ -73,7 +70,7 @@ Varsayılan idempotency deposu, tekrar eden callback ve `Idempotency-Key` kayıt
 Sağlayıcı API çağrıları `globalThis.fetch` kullanır. Kendi uygulamanızı verin; örneğin istekleri bir proxy üzerinden geçirmek ya da testlerde taklit etmek için:
 
 ```typescript
-new BetterPayment({
+betterPayment({
   fetch: (input, init) => fetch(input, { ...init, keepalive: true }),
   providers: { /* ... */ },
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BetterPayment } from '../../src';
+import { betterPayment, parampos } from '../../src';
 import { PaymentStatus } from '../../src/types';
 import {
   describeResult,
@@ -23,21 +23,18 @@ const card = sandboxCard('PARAMPOS_SANDBOX');
 describe.skipIf(!env)('Parampos sandbox', () => {
   const parampos = !env
     ? (undefined as never)
-    : new BetterPayment({
+    : betterPayment({
         mode: 'sandbox',
         providers: {
-          parampos: {
-            enabled: true,
-            config: {
-              clientCode: env!.PARAMPOS_SANDBOX_CLIENT_CODE,
-              clientUsername: env!.PARAMPOS_SANDBOX_CLIENT_USERNAME,
-              clientPassword: env!.PARAMPOS_SANDBOX_CLIENT_PASSWORD,
-              guid: env!.PARAMPOS_SANDBOX_GUID,
-              ...(process.env.PARAMPOS_SANDBOX_BASE_URL
-                ? { baseUrl: process.env.PARAMPOS_SANDBOX_BASE_URL }
-                : {}),
-            },
-          },
+          parampos: parampos({
+            clientCode: env!.PARAMPOS_SANDBOX_CLIENT_CODE,
+            clientUsername: env!.PARAMPOS_SANDBOX_CLIENT_USERNAME,
+            clientPassword: env!.PARAMPOS_SANDBOX_CLIENT_PASSWORD,
+            guid: env!.PARAMPOS_SANDBOX_GUID,
+            ...(process.env.PARAMPOS_SANDBOX_BASE_URL
+              ? { baseUrl: process.env.PARAMPOS_SANDBOX_BASE_URL }
+              : {}),
+          }),
         },
       }).parampos;
 

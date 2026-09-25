@@ -17,25 +17,24 @@ It makes no network calls and needs no credentials.
 ## Setup
 
 ```typescript
-import { BetterPayment } from 'better-payment';
+import { betterPayment } from 'better-payment';
 import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
 
 const mock = new MockProvider();
 
-const payment = new BetterPayment({
-  providers: {
-    mock: { enabled: true, provider: mock },
-  },
+const payment = betterPayment({
+  providers: { mock },
   handler: { /* the same options as in production */ },
+  plugins: [/* the same plugins as in production */],
 });
 
-const result = await payment.use('mock').createPayment({
+const result = await payment.mock.createPayment({
   ...order,
   paymentCard: { cardHolderName: 'Test User', cardNumber: MOCK_CARDS.SUCCESS, expireMonth: '12', expireYear: '2030', cvc: '123' },
 });
 ```
 
-A common pattern is to build the `BetterPayment` config from the environment and pass `mock` in tests. Handler routes are `/api/pay/mock/...`, and the browser client has `client.mock`.
+A common pattern is to build the `providers` from the environment and pass `mock` in tests. Plugins and [payment events](/docs/plugins/events) work with `MockProvider` like with a real provider, so your order updates are tested too. Handler routes are `/api/pay/mock/...`, and the browser client has `client.mock`.
 
 ## Magic card numbers
 
@@ -95,13 +94,13 @@ A checkout → 3D Secure → refund flow through your real handler, with Vitest 
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { BetterPayment } from 'better-payment';
+import { betterPayment } from 'better-payment';
 import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
 
 it('charges and refunds an order', async () => {
   const mock = new MockProvider();
-  const payment = new BetterPayment({
-    providers: { mock: { enabled: true, provider: mock } },
+  const payment = betterPayment({
+    providers: { mock },
     handler: { allowedActions: 'all', authorize: () => true },
   });
   const call = (method: string, path: string, body?: unknown) =>

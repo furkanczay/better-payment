@@ -3,22 +3,18 @@ title: Quick Start
 description: Make your first payment in under 5 minutes.
 ---
 
-## 1. Initialize BetterPayment
+## 1. Create the payment object [#1-initialize-betterpayment]
 
 ```typescript
-import { BetterPayment, ProviderType } from 'better-payment';
+import { betterPayment, iyzico } from 'better-payment';
 
-const payment = new BetterPayment({
+export const payment = betterPayment({
   mode: 'sandbox', // sandbox URLs and provider test modes; default is 'production'
-  defaultProvider: ProviderType.IYZICO,
   providers: {
-    iyzico: {
-      enabled: true,
-      config: {
-        apiKey: process.env.IYZICO_API_KEY!,
-        secretKey: process.env.IYZICO_SECRET_KEY!,
-      },
-    },
+    iyzico: iyzico({
+      apiKey: process.env.IYZICO_API_KEY!,
+      secretKey: process.env.IYZICO_SECRET_KEY!,
+    }),
   },
 });
 ```
@@ -126,15 +122,29 @@ requires it, finalizes the payment. A forged or failed callback always returns
 ## Using Multiple Providers
 
 ```typescript
-const payment = new BetterPayment({
-  defaultProvider: ProviderType.IYZICO,
+const payment = betterPayment({
   providers: {
-    iyzico: { enabled: true, config: { /* ... */ } },
-    paytr: { enabled: true, config: { /* ... */ } },
+    iyzico: iyzico({ /* ... */ }),
+    paytr: paytr({ /* ... */ }),
   },
+  defaultProvider: 'iyzico',
 });
 
 await payment.createPayment(request);                 // default provider
 await payment.paytr.initThreeDSPayment(paytrRequest); // specific provider
-await payment.use(ProviderType.PAYTR).getPayment('ORDER123');
+await payment.use('paytr').getPayment('ORDER123');
+```
+
+## Update orders with events
+
+Instead of checking every result, listen to [payment events](/docs/plugins/events). They are emitted for every provider and flow, after the provider verified the result:
+
+```typescript
+payment.on('payment.succeeded', async (event) => {
+  await orders.markPaid(event.conversationId, event.paymentId);
+});
+
+payment.on('payment.failed', async (event) => {
+  await orders.markFailed(event.conversationId, event.code);
+});
 ```

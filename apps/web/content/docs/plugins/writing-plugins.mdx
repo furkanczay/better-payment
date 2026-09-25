@@ -1,0 +1,268 @@
+---
+title: Write a Plugin
+description: A plugin is a function that returns an object with an id and the parts it needs. Write one in a few steps.
+---
+
+A plugin is a function that takes the plugin's options and returns an object. The object has an `id` and only the parts the plugin needs. This guide builds plugins step by step; the [reference](#reference) at the end lists every part.
+
+## The smallest plugin
+
+```typescript
+import { definePlugin } from 'better-payment';
+
+export const auditLog = () =>
+  definePlugin({
+    id: 'audit-log',
+    events: {
+      '*': (event) => console.log(event.type, event.provider, event.paymentId),
+    },
+  });
+```
+
+Add it to `plugins`:
+
+```typescript
+const payment = betterPayment({
+  providers: { /* ... */ },
+  plugins: [auditLog()],
+});
+```
+
+`definePlugin()` returns the object unchanged. It keeps the object's exact type, so what the plugin adds to the payment object is typed. The `id` must be unique: two plugins with the same id throw a `ConfigurationError`.
+
+## Hooks
+
+A **before hook** runs before an operation. `matcher` selects the operations it runs for (all, when left out), and `handler` gets the operation's context: `operation`, `request`, `provider` and `routable`. Checking `ctx.operation` narrows `ctx.request` to that operation's request type.
+
+This plugin rejects cards by their first digits, without calling the provider:
+
+```typescript
+import { definePlugin, PaymentStatus, PaymentErrorCode } from 'better-payment';
+
+interface BlockListOptions {
+  /** Card number prefixes (BINs) to reject */
+  bins: string[];
+  message?: string;
+}
+
+export const blockList = (options: BlockListOptions) =>
+  definePlugin({
+    id: 'block-list',
+    options,
+    hooks: {
+      before: [
+        {
+          matcher: (ctx) => ctx.operation === 'createPayment' || ctx.operation === 'initThreeDSPayment',
+          handler: (ctx) => {
+            if (ctx.operation !== 'createPayment' && ctx.operation !== 'initThreeDSPayment') return;
+            const cardNumber = ctx.request.paymentCard?.cardNumber ?? '';
+            if (!options.bins.some((bin) => cardNumber.startsWith(bin))) return;
+            // Return a result: the provider is not called
+            return {
+              result: {
+                status: PaymentStatus.FAILURE,
+                code: PaymentErrorCode.FRAUD_SUSPECTED,
+                errorCode: 'BLOCKED_BIN',
+                errorMessage: options.message ?? 'This card cannot be used',
+              },
+            };
+          },
+        },
+      ],
+    },
+    $ERROR_CODES: {
+      BLOCKED_BIN: 'This card cannot be used',
+    },
+  });
+```
+
+The handler returns nothing to let the operation continue, or an object:
+
+| Return | Effect |
+| ------ | ------ |
+| `{ request }` | The operation continues with this request |
+| `{ provider }` | The operation runs on this provider (calls made on the payment object only, see [choosing the provider](#choosing-the-provider)) |
+| `{ result }` | The provider is not called and this is the result. Remaining before hooks are skipped; after hooks and events run |
+| throw | The operation throws |
+
+An **after hook** runs after the operation, with `ctx.result` and the provider that ran it. Return `{ result }` to replace the result:
+
+```typescript
+hooks: {
+  after: [
+    {
+      handler: async (ctx) => {
+        await metrics.increment(`payment.${ctx.operation}.${ctx.provider}`);
+      },
+    },
+    {
+      matcher: (ctx) => ctx.operation === 'refund',
+      handler: (ctx) => ({ result: { ...ctx.result, refundedBy: ctx.provider } }),
+    },
+  ],
+},
+```
+
+After hooks do not run when the provider throws (for example for an invalid configuration); they run for every result, including failures.
+
+## Choosing the provider
+
+A before hook can send a call to another provider by returning `{ provider }`. Only calls made on the payment object (`payment.createPayment()`) can be moved; for them `ctx.routable` is `true`. Calls made on a provider (`payment.iyzico.refund()`) or through a provider route of the handler always run on that provider, and returning another provider there throws.
+
+```typescript
+export const paytrAbove = (limit: number) =>
+  definePlugin({
+    id: 'paytr-above',
+    hooks: {
+      before: [
+        {
+          matcher: (ctx) => ctx.routable && ctx.operation === 'createPayment',
+          handler: (ctx) => {
+            if (ctx.operation !== 'createPayment') return;
+            return Number(ctx.request.paidPrice) > limit ? { provider: 'paytr' } : undefined;
+          },
+        },
+      ],
+    },
+  });
+```
+
+Without a `defaultProvider` (and with more than one provider), `ctx.provider` is `undefined` until a hook chooses one. Store `event.provider` from the [payment events](/docs/plugins/events) with the order: refunds and status queries must go to the provider that took the payment.
+
+## init and methods
+
+`init` runs once, before the first operation, and can be async. If it throws, that operation fails and the next one runs `init` again. `methods` runs when the payment object is created and returns members to add to it:
+
+```typescript
+interface Rate {
+  provider: string;
+  installment: number;
+  percent: number;
+}
+
+export const rates = (loadRates: () => Promise<Rate[]>) => {
+  let table: Rate[] = [];
+  return definePlugin({
+    id: 'rates',
+    init: async () => {
+      table = await loadRates();
+    },
+    methods: (ctx) => ({
+      rates: {
+        cheapest: (installment: number) =>
+          table
+            .filter((rate) => rate.installment === installment && ctx.providerIds.includes(rate.provider))
+            .sort((a, b) => a.percent - b.percent)[0],
+      },
+    }),
+  });
+};
+
+// payment.rates.cheapest(3) is typed
+```
+
+Both get the plugin context: the provider ids, the default provider, the mode, the logger and `use(id)`, which returns a provider whose operations run with the hooks and events. A member that clashes with a provider id or a member of the payment object throws a `ConfigurationError`.
+
+## Endpoints
+
+`endpoints` adds routes to the [HTTP handler](/docs/api/handler). The handler returns what the endpoint returns as JSON with status `200`, or the response built with `ctx.json(body, status)`:
+
+```typescript
+endpoints: {
+  quote: {
+    method: 'POST',
+    path: '/rates/quote', // served at basePath + path: POST /api/pay/rates/quote
+    handler: (ctx) => {
+      const installment = Number(ctx.body?.installment ?? 1);
+      if (!Number.isInteger(installment)) {
+        return ctx.json({ error: true, message: 'installment must be an integer' }, 400);
+      }
+      return { rate: cheapest(installment) }; // JSON, status 200
+    },
+  },
+},
+```
+
+- `ctx` has the plugin context plus `request`, the parsed `body` and `query`.
+- The handler's `authorize` hook runs for endpoints too, with `provider: undefined` and `action: 'plugin:<plugin id>/<endpoint name>'` (here `plugin:rates/quote`).
+- Mark endpoints that change or reveal payments with `privileged: true`: the handler then refuses to start without an `authorize` hook, like it does for refunds.
+- A path must not start with a provider id or `health`.
+
+## Error codes
+
+Declare the plugin's own error codes with their default (English) messages in `$ERROR_CODES`, like `BLOCKED_BIN` above. They are merged into `payment.$ERROR_CODES` and typed there, so that applications and translation plugins can use them. Put the code in the result's `errorCode`; keep `code` one of the [normalized error codes](/docs/api/error-codes).
+
+## Testing
+
+Test plugins with the in-memory [MockProvider](/docs/guides/testing): no network, no credentials.
+
+```typescript
+import { it, expect } from 'vitest';
+import { betterPayment } from 'better-payment';
+import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
+import { blockList } from './block-list';
+
+it('rejects blocked cards without calling the provider', async () => {
+  const mock = new MockProvider();
+  const payment = betterPayment({
+    providers: { mock },
+    plugins: [blockList({ bins: ['400000'] })],
+  });
+
+  const result = await payment.createPayment({
+    ...order,
+    paymentCard: { ...card, cardNumber: MOCK_CARDS.CARD_DECLINED }, // 4000000000000002
+  });
+
+  expect(result.errorCode).toBe('BLOCKED_BIN');
+  expect(mock.payments).toHaveLength(0);
+});
+```
+
+## Publishing
+
+- Export a function that returns the plugin, and an options interface.
+- Name the npm package `better-payment-plugin-<name>` and add `better-payment` as a peer dependency.
+- Keep the `id` stable: applications may use it in `authorize` hooks (`plugin:<id>/...`).
+- Never log or store card data. Requests passed to hooks contain the card number.
+- Open an issue to have your plugin listed in these docs.
+
+## Reference
+
+```typescript
+interface BetterPaymentPlugin {
+  id: string;
+  version?: string;
+  options?: unknown;
+  init?: (ctx: PluginContext) => void | Promise<void>;
+  hooks?: {
+    before?: { matcher?: (ctx: OperationContext) => boolean; handler: (ctx: OperationContext) => BeforeHookResult | void | Promise<BeforeHookResult | void> }[];
+    after?: { matcher?: (ctx: OperationResultContext) => boolean; handler: (ctx: OperationResultContext) => { result: unknown } | void | Promise<{ result: unknown } | void> }[];
+  };
+  events?: { [type in PaymentEventType | '*']?: (event: PaymentEvent) => void | Promise<void> };
+  methods?: (ctx: PluginContext) => Record<string, unknown>;
+  endpoints?: Record<string, PaymentEndpoint>;
+  $ERROR_CODES?: Record<string, string>;
+}
+
+interface OperationContext {
+  operation: PaymentOperation;  // narrows request: ctx.operation === 'refund' makes it a RefundRequest
+  request: PaymentOperations[operation]['request']; // e.g. PaymentRequest for createPayment
+  provider: string | undefined; // undefined when no default provider is set and no hook chose one
+  routable: boolean;            // true for calls made on the payment object
+}
+
+interface BeforeHookResult {
+  provider?: string; // run on this provider (routable calls only)
+  request?: unknown; // replace the request
+  result?: unknown;  // skip the provider and return this result
+}
+
+interface PluginContext {
+  providerIds: readonly string[];
+  defaultProvider: string | undefined;
+  mode: 'sandbox' | 'production';
+  logger: BetterPaymentLogger | undefined;
+  use(providerId: string): PaymentProvider; // operations run with hooks and events
+}
+```

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BetterPayment } from '../../src';
+import { betterPayment, iyzico } from '../../src';
 import { PaymentStatus } from '../../src/types';
 import {
   CALLBACK_URL,
@@ -29,16 +29,13 @@ const insufficientFundsCard = { ...card, cardNumber: '4111111111111129' };
 describe.skipIf(!env)('iyzico sandbox', () => {
   const iyzico = !env
     ? (undefined as never)
-    : new BetterPayment({
+    : betterPayment({
         mode: 'sandbox',
         providers: {
-          iyzico: {
-            enabled: true,
-            config: {
-              apiKey: env!.IYZICO_SANDBOX_API_KEY,
-              secretKey: env!.IYZICO_SANDBOX_SECRET_KEY,
-            },
-          },
+          iyzico: iyzico({
+            apiKey: env!.IYZICO_SANDBOX_API_KEY,
+            secretKey: env!.IYZICO_SANDBOX_SECRET_KEY,
+          }),
         },
       }).iyzico;
 

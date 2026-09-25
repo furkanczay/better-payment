@@ -16,7 +16,7 @@ Hiç seçenek verilmezse handler yalnızca şunları açar:
 Geri kalan her şeyi `allowedActions` ile açıkça etkinleştirin. İade, iptal, ödeme sorgusu ve abonelik yönetimi ayrıca bir `authorize` hook'u gerektirir; hook yoksa handler oluşturulurken hata fırlatılır.
 
 ```typescript
-const payment = new BetterPayment({
+const payment = betterPayment({
   providers: { /* ... */ },
   handler: {
     basePath: '/api/pay', // default
@@ -146,7 +146,7 @@ const redisStore: IdempotencyStore = {
   delete: async (key) => void (await redis.del(key)),
 };
 
-new BetterPayment({
+betterPayment({
   providers: { ... },
   handler: {
     idempotency: { store: redisStore, ttlSeconds: 7 * 24 * 3600 }, // or `false` to turn it off
@@ -175,8 +175,8 @@ interface BetterPaymentResponse {
 }
 
 interface HandlerContext {
-  provider: ProviderType;
-  action: HandlerAction;
+  provider: string | undefined; // the provider id; undefined for plugin endpoints
+  action: HandlerAction;        // 'payment/init-3ds', ... or 'plugin:<plugin id>/<endpoint name>'
   params: Record<string, string>; // { paymentId } for payment/get
   request: BetterPaymentRequest;
   body: Record<string, unknown> | undefined; // undefined when there is no object body
@@ -184,6 +184,8 @@ interface HandlerContext {
 ```
 
 `ctx.body` client'tan gelir, bu yüzden alanları `unknown` tipindedir: kullanmadan önce doğrulayın (ya da doğruladıktan sonra cast edin). `onCallback` ve `callbackRedirect` bir `PaymentResponse` alır.
+
+Plugin'ler handler'a yeni adresler ekleyebilir ([plugin endpoint'leri](/docs/plugins/writing-plugins#endpoints)). `authorize` hook'u bunlar için de çalışır; `provider: undefined` ve `action: 'plugin:<plugin id>/<endpoint adı>'` olur. Callback'lerde [ödeme olayları](/docs/plugins/events) `onCallback`'ten hemen önce yayınlanır; bir dinleyici hata verirse `onCallback` ile birlikte yeniden denenir.
 
 ## Framework'ler [#frameworks]
 

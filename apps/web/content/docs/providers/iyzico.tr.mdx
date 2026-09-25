@@ -8,15 +8,18 @@ iyzico bir JSON REST API kullanır. Her istek IYZWSv2 (HMAC-SHA256) ile imzalan�
 ## Yapılandırma [#configuration]
 
 ```typescript
-iyzico: {
-  enabled: true,
-  config: {
-    apiKey: process.env.IYZICO_API_KEY!,
-    secretKey: process.env.IYZICO_SECRET_KEY!,
-    // baseUrl: defaults from mode (sandbox-api.iyzipay.com / api.iyzipay.com)
-    locale: 'tr', // optional
+import { betterPayment, iyzico } from 'better-payment';
+
+const payment = betterPayment({
+  providers: {
+    iyzico: iyzico({
+      apiKey: process.env.IYZICO_API_KEY!,
+      secretKey: process.env.IYZICO_SECRET_KEY!,
+      // baseUrl: defaults from mode (sandbox-api.iyzipay.com / api.iyzipay.com)
+      locale: 'tr', // optional
+    }),
   },
-}
+});
 ```
 
 ## Doğrudan ödeme (3D'siz) [#direct-payment-non-3d]

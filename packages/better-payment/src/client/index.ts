@@ -48,7 +48,7 @@ export interface BetterPaymentClientConfig {
  */
 class ProviderClient {
   constructor(
-    private provider: ProviderType,
+    private provider: string,
     private config: BetterPaymentClientConfig
   ) {}
 
@@ -335,6 +335,14 @@ export class BetterPaymentClient {
     this.akbank = new ProviderClient(ProviderType.AKBANK, config);
     this.parampos = new ProviderClient(ProviderType.PARAMPOS, config);
     this.mock = new ProviderClient(ProviderType.MOCK, config);
+  }
+
+  /**
+   * A provider by its id on the server (the key in `providers`), for custom
+   * providers or ids other than the built-in ones.
+   */
+  use(providerId: string): ProviderClient {
+    return new ProviderClient(providerId, this.config);
   }
 
   /**

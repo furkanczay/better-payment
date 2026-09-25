@@ -1,3 +1,9 @@
+import {
+  defineProvider,
+  withProviderDefaults,
+  ProviderType,
+  type ProviderDefinition,
+} from '../../core/BetterPaymentConfig';
 import type { HttpClient, HttpRequestConfig } from '../../core/http';
 import { PaymentProvider } from '../../core/PaymentProvider';
 import { ConfigurationError, ValidationError } from '../../core/errors';
@@ -893,3 +899,13 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
     }
   }
 }
+
+/**
+ * The PayTR provider, for `betterPayment({ providers: { paytr: paytr({ merchantId, merchantKey, merchantSalt }) } })`.
+ * The base URL follows `mode` unless `baseUrl` is set.
+ */
+export const paytr = (config: PayTRConfig): ProviderDefinition<PayTR> =>
+  defineProvider((ctx) => {
+    const options = withProviderDefaults(ProviderType.PAYTR, config, ctx);
+    return new PayTR({ ...options, testMode: config.testMode ?? ctx.mode === 'sandbox' });
+  });

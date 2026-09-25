@@ -316,10 +316,17 @@ export class YourProvider extends PaymentProvider<YourProviderConfig> {
 
 ### 5. Kayıt
 
-- `src/core/BetterPaymentConfig.ts`: `ProviderType`, provider config tipi ve
-  `PROVIDER_DEFAULT_URLS` (sandbox/production)
-- `src/core/BetterPayment.ts`: `initializeProviders` ve erişim getter'ı
-- `src/index.ts`: sınıf ve tip export'ları
+- `src/core/BetterPaymentConfig.ts`: `ProviderType` ve `PROVIDER_DEFAULT_URLS`
+  (sandbox/production)
+- Provider dosyasında bir fabrika fonksiyonu (`export const xbank = (config) =>
+  defineProvider(...)`); mevcut provider'lardaki gibi `withProviderDefaults` kullanın
+- `src/index.ts`: sınıf, fabrika fonksiyonu ve tip export'ları
+
+Provider ekleme adımları [Özel sağlayıcılar](https://better-payment.czaylabs.com/tr/docs/plugins/custom-providers)
+sayfasında da anlatılıyor. Yeni bir özellik çekirdeğe mi yoksa bir plugin'e mi
+ait, emin değilseniz önce bir issue açın: sağlayıcıdan bağımsız davranışlar
+(yönlendirme, bildirimler, hata mesajı çevirileri) plugin olarak yazılır. Bkz.
+[Plugin yazmak](https://better-payment.czaylabs.com/tr/docs/plugins/writing-plugins).
 
 ### 6. Dokümantasyon
 

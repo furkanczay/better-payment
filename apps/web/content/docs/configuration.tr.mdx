@@ -1,64 +1,55 @@
 ---
 title: Yapılandırma
-description: BetterPayment'in tüm yapılandırma seçenekleri.
+description: betterPayment() için tüm yapılandırma seçenekleri.
 ---
 
-## BetterPaymentConfig
+## betterPayment() seçenekleri [#betterpayment-options]
 
 ```typescript
-import { BetterPayment, ProviderType } from 'better-payment';
+import { betterPayment, iyzico, paytr, akbank, parampos } from 'better-payment';
 
-const payment = new BetterPayment({
-  defaultProvider: ProviderType.IYZICO, // optional; the only enabled provider becomes default
-  mode: 'sandbox',                      // 'sandbox' | 'production' (default)
-  logger,                               // optional, see below
-  retry,                                // optional, see below
-  fetch,                                // optional custom fetch (default: globalThis.fetch)
-  validate: true,                       // default; see Request Validation
-  handler,                              // optional HTTP handler options
+const payment = betterPayment({
   providers: {
-    iyzico: {
-      enabled: true,
-      config: {
-        apiKey: string,
-        secretKey: string,
-        baseUrl?: string,  // default from mode
-        locale?: 'tr' | 'en',
-      },
-    },
-    paytr: {
-      enabled: true,
-      config: {
-        merchantId: string,
-        merchantKey: string,
-        merchantSalt: string,
-        testMode?: boolean,     // default: mode === 'sandbox'
-        timeoutLimit?: number,  // iFrame timeout in minutes, default 30
-      },
-    },
-    akbank: {
-      enabled: true,
-      config: {
-        merchantSafeId: string,
-        terminalSafeId: string,
-        secretKey: string,
-        subMerchantId?: string,
-        testMode?: boolean,     // selects the test 3D gateway; default: mode === 'sandbox'
-        gateway3dUrl?: string,  // override the securepay URL
-      },
-    },
-    parampos: {
-      enabled: true,
-      config: {
-        clientCode: string,
-        clientUsername: string,
-        clientPassword: string,
-        guid: string,
-      },
-    },
+    iyzico: iyzico({
+      apiKey: string,
+      secretKey: string,
+      baseUrl?: string,  // default from mode
+      locale?: 'tr' | 'en',
+    }),
+    paytr: paytr({
+      merchantId: string,
+      merchantKey: string,
+      merchantSalt: string,
+      testMode?: boolean,     // default: mode === 'sandbox'
+      timeoutLimit?: number,  // iFrame timeout in minutes, default 30
+    }),
+    akbank: akbank({
+      merchantSafeId: string,
+      terminalSafeId: string,
+      secretKey: string,
+      subMerchantId?: string,
+      testMode?: boolean,     // selects the test 3D gateway; default: mode === 'sandbox'
+      gateway3dUrl?: string,  // override the securepay URL
+    }),
+    parampos: parampos({
+      clientCode: string,
+      clientUsername: string,
+      clientPassword: string,
+      guid: string,
+    }),
   },
+  defaultProvider: 'iyzico', // optional; a single provider becomes the default
+  mode: 'sandbox',           // 'sandbox' | 'production' (default)
+  logger,                    // optional, see below
+  retry,                     // optional, see below
+  fetch,                     // optional custom fetch (default: globalThis.fetch)
+  validate: true,            // default; see Request Validation
+  handler,                   // optional HTTP handler options
+  plugins: [],               // optional, see Plugins
 });
 ```
+
+`providers` içindeki anahtarlar sağlayıcı kimlikleridir. Sağlayıcıya ödeme nesnesinde (`payment.iyzico`, `payment.use('iyzico')`) ve handler adreslerinde (`/api/pay/iyzico/...`) bu adla ulaşılır. Her anahtar kullanılabilir; örneğin iki üye işyeri hesabıyla aynı sağlayıcı iki kez tanımlanabilir: `{ iyzicoTR: iyzico({...}), iyzicoEU: iyzico({...}) }`. Bir sağlayıcıyı kullanmamak için anahtarını eklemeyin.
 
 Eksik ya da boş kimlik bilgileri, eksik alanları listeleyen bir `ConfigurationError` fırlatır.
 
@@ -76,14 +67,12 @@ Bir sağlayıcının varsayılan adresini değiştirmek için config'ine `baseUr
 ## Sağlayıcılara erişim [#provider-access]
 
 ```typescript
-payment.iyzico           // throws ProviderNotEnabledError if not enabled
+payment.iyzico                       // Iyzico; only the configured providers exist
 payment.paytr
-payment.akbank
-payment.parampos
 
-payment.use(ProviderType.PAYTR)
-payment.isProviderEnabled(ProviderType.IYZICO)  // boolean
-payment.getEnabledProviders()                    // ProviderType[]
+payment.use('paytr')                 // throws ProviderNotEnabledError for unknown ids
+payment.isProviderEnabled('iyzico')  // boolean
+payment.getEnabledProviders()        // string[]: the keys of providers
 ```
 
 ## Loglama [#logging]
@@ -100,7 +89,7 @@ Logger'a HTTP metodu, URL ve durum kodu gelir. Kart verisi ve kimlik bilgileri i
 
 ## Özel fetch [#custom-fetch]
 
-Sağlayıcı API çağrıları zaman aşımıyla birlikte `globalThis.fetch` kullanır (30 sn; Parampos için 60 sn). Kendi uygulamanızı kullanmak için `fetch` verin; örneğin proxy destekli bir fetch ya da testlerde bir stub. Sağlayıcı bazında `config.fetch` ile de ayarlanabilir.
+Sağlayıcı API çağrıları zaman aşımıyla birlikte `globalThis.fetch` kullanır (30 sn; Parampos için 60 sn). Kendi uygulamanızı kullanmak için `fetch` verin; örneğin proxy destekli bir fetch ya da testlerde bir stub. Sağlayıcı bazında, sağlayıcının config'inde de ayarlanabilir.
 
 ```typescript
 fetch: (input, init) => myFetch(input, init),
@@ -144,10 +133,10 @@ Kontroller yalnızca sağlayıcının zaten reddedeceği istekleri reddeder. İn
 Doğrulamayı genel olarak `validate: false` ile ya da tek bir sağlayıcı için kendi `config`'inde kapatın:
 
 ```typescript
-new BetterPayment({
+betterPayment({
   validate: false, // every provider
   providers: {
-    iyzico: { enabled: true, config: { apiKey, secretKey, validate: true } }, // override
+    iyzico: iyzico({ apiKey, secretKey, validate: true }), // override
   },
 });
 ```

@@ -5,21 +5,17 @@
  * nasıl sorgulayacağınızı gösterir.
  */
 
-import { BetterPayment, ProviderType } from 'better-payment';
+import { betterPayment, iyzico } from 'better-payment';
 
-// 1. BetterPayment'ı yapılandır
-const betterPay = new BetterPayment({
+// 1. betterPayment() ile yapılandır
+const betterPay = betterPayment({
   providers: {
-    iyzico: {
-      enabled: true,
-      config: {
-        apiKey: process.env.IYZICO_API_KEY!,
-        secretKey: process.env.IYZICO_SECRET_KEY!,
-        baseUrl: process.env.IYZICO_BASE_URL || 'https://sandbox-api.iyzipay.com',
-      },
-    },
+    iyzico: iyzico({
+      apiKey: process.env.IYZICO_API_KEY!,
+      secretKey: process.env.IYZICO_SECRET_KEY!,
+      baseUrl: process.env.IYZICO_BASE_URL || 'https://sandbox-api.iyzipay.com',
+    }),
   },
-  defaultProvider: ProviderType.IYZICO,
 });
 
 // 2. Basit taksit sorgulama

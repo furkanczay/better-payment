@@ -1,3 +1,9 @@
+import {
+  defineProvider,
+  withProviderDefaults,
+  ProviderType,
+  type ProviderDefinition,
+} from '../../core/BetterPaymentConfig';
 import type { HttpClient, HttpRequestConfig } from '../../core/http';
 import { fromBase64, randomHex } from '../../core/crypto';
 import { PaymentProvider, PaymentProviderConfig } from '../../core/PaymentProvider';
@@ -1264,3 +1270,10 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
     }
   }
 }
+
+/**
+ * The Iyzico provider, for `betterPayment({ providers: { iyzico: iyzico({ apiKey, secretKey }) } })`.
+ * The base URL follows `mode` unless `baseUrl` is set.
+ */
+export const iyzico = (config: IyzicoConfig): ProviderDefinition<Iyzico> =>
+  defineProvider((ctx) => new Iyzico(withProviderDefaults(ProviderType.IYZICO, config, ctx)));

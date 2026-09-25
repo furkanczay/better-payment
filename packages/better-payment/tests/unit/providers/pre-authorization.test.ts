@@ -1,3 +1,4 @@
+import { fakePayment } from '../../helpers/fake-payment';
 import { describe, it, expect, vi } from 'vitest';
 import { Iyzico } from '../../../src/providers/iyzico';
 import { PayTR } from '../../../src/providers/paytr';
@@ -272,11 +273,7 @@ describe('handler routes', () => {
       voidAuthorization: vi.fn().mockResolvedValue({ status: 'success' }),
       ...overrides,
     };
-    const payment: any = {
-      isProviderEnabled: () => true,
-      getEnabledProviders: () => [ProviderType.AKBANK],
-      use: () => provider,
-    };
+    const payment = fakePayment(provider);
     return { payment, provider };
   };
   const post = (url: string, body: unknown) => ({
@@ -327,11 +324,7 @@ describe('handler routes', () => {
       merchantSalt: 's',
       baseUrl: 'https://www.paytr.com',
     });
-    const payment: any = {
-      isProviderEnabled: () => true,
-      getEnabledProviders: () => [],
-      use: () => provider,
-    };
+    const payment = fakePayment(provider);
     const handler = new BetterPaymentHandler(payment, {
       allowedActions: 'all',
       authorize: () => true,
@@ -348,13 +341,15 @@ describe('handler routes', () => {
 
 describe('pre-authorization entry points', () => {
   it('BetterPayment delegates to the default provider', async () => {
-    const { BetterPayment } = await import('../../../src/core/BetterPayment');
-    const payment = new BetterPayment({
-      providers: { iyzico: { enabled: true, config: { apiKey: 'k', secretKey: 's' } } },
+    const { betterPayment, iyzico: iyzicoProvider } = await import('../../../src');
+    const payment = betterPayment({
+      providers: { iyzico: iyzicoProvider({ apiKey: 'k', secretKey: 's' }) },
     });
+    // Operations on payment.iyzico run through the plugin hooks: keep the spies
     const provider = payment.iyzico as any;
+    const spies: Record<string, ReturnType<typeof vi.fn>> = {};
     for (const m of ['authorize', 'initThreeDSAuthorize', 'capture', 'voidAuthorization']) {
-      provider[m] = vi.fn().mockResolvedValue({ status: 'success' });
+      provider[m] = spies[m] = vi.fn().mockResolvedValue({ status: 'success' });
     }
 
     await payment.authorize(mockPaymentRequest);
@@ -363,7 +358,7 @@ describe('pre-authorization entry points', () => {
     await payment.voidAuthorization({ paymentId: '1', ip: '1.1.1.1' });
 
     for (const m of ['authorize', 'initThreeDSAuthorize', 'capture', 'voidAuthorization']) {
-      expect(provider[m]).toHaveBeenCalledTimes(1);
+      expect(spies[m]).toHaveBeenCalledTimes(1);
     }
   });
 

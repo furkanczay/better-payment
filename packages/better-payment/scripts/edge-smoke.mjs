@@ -116,15 +116,17 @@ const scenario = `(async (input) => {
     basketItems: [{ id: 'I1', name: 'Ürün', category1: 'Genel', itemType: 'PHYSICAL', price: '1000.01' }],
   };
   const notified = [];
-  const bp = new BP.BetterPayment({
+  const events = [];
+  const bp = BP.betterPayment({
     mode: 'sandbox',
     fetch: fetchImpl,
     providers: {
-      iyzico: { enabled: true, config: { apiKey: 'API', secretKey: 'SECRET' } },
-      paytr: { enabled: true, config: input.PAYTR },
-      parampos: { enabled: true, config: { clientCode: '10738', clientUsername: 'Test', clientPassword: 'Test', guid: input.PARAM_GUID } },
-      akbank: { enabled: true, config: input.AKBANK },
+      iyzico: BP.iyzico({ apiKey: 'API', secretKey: 'SECRET' }),
+      paytr: BP.paytr(input.PAYTR),
+      parampos: BP.parampos({ clientCode: '10738', clientUsername: 'Test', clientPassword: 'Test', guid: input.PARAM_GUID }),
+      akbank: BP.akbank(input.AKBANK),
     },
+    plugins: [{ id: 'events', events: { '*': (event) => { events.push(event.type); } } }],
     handler: { onCallback: async (result) => { notified.push(result.status); } },
   });
   const out = { version: BP.VERSION };
@@ -144,6 +146,7 @@ const scenario = `(async (input) => {
   out.paytrNotification = [await notify(input.paytrOk), await notify(input.paytrOk), await notify(input.paytrForged)]
     .map((r) => r.status + ':' + r.body);
   out.paytrOnCallback = notified;
+  out.events = [...events];
 
   // Parampos: SHA-1 payment hash, 3D callback verification (reference vector)
   replies.push('<Envelope/>');
@@ -196,6 +199,11 @@ check(
     out.paytrNotification[1] === '200:OK' &&
     out.paytrNotification[2].startsWith('400:'),
   JSON.stringify(out.paytrNotification)
+);
+check(
+  'Plugin events: iyzico payment, PayTR notification once, nothing for the forged one',
+  JSON.stringify(out.events) === '["payment.succeeded","payment.succeeded"]',
+  JSON.stringify(out.events)
 );
 check(
   'PayTR onCallback ran once',

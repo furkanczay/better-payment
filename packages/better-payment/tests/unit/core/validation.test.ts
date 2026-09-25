@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { luhn, validatePaymentRequest, RequestValidator } from '../../../src/core/validation';
 import { ValidationError } from '../../../src/core/errors';
 import { PaymentErrorCode } from '../../../src/core/error-codes';
-import { BetterPayment } from '../../../src/core/BetterPayment';
+import { betterPayment, iyzico as iyzicoProvider } from '../../../src';
 import { Iyzico } from '../../../src/providers/iyzico';
 import { PayTR } from '../../../src/providers/paytr';
 import { PaymentStatus } from '../../../src/types';
@@ -189,9 +189,9 @@ describe('providers validate before calling the API', () => {
   });
 
   it('can be disabled globally', () => {
-    const payment = new BetterPayment({
+    const payment = betterPayment({
       validate: false,
-      providers: { iyzico: { enabled: true, config: { apiKey: 'k', secretKey: 's' } } },
+      providers: { iyzico: iyzicoProvider({ apiKey: 'k', secretKey: 's' }) },
     });
     expect((payment.iyzico as any).config.validate).toBe(false);
   });

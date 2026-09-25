@@ -9,17 +9,20 @@ Uses Akbank's Sanal POS JSON API. Every request carries an `auth-hash` header
 ## Configuration
 
 ```typescript
-akbank: {
-  enabled: true,
-  config: {
-    merchantSafeId: process.env.AKBANK_MERCHANT_SAFE_ID!,
-    terminalSafeId: process.env.AKBANK_TERMINAL_SAFE_ID!,
-    secretKey: process.env.AKBANK_SECRET_KEY!,
-    // subMerchantId?: string
-    // testMode: defaults to mode === 'sandbox' (test 3D gateway)
-    // baseUrl: defaults from mode (apipre.akbank.com / api.akbank.com)
+import { betterPayment, akbank } from 'better-payment';
+
+const payment = betterPayment({
+  providers: {
+    akbank: akbank({
+      merchantSafeId: process.env.AKBANK_MERCHANT_SAFE_ID!,
+      terminalSafeId: process.env.AKBANK_TERMINAL_SAFE_ID!,
+      secretKey: process.env.AKBANK_SECRET_KEY!,
+      // subMerchantId?: string
+      // testMode: defaults to mode === 'sandbox' (test 3D gateway)
+      // baseUrl: defaults from mode (apipre.akbank.com / api.akbank.com)
+    }),
   },
-}
+});
 ```
 
 `paymentId` is your order id: the `conversationId` you pass, or a generated id.

@@ -5,7 +5,13 @@ import type { AddressInfo } from 'node:net';
 import express from 'express';
 import Fastify from 'fastify';
 import { Hono } from 'hono';
-import { BetterPayment, ProviderType, toFetchHandler } from 'better-payment';
+import {
+  betterPayment,
+  type BetterPayment,
+  ProviderType,
+  toFetchHandler,
+  paytr,
+} from 'better-payment';
 import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
 import { toNextJsHandler } from 'better-payment/next';
 import { toExpressHandler, toNodeHandler } from 'better-payment/express';
@@ -23,10 +29,10 @@ interface Reply {
 type Send = (method: string, path: string, body?: string, contentType?: string) => Promise<Reply>;
 
 function createPayment(): BetterPayment {
-  return new BetterPayment({
+  return betterPayment({
     providers: {
-      [ProviderType.MOCK]: { enabled: true, provider: new MockProvider() },
-      [ProviderType.PAYTR]: { enabled: true, config: { ...PAYTR, testMode: true } },
+      [ProviderType.MOCK]: new MockProvider(),
+      [ProviderType.PAYTR]: paytr({ ...PAYTR, testMode: true }),
     },
     handler: {
       allowedActions: 'all',

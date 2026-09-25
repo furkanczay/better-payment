@@ -8,16 +8,19 @@ Parampos uses Param's TurkPOS SOAP service.
 ## Configuration
 
 ```typescript
-parampos: {
-  enabled: true,
-  config: {
-    clientCode: process.env.PARAMPOS_CLIENT_CODE!,
-    clientUsername: process.env.PARAMPOS_CLIENT_USERNAME!,
-    clientPassword: process.env.PARAMPOS_CLIENT_PASSWORD!,
-    guid: process.env.PARAMPOS_GUID!, // keep secret: callbacks are verified with it
-    // baseUrl: defaults from mode (test-dmz.param.com.tr / posws.param.com.tr)
+import { betterPayment, parampos } from 'better-payment';
+
+const payment = betterPayment({
+  providers: {
+    parampos: parampos({
+      clientCode: process.env.PARAMPOS_CLIENT_CODE!,
+      clientUsername: process.env.PARAMPOS_CLIENT_USERNAME!,
+      clientPassword: process.env.PARAMPOS_CLIENT_PASSWORD!,
+      guid: process.env.PARAMPOS_GUID!, // keep secret: callbacks are verified with it
+      // baseUrl: defaults from mode (test-dmz.param.com.tr / posws.param.com.tr)
+    }),
   },
-}
+});
 ```
 
 ## Amounts and installments

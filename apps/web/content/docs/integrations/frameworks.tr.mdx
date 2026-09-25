@@ -60,11 +60,13 @@ createServer(toNodeHandler(payment)).listen(3000);
 
 ## Tembel başlatma [#lazy-initialization]
 
-Tüm adapter'lar `BetterPayment` örneğini (ya da handler'ını) döndüren bir fonksiyonu da kabul eder. Fonksiyon her istekte çağrılır, böylece örneği ilk kullanımda oluşturabilirsiniz:
+Tüm adapter'lar ödeme nesnesini (ya da handler'ını) döndüren bir fonksiyonu da kabul eder. Fonksiyon her istekte çağrılır, böylece örneği ilk kullanımda oluşturabilirsiniz:
 
 ```typescript
-let instance: BetterPayment | undefined;
-const getPayment = () => (instance ??= new BetterPayment({ /* ... */ }));
+const createPayment = () => betterPayment({ /* ... */ });
+
+let instance: ReturnType<typeof createPayment> | undefined;
+const getPayment = () => (instance ??= createPayment());
 
 app.all('/api/pay/*path', toExpressHandler(getPayment));
 ```

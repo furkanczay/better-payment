@@ -7,38 +7,32 @@ description: Integrating better-payment with the Next.js App Router.
 
 ```typescript
 // lib/payment.ts
-import { BetterPayment, ProviderType } from 'better-payment';
+import { betterPayment, iyzico } from 'better-payment';
 
-let _instance: BetterPayment | null = null;
+const createPayment = () =>
+  betterPayment({
+    mode: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
+    providers: {
+      iyzico: iyzico({
+        apiKey: process.env.IYZICO_API_KEY!,
+        secretKey: process.env.IYZICO_SECRET_KEY!,
+      }),
+    },
+    handler: {
+      allowedActions: ['payment/init-3ds', 'payment/complete-3ds', 'callback'],
+      transformRequest: async (ctx) => buildPaymentRequestFromOrder(ctx.body?.orderId, ctx.body?.paymentCard),
+      onCallback: async (result) => markOrder(result.paymentId, result.status),
+      callbackRedirect: (result) => `/orders/${result.paymentId}?payment=${result.status}`,
+    },
+  });
 
-export function getBetterPayment(): BetterPayment {
-  if (!_instance) {
-    _instance = new BetterPayment({
-      mode: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
-      defaultProvider: ProviderType.IYZICO,
-      providers: {
-        iyzico: {
-          enabled: true,
-          config: {
-            apiKey: process.env.IYZICO_API_KEY!,
-            secretKey: process.env.IYZICO_SECRET_KEY!,
-          },
-        },
-      },
-      handler: {
-        allowedActions: ['payment/init-3ds', 'payment/complete-3ds', 'callback'],
-        transformRequest: async (ctx) => buildPaymentRequestFromOrder(ctx.body?.orderId, ctx.body?.paymentCard),
-        onCallback: async (result) => markOrder(result.paymentId, result.status),
-        callbackRedirect: (result) => `/orders/${result.paymentId}?payment=${result.status}`,
-      },
-    });
-  }
-  return _instance;
-}
+let instance: ReturnType<typeof createPayment> | undefined;
+
+export const getBetterPayment = () => (instance ??= createPayment());
 ```
 
 <Callout type="warn">
-  Initialize lazily (in a function, not with a module-level `new BetterPayment(...)`). Otherwise Next.js static generation can crash when the environment variables are not available.
+  Initialize lazily (in a function, not with a module-level `betterPayment(...)` call). Otherwise Next.js static generation can crash when the environment variables are not available.
 </Callout>
 
 ## 2. Create the catch-all route handler
