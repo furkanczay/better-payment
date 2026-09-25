@@ -56,6 +56,11 @@ jobs:
       - name: Bundle size
         run: pnpm size
 
+      - name: Smoke test the built bundles
+        run: |
+          node -e "const bp = require('./dist/index.js'); if (!bp.VERSION || new bp.ValidationError('x').name !== 'ValidationError') process.exit(1)"
+          node --input-type=module -e "import { VERSION } from './dist/index.mjs'; import { PaymentStatus } from './dist/client/index.mjs'; if (!VERSION || PaymentStatus.SUCCESS !== 'success') process.exit(1)"
+
       - name: Check package contents
         run: |
           test -f dist/index.js && test -f dist/index.mjs && test -f dist/index.d.ts

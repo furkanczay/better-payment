@@ -4,10 +4,10 @@ import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
 const budgets = [
-  { file: 'dist/index.mjs', maxGzipKb: 30 },
-  { file: 'dist/index.js', maxGzipKb: 30 },
-  { file: 'dist/client/index.mjs', maxGzipKb: 3 },
-  { file: 'dist/client/index.js', maxGzipKb: 3 },
+  { file: 'dist/index.mjs', maxGzipKb: 25 },
+  { file: 'dist/index.js', maxGzipKb: 25 },
+  { file: 'dist/client/index.mjs', maxGzipKb: 2 },
+  { file: 'dist/client/index.js', maxGzipKb: 2 },
 ];
 
 // better-payment/client must stay browser-safe
