@@ -7,6 +7,7 @@ import {
 } from '../../core/PaymentProvider';
 import { ConfigurationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
+import type { PaymentValidationRules } from '../../core/validation';
 import { IYZICO_ERROR_CODES } from './error-codes';
 import type { PaymentErrorCode } from '../../core/error-codes';
 import {
@@ -67,6 +68,29 @@ import {
 /**
  * iyzico configuration
  */
+/** iyzico rejects requests without these fields */
+const IYZICO_ORDER_RULES: PaymentValidationRules = {
+  basketRequired: true,
+  basketMatchesPrice: true,
+  required: [
+    'buyer.id',
+    'buyer.name',
+    'buyer.surname',
+    'buyer.email',
+    'buyer.identityNumber',
+    'buyer.registrationAddress',
+    'buyer.city',
+    'buyer.country',
+    'buyer.ip',
+    'billingAddress.contactName',
+    'billingAddress.city',
+    'billingAddress.country',
+    'billingAddress.address',
+  ],
+};
+
+const IYZICO_CARD_PAYMENT_RULES: PaymentValidationRules = { ...IYZICO_ORDER_RULES, card: true };
+
 export interface IyzicoConfig extends PaymentProviderConfig {
   apiKey: string;
   secretKey: string;
@@ -297,6 +321,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
    */
   async createPayment(request: PaymentRequest): Promise<PaymentResponse> {
     try {
+      this.validatePayment(request, IYZICO_CARD_PAYMENT_RULES);
       const iyzicoRequest = this.mapToIyzicoRequest(request);
       const response = await this.sendRequest<IyzicoPaymentResponse>(
         '/payment/auth',
@@ -322,6 +347,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
    */
   async initThreeDSPayment(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
     try {
+      this.validatePayment(request, IYZICO_CARD_PAYMENT_RULES);
       const iyzicoRequest = {
         ...this.mapToIyzicoRequest(request),
         callbackUrl: request.callbackUrl,
@@ -409,6 +435,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
    */
   async refund(request: RefundRequest): Promise<RefundResponse> {
     try {
+      this.validateRefund(request);
       const response = await this.sendRequest<IyzicoRefundResponse>('/payment/refund', {
         locale: this.config.locale || 'tr',
         conversationId: request.conversationId,
@@ -488,6 +515,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
    */
   async initCheckoutForm(request: CheckoutFormRequest): Promise<CheckoutFormInitResponse> {
     try {
+      this.validatePayment(request as PaymentRequest, IYZICO_ORDER_RULES);
       const iyzicoRequest = this.mapToIyzicoCheckoutFormRequest(request);
 
       const response = await this.sendRequest<IyzicoCheckoutFormInitResponse>(
@@ -874,6 +902,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
    */
   async initPWIPayment(request: PWIPaymentRequest): Promise<PWIPaymentInitResponse> {
     try {
+      this.validatePayment(request as PaymentRequest, IYZICO_ORDER_RULES);
       const iyzicoRequest = this.mapToPWIRequest(request);
 
       const response = await this.sendRequest<IyzicoPWIPaymentInitResponse>(

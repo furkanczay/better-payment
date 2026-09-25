@@ -13,6 +13,7 @@ const payment = new BetterPayment({
   mode: 'sandbox',                      // 'sandbox' | 'production' (default)
   logger,                               // optional, see below
   retry,                                // optional, see below
+  validate: true,                       // default; see Request Validation
   handler,                              // optional HTTP handler options
   providers: {
     iyzico: {
@@ -110,6 +111,38 @@ retry: {
 <Callout type="info">
   Only idempotent requests are retried: status, BIN and installment queries. Payment, refund and cancel requests are **never** retried. If one of them fails without a response, it returns `status: 'pending'` with `errorCode: 'NETWORK_ERROR'` so that you check the outcome with `getPayment()`.
 </Callout>
+
+## Request Validation
+
+Payment and refund requests are checked before anything is sent to the provider. An invalid request returns `status: 'failure'` with `code: 'INVALID_REQUEST'` and `errorCode: 'VALIDATION_ERROR'`. Its `errorMessage` lists every invalid field:
+
+```text
+Invalid request: paymentCard.cardNumber is not a valid card number (Luhn check failed); basketItems prices add up to 1.00 but price is 5.00
+```
+
+| Check | Applies to |
+| ----- | ---------- |
+| Card number (12–19 digits, Luhn), holder name, expiry month 1–12, not expired, CVC 3–4 digits | Card payments: iyzico, PayTR non-3D, Parampos, Akbank |
+| `price` / `paidPrice`: positive, at most 2 decimals | All payments and refunds |
+| Basket item prices add up to `price` | iyzico |
+| Non-empty basket | iyzico, PayTR |
+| Buyer email, IPv4/IPv6 and GSM format (when present) | All payments |
+| Required fields: buyer `id`, `name`, `surname`, `email`, `identityNumber`, `registrationAddress`, `city`, `country`, `ip`; billing `contactName`, `city`, `country`, `address` | iyzico (including checkout form and PWI) |
+| Required fields: buyer `email`, `ip`, `name`, `surname`, `gsmNumber` | PayTR |
+| Required field: buyer `ip` | Parampos, Akbank |
+
+The checks only reject what the provider would reject anyway. They do not require `paidPrice >= price`, because discounts can lower it, and they do not verify the TCKN checksum, because foreign customers and placeholder values are accepted by providers.
+
+Turn validation off globally with `validate: false`, or for a single provider in its `config`:
+
+```typescript
+new BetterPayment({
+  validate: false, // every provider
+  providers: {
+    iyzico: { enabled: true, config: { apiKey, secretKey, validate: true } }, // override
+  },
+});
+```
 
 ## HTTP Handler
 

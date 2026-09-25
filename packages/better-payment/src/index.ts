@@ -8,6 +8,7 @@ export {
   ValidationError,
   ConfigurationError,
 } from './core/errors';
+export type { ValidationIssue } from './core/errors';
 
 export { ProviderType, PROVIDER_DEFAULT_URLS } from './core/BetterPaymentConfig';
 export type {

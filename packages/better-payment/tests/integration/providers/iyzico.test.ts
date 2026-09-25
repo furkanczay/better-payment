@@ -633,7 +633,8 @@ describe('Iyzico Provider - Integration Tests', () => {
         buyer: mockPaymentRequest.buyer,
         shippingAddress: mockPaymentRequest.shippingAddress,
         billingAddress: mockPaymentRequest.billingAddress,
-        basketItems: mockPaymentRequest.basketItems,
+        // iyzico requires basket item prices to add up to price
+        basketItems: [{ ...mockPaymentRequest.basketItems[0], price: '100.00' }],
         conversationId: 'test-pwi-conversation',
       };
 
@@ -663,7 +664,7 @@ describe('Iyzico Provider - Integration Tests', () => {
 
       // Verify basket items
       expect(request.data).toHaveProperty('basketItems');
-      expect(request.data.basketItems).toHaveLength(mockPaymentRequest.basketItems.length);
+      expect(request.data.basketItems).toHaveLength(1);
     });
 
     it('should retrieve PWI payment status with correct format', async () => {
@@ -691,7 +692,8 @@ describe('Iyzico Provider - Integration Tests', () => {
         buyer: mockPaymentRequest.buyer,
         shippingAddress: mockPaymentRequest.shippingAddress,
         billingAddress: mockPaymentRequest.billingAddress,
-        basketItems: mockPaymentRequest.basketItems,
+        // iyzico requires basket item prices to add up to price
+        basketItems: [{ ...mockPaymentRequest.basketItems[0], price: '100.00' }],
       };
 
       await iyzico.initPWIPayment(pwiRequest);

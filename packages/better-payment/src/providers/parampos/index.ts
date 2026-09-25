@@ -12,6 +12,7 @@ import {
 } from '../../core/PaymentProvider';
 import { ConfigurationError, ValidationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
+import type { PaymentValidationRules } from '../../core/validation';
 import { generateOrderId } from '../../core/utils';
 import {
   PaymentRequest,
@@ -44,6 +45,8 @@ import {
 /**
  * Parampos configuration
  */
+const PARAMPOS_CARD_RULES: PaymentValidationRules = { card: true, required: ['buyer.ip'] };
+
 export interface ParamposConfig extends PaymentProviderConfig {
   /** CLIENT_CODE (terminal numarası) */
   clientCode: string;
@@ -201,6 +204,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
   ): Promise<PaymentResponse> {
     const orderId = request.conversationId || generateOrderId();
     try {
+      this.validatePayment(request, PARAMPOS_CARD_RULES);
       this.assertTry(request.currency);
       const installment = Math.max(1, request.installment ?? 1);
       const fields = this.buildPaymentFields(request, orderId, 'NS', installment);
@@ -233,6 +237,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
   async initThreeDSPayment(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
     const orderId = request.conversationId || generateOrderId();
     try {
+      this.validatePayment(request, PARAMPOS_CARD_RULES);
       this.assertTry(request.currency);
       if (!request.callbackUrl) {
         throw new ValidationError('callbackUrl is required for 3D Secure payments');
@@ -351,6 +356,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
    */
   async refund(request: RefundRequest): Promise<RefundResponse> {
     try {
+      this.validateRefund(request);
       const result = await this.cancelOrRefund('IADE', request.paymentId, request.price);
       const approved = isParamposSuccess(result.Sonuc);
 

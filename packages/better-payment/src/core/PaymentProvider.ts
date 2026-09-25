@@ -18,6 +18,11 @@ import type { RetryConfig } from './retry';
 import { BetterPaymentError } from './errors';
 import { PaymentErrorCode, resolveErrorCode } from './error-codes';
 import { NETWORK_ERROR_CODE, type FailureResult } from './failure';
+import {
+  validatePaymentRequest,
+  validateRefundAmount,
+  type PaymentValidationRules,
+} from './validation';
 
 /**
  * Tüm provider'larda ortak olan yapılandırma alanları.
@@ -28,6 +33,11 @@ export interface PaymentProviderConfig {
   locale?: string;
   logger?: BetterPaymentLogger;
   retry?: RetryConfig;
+  /**
+   * Validate requests before calling the provider (card, amounts, basket,
+   * required fields). Default: true.
+   */
+  validate?: boolean;
 }
 
 /**
@@ -68,6 +78,20 @@ export abstract class PaymentProvider<
    */
   protected errorCodeTable(): Record<string, PaymentErrorCode> {
     return {};
+  }
+
+  /**
+   * Throws a ValidationError naming the invalid fields, unless validation is
+   * disabled with `validate: false`. Call it before building the provider request.
+   */
+  protected validatePayment(request: PaymentRequest, rules: PaymentValidationRules): void {
+    if (this.config.validate === false) return;
+    validatePaymentRequest(request, rules, this.constructor.name);
+  }
+
+  protected validateRefund(request: RefundRequest): void {
+    if (this.config.validate === false) return;
+    validateRefundAmount(request?.price, this.constructor.name);
   }
 
   /** Resolves the normalized code of a failed result */
