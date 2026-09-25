@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { HttpError } from '../../../../src/core/http';
 import { PayTR } from '../../../../src/providers/paytr';
 import { PaymentStatus } from '../../../../src/types';
 import { generatePayTRRefundToken, generatePayTRStatusToken } from '../../../../src/providers/paytr/utils';
@@ -39,7 +40,7 @@ describe('PayTR provider', () => {
       expect(() => new PayTR({ ...baseConfig, [field]: '' })).toThrow(field);
     });
 
-    it('does not require apiKey/secretKey', () => {
+    it('does not require apiKey/secretKey', async () => {
       expect(() => new PayTR(baseConfig)).not.toThrow();
     });
   });
@@ -66,7 +67,7 @@ describe('PayTR provider', () => {
 
       const { generatePayTRIframeToken } = await import('../../../../src/providers/paytr/utils');
       expect(form.paytr_token).toBe(
-        generatePayTRIframeToken(
+        await generatePayTRIframeToken(
           {
             merchantId: form.merchant_id,
             userIp: form.user_ip,
@@ -157,7 +158,7 @@ describe('PayTR provider', () => {
       const { url, form } = sent();
       expect(url).toBe('/odeme/iade');
       expect(form.return_amount).toBe('50.00');
-      expect(form.paytr_token).toBe(generatePayTRRefundToken('123456', 'ORDER1', '50.00', SALT, KEY));
+      expect(form.paytr_token).toBe(await generatePayTRRefundToken('123456', 'ORDER1', '50.00', SALT, KEY));
       expect(form.merchant_key).toBeUndefined();
       expect(result.status).toBe(PaymentStatus.SUCCESS);
       expect(result.refundId).toBe('R1');
@@ -197,7 +198,7 @@ describe('PayTR provider', () => {
       post.mockResolvedValue({ data: { status: 'success', payment_amount: '10.01', payment_total: '10.01' } });
       const result = await paytr.getPayment('ORDER1');
       expect(sent().url).toBe('/odeme/durum-sorgu');
-      expect(sent().form.paytr_token).toBe(generatePayTRStatusToken('123456', 'ORDER1', SALT, KEY));
+      expect(sent().form.paytr_token).toBe(await generatePayTRStatusToken('123456', 'ORDER1', SALT, KEY));
       expect(sent().config.retryable).toBe(true);
       expect(result.status).toBe(PaymentStatus.SUCCESS);
     });
@@ -242,7 +243,7 @@ describe('PayTR provider', () => {
     });
 
     it('reports timeouts as PENDING (outcome unknown)', async () => {
-      post.mockRejectedValue({ isAxiosError: true, code: 'ECONNABORTED', request: {} });
+      post.mockRejectedValue(new HttpError('Request timed out', {}, { code: 'ETIMEDOUT' }));
       const result = await paytr.createPayment(mockPaymentRequest);
       expect(result.status).toBe(PaymentStatus.PENDING);
       expect(result.errorCode).toBe('NETWORK_ERROR');

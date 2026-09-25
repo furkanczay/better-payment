@@ -1,10 +1,6 @@
-import axios, { AxiosInstance } from 'axios';
-import crypto from 'crypto';
-import {
-  PaymentProvider,
-  PaymentProviderConfig,
-  RetryableRequestConfig,
-} from '../../core/PaymentProvider';
+import type { HttpClient, HttpRequestConfig } from '../../core/http';
+import { fromBase64, randomHex } from '../../core/crypto';
+import { PaymentProvider, PaymentProviderConfig } from '../../core/PaymentProvider';
 import { ConfigurationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
 import type { PaymentValidationRules } from '../../core/validation';
@@ -138,16 +134,11 @@ function mapIyzicoPaymentStatus(
  * İyzico ödeme sağlayıcısı
  */
 export class Iyzico extends PaymentProvider<IyzicoConfig> {
-  private client: AxiosInstance;
+  private client: HttpClient;
 
   constructor(config: IyzicoConfig) {
     super(config);
-    this.client = axios.create({
-      baseURL: this.config.baseUrl,
-      timeout: 30000,
-    });
-    this.setupAxiosLogging(this.client, 'iyzico');
-    this.setupAxiosRetry(this.client);
+    this.client = this.createHttpClient('iyzico', { timeout: 30000 });
   }
 
   protected validateConfig(): void {
@@ -200,14 +191,14 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
   ): Promise<T> {
     const method = options.method ?? 'POST';
     const requestBody = JSON.stringify(data ?? {});
-    const headers = createIyzicoHeaders(
+    const headers = await createIyzicoHeaders(
       this.config.apiKey,
       this.config.secretKey,
       endpoint,
       requestBody
     );
 
-    const config: RetryableRequestConfig = {
+    const config: HttpRequestConfig = {
       method,
       url: endpoint,
       headers: { ...headers, 'Content-Type': 'application/json' },
@@ -437,7 +428,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
       let decodedHtmlContent: string | undefined;
       if (response.threeDSHtmlContent) {
         try {
-          decodedHtmlContent = Buffer.from(response.threeDSHtmlContent, 'base64').toString('utf-8');
+          decodedHtmlContent = fromBase64(response.threeDSHtmlContent);
         } catch (decodeError) {
           // Eğer decode edilemezse, raw halini kullan
           decodedHtmlContent = response.threeDSHtmlContent;
@@ -1005,7 +996,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
   async binCheck(binNumber: string): Promise<BinCheckResponse> {
     const request: IyzicoBinCheckRequest = {
       locale: this.config.locale,
-      conversationId: crypto.randomBytes(8).toString('hex'),
+      conversationId: randomHex(8),
       binNumber: binNumber,
     };
 

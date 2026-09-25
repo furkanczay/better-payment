@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import { hmac, toBase64 } from '../../core/crypto';
 import { safeEqual, toMinorUnits, formatDecimal } from '../../core/utils';
 import type { PayTRBasketItem } from './types';
 import { ValidationError } from '../../core/errors';
@@ -6,14 +6,14 @@ import { ValidationError } from '../../core/errors';
 /**
  * PayTR signatures: base64(HMAC-SHA256(data + merchant_salt, merchant_key))
  */
-export function paytrSign(data: string, merchantKey: string): string {
-  return crypto.createHmac('sha256', merchantKey).update(data, 'utf8').digest('base64');
+export async function paytrSign(data: string, merchantKey: string): Promise<string> {
+  return toBase64(await hmac('SHA-256', merchantKey, data));
 }
 
 /**
  * iFrame API token (paytr_token for /odeme/api/get-token)
  */
-export function generatePayTRIframeToken(
+export async function generatePayTRIframeToken(
   params: {
     merchantId: string;
     userIp: string;
@@ -28,7 +28,7 @@ export function generatePayTRIframeToken(
   },
   merchantSalt: string,
   merchantKey: string
-): string {
+): Promise<string> {
   const data =
     params.merchantId +
     params.userIp +
@@ -46,7 +46,7 @@ export function generatePayTRIframeToken(
 /**
  * Direct API token (paytr_token for /odeme)
  */
-export function generatePayTRDirectToken(
+export async function generatePayTRDirectToken(
   params: {
     merchantId: string;
     userIp: string;
@@ -61,7 +61,7 @@ export function generatePayTRDirectToken(
   },
   merchantSalt: string,
   merchantKey: string
-): string {
+): Promise<string> {
   const data =
     params.merchantId +
     params.userIp +
@@ -79,49 +79,49 @@ export function generatePayTRDirectToken(
 /**
  * Refund token: merchant_id + merchant_oid + return_amount + merchant_salt
  */
-export function generatePayTRRefundToken(
+export async function generatePayTRRefundToken(
   merchantId: string,
   merchantOid: string,
   returnAmount: string,
   merchantSalt: string,
   merchantKey: string
-): string {
+): Promise<string> {
   return paytrSign(merchantId + merchantOid + returnAmount + merchantSalt, merchantKey);
 }
 
 /**
  * Status query token: merchant_id + merchant_oid + merchant_salt
  */
-export function generatePayTRStatusToken(
+export async function generatePayTRStatusToken(
   merchantId: string,
   merchantOid: string,
   merchantSalt: string,
   merchantKey: string
-): string {
+): Promise<string> {
   return paytrSign(merchantId + merchantOid + merchantSalt, merchantKey);
 }
 
 /**
  * BIN query token: bin_number + merchant_id + merchant_salt
  */
-export function generatePayTRBinToken(
+export async function generatePayTRBinToken(
   binNumber: string,
   merchantId: string,
   merchantSalt: string,
   merchantKey: string
-): string {
+): Promise<string> {
   return paytrSign(binNumber + merchantId + merchantSalt, merchantKey);
 }
 
 /**
  * Installment rates token: merchant_id + request_id + merchant_salt
  */
-export function generatePayTRInstallmentRatesToken(
+export async function generatePayTRInstallmentRatesToken(
   merchantId: string,
   requestId: string,
   merchantSalt: string,
   merchantKey: string
-): string {
+): Promise<string> {
   return paytrSign(merchantId + requestId + merchantSalt, merchantKey);
 }
 
@@ -129,23 +129,23 @@ export function generatePayTRInstallmentRatesToken(
  * Stored card list token (Kart Saklama, capi/list): utoken + merchant_salt
  * (per PayTR's official Postman collection)
  */
-export function generatePayTRCardListToken(
+export async function generatePayTRCardListToken(
   utoken: string,
   merchantSalt: string,
   merchantKey: string
-): string {
+): Promise<string> {
   return paytrSign(utoken + merchantSalt, merchantKey);
 }
 
 /**
  * Stored card delete token (capi/delete): ctoken + utoken + merchant_salt
  */
-export function generatePayTRCardDeleteToken(
+export async function generatePayTRCardDeleteToken(
   ctoken: string,
   utoken: string,
   merchantSalt: string,
   merchantKey: string
-): string {
+): Promise<string> {
   return paytrSign(ctoken + utoken + merchantSalt, merchantKey);
 }
 
@@ -153,11 +153,11 @@ export function generatePayTRCardDeleteToken(
  * Verifies the hash PayTR sends to the notification (Bildirim) URL:
  * base64(HMAC-SHA256(merchant_oid + merchant_salt + status + total_amount, merchant_key))
  */
-export function verifyPayTRCallback(
+export async function verifyPayTRCallback(
   data: { merchant_oid?: string; status?: string; total_amount?: string; hash?: string },
   merchantSalt: string,
   merchantKey: string
-): boolean {
+): Promise<boolean> {
   if (
     !data ||
     !data.merchant_oid ||
@@ -167,7 +167,7 @@ export function verifyPayTRCallback(
   ) {
     return false;
   }
-  const expected = paytrSign(
+  const expected = await paytrSign(
     data.merchant_oid + merchantSalt + data.status + data.total_amount,
     merchantKey
   );
@@ -179,7 +179,7 @@ export function verifyPayTRCallback(
  */
 export function formatPayTRBasket(items: PayTRBasketItem[]): string {
   const basket = items.map((item) => [item.name, formatPayTRAmount(item.price), item.quantity]);
-  return Buffer.from(JSON.stringify(basket), 'utf8').toString('base64');
+  return toBase64(JSON.stringify(basket));
 }
 
 /**

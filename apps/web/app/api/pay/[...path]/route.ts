@@ -1,7 +1,7 @@
 import { getBetterPayment } from "@/lib/payment";
 import type { BetterPaymentRequest } from "better-payment";
 
-// better-payment uses node:crypto
+// better-payment also runs on the edge runtime; the demo uses Node.js
 export const runtime = "nodejs";
 
 async function handler(req: Request): Promise<Response> {

@@ -13,6 +13,7 @@ const payment = new BetterPayment({
   mode: 'sandbox',                      // 'sandbox' | 'production' (default)
   logger,                               // optional, see below
   retry,                                // optional, see below
+  fetch,                                // optional custom fetch (default: globalThis.fetch)
   validate: true,                       // default; see Request Validation
   handler,                              // optional HTTP handler options
   providers: {
@@ -97,6 +98,14 @@ logger: {
 
 The logger receives the HTTP method, URL and status. Request and response bodies,
 which contain card data and credentials, are never logged.
+
+## Custom fetch
+
+Provider API calls use `globalThis.fetch` with a timeout (30 s; 60 s for Parampos). Pass `fetch` to use your own implementation, for example a proxy-aware fetch or a stub in tests. It can also be set per provider in `config.fetch`.
+
+```typescript
+fetch: (input, init) => myFetch(input, init),
+```
 
 ## Retry
 

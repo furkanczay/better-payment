@@ -5,11 +5,11 @@ description: Install better-payment and set up your environment.
 
 ## Requirements
 
-- Node.js `>= 20.0.0`
+- Node.js `>= 20.0.0`, or an edge runtime: Vercel Edge, Cloudflare Workers, Deno or Bun
 - TypeScript `>= 5.0` (recommended)
 
 <Callout type="info">
-  The server entry point (`better-payment`) uses `node:crypto` and does not run on edge runtimes such as Vercel Edge or Cloudflare Workers. Use the Node.js runtime for your payment routes. `better-payment/client` is browser-safe.
+  `better-payment` has no runtime dependencies. It only uses `fetch` and WebCrypto, so the same package runs on Node.js and on [edge runtimes](/docs/integrations/edge). `better-payment/client` is browser-safe.
 </Callout>
 
 ## Install

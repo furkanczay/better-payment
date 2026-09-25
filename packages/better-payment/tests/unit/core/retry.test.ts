@@ -1,77 +1,76 @@
-import { describe, it, expect, vi } from 'vitest';
-import axios, { AxiosInstance } from 'axios';
-import { PaymentProvider } from '../../../src/core/PaymentProvider';
+import { describe, it, expect } from 'vitest';
+import { HttpClient } from '../../../src/core/http';
 import type { RetryConfig } from '../../../src/core/retry';
 
-class TestProvider extends PaymentProvider {
-  client: AxiosInstance;
-  constructor(retry: RetryConfig | undefined, adapter: any) {
-    super({ retry });
-    this.client = axios.create({ adapter });
-    this.setupAxiosRetry(this.client);
-  }
-  createPayment = vi.fn();
-  initThreeDSPayment = vi.fn();
-  completeThreeDSPayment = vi.fn();
-  refund = vi.fn();
-  cancel = vi.fn();
-  getPayment = vi.fn();
+function client(retry: RetryConfig | undefined, fetchImpl: typeof fetch): HttpClient {
+  return new HttpClient({
+    provider: 'test',
+    baseURL: 'https://api.example.com',
+    timeout: 1000,
+    retry,
+    fetch: fetchImpl,
+  });
 }
 
-function networkErrorAdapter(calls: { count: number }) {
-  return async (config: any) => {
+function networkErrorFetch(calls: { count: number }): typeof fetch {
+  return async () => {
     calls.count++;
-    const error: any = new Error('socket hang up');
-    error.isAxiosError = true;
-    error.config = config;
-    error.request = {};
-    throw error;
+    throw new TypeError('fetch failed', {
+      cause: Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }),
+    });
   };
 }
 
-describe('PaymentProvider retry', () => {
+describe('HttpClient retry', () => {
   const retry: RetryConfig = { attempts: 3, delay: 1 };
 
   it('never retries POST requests (payments, refunds)', async () => {
     const calls = { count: 0 };
-    const provider = new TestProvider(retry, networkErrorAdapter(calls));
-    await expect(provider.client.post('/payment', '{}')).rejects.toThrow();
+    await expect(client(retry, networkErrorFetch(calls)).post('/payment', '{}')).rejects.toThrow();
     expect(calls.count).toBe(1);
   });
 
   it('retries GET requests on network errors', async () => {
     const calls = { count: 0 };
-    const provider = new TestProvider(retry, networkErrorAdapter(calls));
-    await expect(provider.client.get('/status')).rejects.toThrow();
+    await expect(client(retry, networkErrorFetch(calls)).get('/status')).rejects.toThrow();
     expect(calls.count).toBe(3);
   });
 
   it('retries POST requests explicitly marked retryable (read-only queries)', async () => {
     const calls = { count: 0 };
-    const provider = new TestProvider(retry, networkErrorAdapter(calls));
-    await expect(provider.client.post('/query', '{}', { retryable: true } as any)).rejects.toThrow();
+    await expect(
+      client(retry, networkErrorFetch(calls)).post('/query', '{}', { retryable: true })
+    ).rejects.toThrow();
     expect(calls.count).toBe(3);
   });
 
   it('retries on configured status codes only', async () => {
     let count = 0;
-    const adapter = async (config: any) => {
+    const fetchImpl: typeof fetch = async () => {
       count++;
-      const error: any = new Error('unavailable');
-      error.isAxiosError = true;
-      error.config = config;
-      error.response = { status: count === 1 ? 503 : 400, data: {}, headers: {}, config };
-      throw error;
+      return new Response('{}', { status: count === 1 ? 503 : 400 });
     };
-    const provider = new TestProvider({ attempts: 5, delay: 1, statusCodes: [503] }, adapter);
-    await expect(provider.client.get('/status')).rejects.toThrow();
+    await expect(
+      client({ attempts: 5, delay: 1, statusCodes: [503] }, fetchImpl).get('/status')
+    ).rejects.toThrow('400');
+    expect(count).toBe(2);
+  });
+
+  it('returns the response of a successful retry', async () => {
+    let count = 0;
+    const fetchImpl: typeof fetch = async () => {
+      count++;
+      if (count === 1) throw new TypeError('fetch failed');
+      return new Response('{"ok":true}');
+    };
+    const res = await client(retry, fetchImpl).get('/status');
+    expect(res.data).toEqual({ ok: true });
     expect(count).toBe(2);
   });
 
   it('does nothing when retry is not configured', async () => {
     const calls = { count: 0 };
-    const provider = new TestProvider(undefined, networkErrorAdapter(calls));
-    await expect(provider.client.get('/status')).rejects.toThrow();
+    await expect(client(undefined, networkErrorFetch(calls)).get('/status')).rejects.toThrow();
     expect(calls.count).toBe(1);
   });
 });

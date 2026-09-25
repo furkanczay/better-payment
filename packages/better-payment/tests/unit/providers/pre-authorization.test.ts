@@ -62,10 +62,10 @@ function iyzico() {
 }
 
 describe('Parampos pre-authorization', () => {
-  it('hashes like Param: CLIENT_CODE+GUID+Islem_Tutar+Toplam_Tutar+Siparis_ID+Hata_URL+Basarili_URL', () => {
+  it('hashes like Param: CLIENT_CODE+GUID+Islem_Tutar+Toplam_Tutar+Siparis_ID+Hata_URL+Basarili_URL', async () => {
     // mews/pos reference vector (3D pre-authorization)
     expect(
-      generateParamposPreAuthHash(
+      await generateParamposPreAuthHash(
         '10738',
         GUID,
         '1000,25',
@@ -93,7 +93,7 @@ describe('Parampos pre-authorization', () => {
     expect(xml).toContain('<Islem_Guvenlik_Tip>NS</Islem_Guvenlik_Tip>');
     expect(xml).not.toContain('Basarili_URL');
     expect(xml).toContain(
-      `<Islem_Hash>${generateParamposPreAuthHash('10738', GUID, '1,00', '1,20', 'ORDER1')}</Islem_Hash>`
+      `<Islem_Hash>${await generateParamposPreAuthHash('10738', GUID, '1,00', '1,20', 'ORDER1')}</Islem_Hash>`
     );
     expect(result).toMatchObject({ status: PaymentStatus.SUCCESS, paymentId: 'ORDER1' });
   });
@@ -286,7 +286,7 @@ describe('handler routes', () => {
     body,
   });
 
-  it('capture and void require an authorize hook', () => {
+  it('capture and void require an authorize hook', async () => {
     const { payment } = setup();
     expect(() => new BetterPaymentHandler(payment, { allowedActions: ['capture'] })).toThrow(
       /authorize/

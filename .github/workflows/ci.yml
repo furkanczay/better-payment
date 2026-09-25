@@ -50,6 +50,9 @@ jobs:
       - name: Test (with coverage thresholds)
         run: pnpm test:coverage
 
+      - name: Test (edge-runtime globals)
+        run: pnpm test:edge
+
       - name: Build
         run: pnpm build
 
@@ -60,6 +63,12 @@ jobs:
         run: |
           node -e "const bp = require('./dist/index.js'); if (!bp.VERSION || new bp.ValidationError('x').name !== 'ValidationError') process.exit(1)"
           node --input-type=module -e "import { VERSION } from './dist/index.mjs'; import { PaymentStatus } from './dist/client/index.mjs'; if (!VERSION || PaymentStatus.SUCCESS !== 'success') process.exit(1)"
+
+      - name: Edge runtime smoke test (built bundle in the Vercel Edge VM)
+        run: pnpm test:edge-smoke
+
+      - name: No runtime dependencies
+        run: node -e "const d = require('./package.json').dependencies || {}; if (Object.keys(d).length) { console.error('Runtime dependencies are not allowed:', d); process.exit(1) }"
 
       - name: Check package contents
         run: |

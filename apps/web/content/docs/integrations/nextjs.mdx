@@ -47,7 +47,7 @@ export function getBetterPayment(): BetterPayment {
 // app/api/pay/[...path]/route.ts
 import { getBetterPayment } from '@/lib/payment';
 
-export const runtime = 'nodejs'; // better-payment needs node:crypto
+export const runtime = 'nodejs'; // 'edge' works too, see the edge runtimes guide
 
 async function handler(req: Request): Promise<Response> {
   const contentType = req.headers.get('content-type') ?? '';

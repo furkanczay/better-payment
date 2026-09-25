@@ -707,7 +707,7 @@ export class BetterPaymentHandler {
 
     // A repeated delivery (PayTR resend, browser re-post) has the same body. Keying
     // on the body hash means a forged callback can never match a stored one.
-    const key = `bp:callback:${ctx.provider}:${ctx.action}:${fingerprint(body)}`;
+    const key = `bp:callback:${ctx.provider}:${ctx.action}:${await fingerprint(body)}`;
     const { store, ttlSeconds, lockSeconds } = idem;
     let result: PaymentResponse | undefined;
 
@@ -793,7 +793,7 @@ export class BetterPaymentHandler {
       throw new HttpError(400, 'Idempotency-Key must be at most 255 characters');
     }
     const key = `bp:request:${ctx.provider}:${ctx.action}:${idempotencyKey}`;
-    const request = fingerprint(ctx.body);
+    const request = await fingerprint(ctx.body);
 
     if (
       !(await store.setIfAbsent(key, JSON.stringify({ state: 'processing', request }), lockSeconds))

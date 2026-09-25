@@ -4,8 +4,8 @@
  * Hash generation, verification, formatting and SOAP helpers for the Param (TurkPOS) API
  */
 
-import * as crypto from 'crypto';
 import { safeEqual, formatDecimal } from '../../core/utils';
+import { digest, toBase64 } from '../../core/crypto';
 import { ValidationError } from '../../core/errors';
 
 export const PARAMPOS_NAMESPACE = 'https://turkpos.com.tr/';
@@ -14,7 +14,7 @@ export const PARAMPOS_NAMESPACE = 'https://turkpos.com.tr/';
  * Encodes a string as ISO-8859-9 (Turkish), the encoding Param uses for hash input.
  * Characters outside the charset are replaced with '?'.
  */
-export function encodeIso88599(value: string): Buffer {
+export function encodeIso88599(value: string): Uint8Array {
   const turkish: Record<string, number> = {
     Ğ: 0xd0,
     İ: 0xdd,
@@ -32,7 +32,7 @@ export function encodeIso88599(value: string): Buffer {
     const code = char.codePointAt(0) ?? 0x3f;
     bytes.push(code < 0x100 ? code : 0x3f);
   }
-  return Buffer.from(bytes);
+  return Uint8Array.from(bytes);
 }
 
 /**
@@ -41,16 +41,16 @@ export function encodeIso88599(value: string): Buffer {
  * Formula: base64(sha1(CLIENT_CODE + GUID + Taksit + Islem_Tutar + Toplam_Tutar + Siparis_ID))
  * Amounts must be in the same comma-decimal format sent in the request.
  */
-export function generateParamposPaymentHash(
+export async function generateParamposPaymentHash(
   clientCode: string,
   guid: string,
   installment: number | string,
   transactionAmount: string,
   totalAmount: string,
   orderId: string
-): string {
+): Promise<string> {
   const hashString = `${clientCode}${guid}${installment}${transactionAmount}${totalAmount}${orderId}`;
-  return crypto.createHash('sha1').update(encodeIso88599(hashString)).digest('base64');
+  return toBase64(await digest('SHA-1', encodeIso88599(hashString)));
 }
 
 /**
@@ -64,7 +64,7 @@ export function generateParamposPaymentHash(
  * Siparis_ID + Hata_URL + Basarili_URL))). Unlike a sale, the installment is
  * not part of it; the URLs are empty for non-3D pre-authorizations.
  */
-export function generateParamposPreAuthHash(
+export async function generateParamposPreAuthHash(
   clientCode: string,
   guid: string,
   transactionAmount: string,
@@ -72,27 +72,27 @@ export function generateParamposPreAuthHash(
   orderId: string,
   failUrl = '',
   successUrl = ''
-): string {
+): Promise<string> {
   const hashString = `${clientCode}${guid}${transactionAmount}${totalAmount}${orderId}${failUrl}${successUrl}`;
-  return crypto.createHash('sha1').update(encodeIso88599(hashString)).digest('base64');
+  return toBase64(await digest('SHA-1', encodeIso88599(hashString)));
 }
 
-export function generateParampos3DSVerificationHash(
+export async function generateParampos3DSVerificationHash(
   islemGuid: string,
   md: string,
   mdStatus: string,
   orderId: string,
   guid: string
-): string {
+): Promise<string> {
   const hashString = `${islemGuid}${md}${mdStatus}${orderId}${guid}`;
-  return crypto.createHash('sha1').update(hashString, 'utf8').digest('base64');
+  return toBase64(await digest('SHA-1', hashString));
 }
 
 /**
  * Verifies the 3D callback hash. `guid` MUST come from the merchant configuration,
  * never from the callback payload: the GUID is the only secret in the formula.
  */
-export function verifyParampos3DSCallback(
+export async function verifyParampos3DSCallback(
   callback: {
     islemGUID?: string;
     md?: string;
@@ -101,12 +101,18 @@ export function verifyParampos3DSCallback(
     islemHash?: string;
   },
   guid: string
-): boolean {
+): Promise<boolean> {
   const { islemGUID, md, mdStatus, orderId, islemHash } = callback;
   if (!islemGUID || !md || mdStatus === undefined || !orderId || !islemHash) {
     return false;
   }
-  const expected = generateParampos3DSVerificationHash(islemGUID, md, mdStatus, orderId, guid);
+  const expected = await generateParampos3DSVerificationHash(
+    islemGUID,
+    md,
+    mdStatus,
+    orderId,
+    guid
+  );
   return safeEqual(expected, islemHash);
 }
 

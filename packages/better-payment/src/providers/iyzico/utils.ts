@@ -1,22 +1,19 @@
-import crypto from 'crypto';
+import { digest, hmac, toBase64, toHex } from '../../core/crypto';
 import { VERSION } from '../../version';
 
 /**
  * İyzico V2 authorization header oluşturur
  * Resmi iyzico-node SDK algoritmasına göre
  */
-export function generateIyzicoAuthStringV2(
+export async function generateIyzicoAuthStringV2(
   apiKey: string,
   secretKey: string,
   randomString: string,
   uri: string,
   requestBody: string
-): string {
+): Promise<string> {
   // 1. Signature oluştur: HMAC-SHA256(randomString + uri + requestBody)
-  const signature = crypto
-    .createHmac('sha256', secretKey)
-    .update(randomString + uri + requestBody)
-    .digest('hex');
+  const signature = toHex(await hmac('SHA-256', secretKey, randomString + uri + requestBody));
 
   // 2. Authorization parametrelerini birleştir
   const authorizationParams = [
@@ -26,7 +23,7 @@ export function generateIyzicoAuthStringV2(
   ];
 
   // 3. Base64 encode et
-  const base64Auth = Buffer.from(authorizationParams.join('&')).toString('base64');
+  const base64Auth = toBase64(authorizationParams.join('&'));
 
   return `IYZWSv2 ${base64Auth}`;
 }
@@ -34,14 +31,14 @@ export function generateIyzicoAuthStringV2(
 /**
  * İyzico V1 authorization header oluşturur (fallback)
  */
-export function generateIyzicoAuthStringV1(
+export async function generateIyzicoAuthStringV1(
   apiKey: string,
   secretKey: string,
   randomString: string,
   pkiString: string
-): string {
+): Promise<string> {
   const dataToEncrypt = apiKey + randomString + secretKey + pkiString;
-  const hash = crypto.createHash('sha1').update(dataToEncrypt, 'utf8').digest('base64');
+  const hash = toBase64(await digest('SHA-1', dataToEncrypt));
   return `IYZWS ${apiKey}:${hash}`;
 }
 
@@ -56,15 +53,15 @@ export function generateRandomString(): string {
 /**
  * İyzico API isteği için header oluşturur
  */
-export function createIyzicoHeaders(
+export async function createIyzicoHeaders(
   apiKey: string,
   secretKey: string,
   uri: string,
   requestBody: string,
   pkiString?: string
-): Record<string, string> {
+): Promise<Record<string, string>> {
   const randomString = generateRandomString();
-  const authStringV2 = generateIyzicoAuthStringV2(
+  const authStringV2 = await generateIyzicoAuthStringV2(
     apiKey,
     secretKey,
     randomString,
@@ -82,7 +79,7 @@ export function createIyzicoHeaders(
 
   // V1 fallback header ekle (iyzico bazen bunu da kontrol eder)
   if (pkiString) {
-    headers['Authorization_Fallback'] = generateIyzicoAuthStringV1(
+    headers['Authorization_Fallback'] = await generateIyzicoAuthStringV1(
       apiKey,
       secretKey,
       randomString,
