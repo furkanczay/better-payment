@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { PaymentProvider, RetryableRequestConfig } from '../../core/PaymentProvider';
 import { ConfigurationError, ValidationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
+import type { PaymentValidationRules } from '../../core/validation';
 import { PAYTR_ERROR_CODES } from './error-codes';
 import type { PaymentErrorCode } from '../../core/error-codes';
 import { generateOrderId, parseAmount } from '../../core/utils';
@@ -50,6 +51,12 @@ import type {
   PayTRStatusResponse,
   PayTRInstallmentRatesResponse,
 } from './types';
+
+/** Fields PayTR requires for card and iFrame payments */
+const PAYTR_ORDER_RULES: PaymentValidationRules = {
+  basketRequired: true,
+  required: ['buyer.email', 'buyer.ip', 'buyer.name', 'buyer.surname', 'buyer.gsmNumber'],
+};
 
 /**
  * PayTR ödeme sağlayıcısı
@@ -140,6 +147,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
   async createPayment(request: PaymentRequest): Promise<PaymentResponse> {
     let merchantOid: string | undefined;
     try {
+      this.validatePayment(request, { ...PAYTR_ORDER_RULES, card: true });
       merchantOid = this.resolveMerchantOid(request.conversationId);
       const installmentCount =
         request.installment && request.installment > 1 ? String(request.installment) : '0';
@@ -227,6 +235,8 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
   ): Promise<ThreeDSInitResponse> {
     let merchantOid: string | undefined;
     try {
+      // iFrame flow: the card is entered on PayTR's page
+      this.validatePayment(request, PAYTR_ORDER_RULES);
       merchantOid = this.resolveMerchantOid(request.conversationId);
       if (!request.callbackUrl) {
         throw new ValidationError('callbackUrl is required');
@@ -349,6 +359,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
    */
   async refund(request: RefundRequest): Promise<RefundResponse> {
     try {
+      this.validateRefund(request);
       const returnAmount = formatPayTRAmount(request.price);
 
       const body: Record<string, string> = {

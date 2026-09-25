@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { PaymentProvider, RetryableRequestConfig } from '../../core/PaymentProvider';
 import { ConfigurationError, ValidationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
+import type { PaymentValidationRules } from '../../core/validation';
 import { ISO8583_ERROR_CODES, PaymentErrorCode, resolveErrorCode } from '../../core/error-codes';
 import { generateOrderId } from '../../core/utils';
 import {
@@ -44,6 +45,8 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+const AKBANK_CARD_RULES: PaymentValidationRules = { card: true, required: ['buyer.ip'] };
 
 /**
  * Akbank Sanal POS (JSON API, "yeni nesil" sanal POS)
@@ -175,6 +178,7 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
   async createPayment(request: PaymentRequest): Promise<PaymentResponse> {
     const orderId = request.conversationId || generateOrderId();
     try {
+      this.validatePayment(request, AKBANK_CARD_RULES);
       const body = {
         ...this.baseRequest(AKBANK_TXN_CODES.SALE),
         card: {
@@ -226,6 +230,7 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
   ): Promise<ThreeDSInitResponse> {
     const orderId = request.conversationId || generateOrderId();
     try {
+      this.validatePayment(request, AKBANK_CARD_RULES);
       if (!request.callbackUrl) {
         throw new ValidationError('callbackUrl is required for 3D Secure payments');
       }
@@ -336,6 +341,7 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
    */
   async refund(request: RefundRequest): Promise<RefundResponse> {
     try {
+      this.validateRefund(request);
       const data = await this.process({
         ...this.baseRequest(AKBANK_TXN_CODES.REFUND),
         transaction: {

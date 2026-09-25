@@ -107,6 +107,7 @@ export class BetterPayment {
       baseUrl: config.baseUrl ?? defaults[mode],
       logger: config.logger ?? this.config.logger,
       retry: config.retry ?? this.config.retry,
+      validate: config.validate ?? this.config.validate,
     };
   }
 

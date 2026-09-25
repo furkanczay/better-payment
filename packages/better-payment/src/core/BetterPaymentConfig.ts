@@ -75,6 +75,11 @@ export interface BetterPaymentConfig {
   mode?: 'sandbox' | 'production';
   logger?: BetterPaymentLogger;
   retry?: RetryConfig;
+  /**
+   * Validate requests before calling providers. Default: true.
+   * Can be overridden per provider with `config.validate`.
+   */
+  validate?: boolean;
   /** Options for `betterPayment.handler` */
   handler?: BetterPaymentHandlerOptions;
 }
