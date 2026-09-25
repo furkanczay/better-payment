@@ -37,6 +37,7 @@ export default defineConfig({
       'dist',
       'tests/fixtures/**',
       'tests/helpers/**',
+      'tests/sandbox/**',
     ],
     testTimeout: 10000,
     hookTimeout: 10000,

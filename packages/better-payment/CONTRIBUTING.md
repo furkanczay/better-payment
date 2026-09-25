@@ -368,8 +368,11 @@ pnpm test:watch
 # UI ile
 pnpm test:ui
 
-# Coverage
-pnpm test --coverage
+# Coverage (eşikler vitest.config.ts içinde)
+pnpm test:coverage
+
+# Sağlayıcı test ortamları (bkz. Sandbox Testleri)
+pnpm test:sandbox
 ```
 
 ### Test Coverage
@@ -378,6 +381,40 @@ Minimum %80 test coverage hedefleyin:
 - Tüm public metodlar test edilmeli
 - Error case'ler test edilmeli
 - Edge case'ler test edilmeli
+
+### Sandbox Testleri
+
+`tests/sandbox/` altındaki testler sağlayıcıların gerçek test ortamlarına istek atar.
+Normal `pnpm test` bu testleri çalıştırmaz. Bir sağlayıcının kimlik bilgileri
+tanımlı değilse o sağlayıcının testleri atlanır, dolayısıyla komut her yerde güvenle
+çalıştırılabilir.
+
+```bash
+IYZICO_SANDBOX_API_KEY=... IYZICO_SANDBOX_SECRET_KEY=... pnpm test:sandbox
+```
+
+| Sağlayıcı | Zorunlu değişkenler | Opsiyonel |
+| --------- | ------------------- | --------- |
+| iyzico    | `IYZICO_SANDBOX_API_KEY`, `IYZICO_SANDBOX_SECRET_KEY` | `IYZICO_SANDBOX_CARD_*` (varsayılan: iyzico test kartı `5528790000000008`) |
+| PayTR     | `PAYTR_SANDBOX_MERCHANT_ID`, `PAYTR_SANDBOX_MERCHANT_KEY`, `PAYTR_SANDBOX_MERCHANT_SALT` | `PAYTR_SANDBOX_CARD_NUMBER` (BIN/taksit sorgusu için) |
+| Parampos  | `PARAMPOS_SANDBOX_CLIENT_CODE`, `PARAMPOS_SANDBOX_CLIENT_USERNAME`, `PARAMPOS_SANDBOX_CLIENT_PASSWORD`, `PARAMPOS_SANDBOX_GUID` | `PARAMPOS_SANDBOX_BASE_URL`, `PARAMPOS_SANDBOX_CARD_*` |
+| Akbank    | `AKBANK_SANDBOX_MERCHANT_SAFE_ID`, `AKBANK_SANDBOX_TERMINAL_SAFE_ID`, `AKBANK_SANDBOX_SECRET_KEY` | `AKBANK_SANDBOX_CARD_*` |
+
+Kart değişkenleri: `<PREFIX>_CARD_NUMBER`, `<PREFIX>_CARD_EXPIRE_MONTH`,
+`<PREFIX>_CARD_EXPIRE_YEAR`, `<PREFIX>_CARD_CVC`, `<PREFIX>_CARD_HOLDER`
+(örnek: `AKBANK_SANDBOX_CARD_NUMBER`). Parampos ve Akbank'ta ödeme/iptal/iade
+testleri yalnızca test kartı tanımlıysa çalışır. Test kartları test hesabıyla
+birlikte verilir.
+
+`SANDBOX_RECORD=1` verildiğinde sağlayıcı yanıtları maskelenerek
+`tests/fixtures/recorded/<sağlayıcı>/` altına yazılır: sırlar, kişisel veriler
+ve kart numaraları maskelenir. Bu dosyalar contract testleri için kullanılır. Commit
+etmeden önce içeriklerini kontrol edin.
+
+CI'da `.github/workflows/sandbox.yml` her gece ve elle tetiklendiğinde çalışır.
+Değişkenler aynı isimlerle repository secret olarak tanımlanır. Elle tetiklerken
+`record` seçeneği işaretlenirse kaydedilen yanıtlar workflow artifact'ı olarak
+yüklenir.
 
 ## Sürüm ve Yayın
 

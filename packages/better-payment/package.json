@@ -25,6 +25,7 @@
     "test:unit": "vitest tests/unit",
     "test:integration": "vitest tests/integration",
     "test:e2e": "vitest tests/e2e",
+    "test:sandbox": "vitest run --config vitest.sandbox.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
