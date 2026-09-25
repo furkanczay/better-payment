@@ -1,0 +1,157 @@
+---
+title: Yapılandırma
+description: BetterPayment'in tüm yapılandırma seçenekleri.
+---
+
+## BetterPaymentConfig
+
+```typescript
+import { BetterPayment, ProviderType } from 'better-payment';
+
+const payment = new BetterPayment({
+  defaultProvider: ProviderType.IYZICO, // optional; the only enabled provider becomes default
+  mode: 'sandbox',                      // 'sandbox' | 'production' (default)
+  logger,                               // optional, see below
+  retry,                                // optional, see below
+  fetch,                                // optional custom fetch (default: globalThis.fetch)
+  validate: true,                       // default; see Request Validation
+  handler,                              // optional HTTP handler options
+  providers: {
+    iyzico: {
+      enabled: true,
+      config: {
+        apiKey: string,
+        secretKey: string,
+        baseUrl?: string,  // default from mode
+        locale?: 'tr' | 'en',
+      },
+    },
+    paytr: {
+      enabled: true,
+      config: {
+        merchantId: string,
+        merchantKey: string,
+        merchantSalt: string,
+        testMode?: boolean,     // default: mode === 'sandbox'
+        timeoutLimit?: number,  // iFrame timeout in minutes, default 30
+      },
+    },
+    akbank: {
+      enabled: true,
+      config: {
+        merchantSafeId: string,
+        terminalSafeId: string,
+        secretKey: string,
+        subMerchantId?: string,
+        testMode?: boolean,     // selects the test 3D gateway; default: mode === 'sandbox'
+        gateway3dUrl?: string,  // override the securepay URL
+      },
+    },
+    parampos: {
+      enabled: true,
+      config: {
+        clientCode: string,
+        clientUsername: string,
+        clientPassword: string,
+        guid: string,
+      },
+    },
+  },
+});
+```
+
+Eksik ya da boş kimlik bilgileri, eksik alanları listeleyen bir `ConfigurationError` fırlatır.
+
+### Varsayılan URL'ler [#default-urls]
+
+| Sağlayıcı | sandbox | production |
+|----------|---------|------------|
+| iyzico | `https://sandbox-api.iyzipay.com` | `https://api.iyzipay.com` |
+| PayTR | `https://www.paytr.com` (`test_mode=1` ile) | `https://www.paytr.com` |
+| Akbank | `https://apipre.akbank.com/api/v1/payment/virtualpos` | `https://api.akbank.com/api/v1/payment/virtualpos` |
+| Parampos | `https://test-dmz.param.com.tr/turkpos.ws/service_turkpos_test.asmx` | `https://posws.param.com.tr/turkpos.ws/service_turkpos_prod.asmx` |
+
+Bir sağlayıcının varsayılan adresini değiştirmek için config'ine `baseUrl` verin.
+
+## Sağlayıcılara erişim [#provider-access]
+
+```typescript
+payment.iyzico           // throws ProviderNotEnabledError if not enabled
+payment.paytr
+payment.akbank
+payment.parampos
+
+payment.use(ProviderType.PAYTR)
+payment.isProviderEnabled(ProviderType.IYZICO)  // boolean
+payment.getEnabledProviders()                    // ProviderType[]
+```
+
+## Loglama [#logging]
+
+```typescript
+logger: {
+  debug: (message, meta) => {},
+  info: (message, meta) => {},
+  error: (message, error, meta) => {},
+}
+```
+
+Logger'a HTTP metodu, URL ve durum kodu gelir. Kart verisi ve kimlik bilgileri içeren istek ve yanıt gövdeleri asla loglanmaz.
+
+## Özel fetch [#custom-fetch]
+
+Sağlayıcı API çağrıları zaman aşımıyla birlikte `globalThis.fetch` kullanır (30 sn; Parampos için 60 sn). Kendi uygulamanızı kullanmak için `fetch` verin; örneğin proxy destekli bir fetch ya da testlerde bir stub. Sağlayıcı bazında `config.fetch` ile de ayarlanabilir.
+
+```typescript
+fetch: (input, init) => myFetch(input, init),
+```
+
+## Yeniden deneme (retry) [#retry]
+
+```typescript
+retry: {
+  attempts: 3,              // total attempts including the first
+  delay: 1000,              // ms between attempts
+  statusCodes: [429, 503],  // retry on these HTTP statuses (network errors are always retried)
+}
+```
+
+<Callout type="info">
+  Yalnızca idempotent istekler yeniden denenir: durum, BIN ve taksit sorguları. Ödeme, iade ve iptal istekleri **asla** yeniden denenmez. Bunlardan biri yanıt alınamadan başarısız olursa `status: 'pending'` ve `errorCode: 'NETWORK_ERROR'` döner; sonucu `getPayment()` ile kontrol etmeniz gerekir.
+</Callout>
+
+## İstek doğrulama [#request-validation]
+
+Ödeme ve iade istekleri sağlayıcıya gönderilmeden önce kontrol edilir. Geçersiz bir istek `status: 'failure'`, `code: 'INVALID_REQUEST'` ve `errorCode: 'VALIDATION_ERROR'` döner. `errorMessage` tüm geçersiz alanları listeler:
+
+```text
+Invalid request: paymentCard.cardNumber is not a valid card number (Luhn check failed); basketItems prices add up to 1.00 but price is 5.00
+```
+
+| Kontrol | Nerede uygulanır |
+| ----- | ---------- |
+| Kart numarası (12–19 hane, Luhn), kart sahibi adı, son kullanma ayı 1–12, süresi dolmamış, CVC 3–4 hane | Kartlı ödemeler: iyzico, PayTR 3D'siz, Parampos, Akbank |
+| `price` / `paidPrice`: pozitif, en fazla 2 ondalık | Tüm ödemeler ve iadeler |
+| Sepet kalemlerinin toplamı `price`'a eşit | iyzico |
+| Sepet boş olmamalı | iyzico, PayTR |
+| Alıcı e-posta, IPv4/IPv6 ve GSM formatı (varsa) | Tüm ödemeler |
+| Zorunlu alanlar: alıcı `id`, `name`, `surname`, `email`, `identityNumber`, `registrationAddress`, `city`, `country`, `ip`; fatura `contactName`, `city`, `country`, `address` | iyzico (checkout form ve PWI dahil) |
+| Zorunlu alanlar: alıcı `email`, `ip`, `name`, `surname`, `gsmNumber` | PayTR |
+| Zorunlu alan: alıcı `ip` | Parampos, Akbank |
+
+Kontroller yalnızca sağlayıcının zaten reddedeceği istekleri reddeder. İndirimler `paidPrice`'ı düşürebileceği için `paidPrice >= price` şartı aranmaz. Yabancı müşteriler ve yer tutucu değerler sağlayıcılarca kabul edildiği için TCKN doğrulama algoritması da kontrol edilmez.
+
+Doğrulamayı genel olarak `validate: false` ile ya da tek bir sağlayıcı için kendi `config`'inde kapatın:
+
+```typescript
+new BetterPayment({
+  validate: false, // every provider
+  providers: {
+    iyzico: { enabled: true, config: { apiKey, secretKey, validate: true } }, // override
+  },
+});
+```
+
+## HTTP handler
+
+Seçenekler ve framework örnekleri için [BetterPaymentHandler](/docs/api/handler) sayfasına bakın.

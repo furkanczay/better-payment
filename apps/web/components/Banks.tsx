@@ -2,13 +2,10 @@ import { Shield, Zap, CreditCard, Lock, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import Code from "@/components/Code";
+import type { Dictionary } from "@/lib/i18n/dictionary";
+import { localePath, type Locale } from "@/lib/i18n/config";
 
-const highlights = [
-  { icon: Lock, label: "HMAC-SHA512", desc: "Signed requests & callbacks" },
-  { icon: CreditCard, label: "2D & 3D Secure", desc: "Both flows supported" },
-  { icon: Shield, label: "Verified Callbacks", desc: "3D results checked with your key" },
-  { icon: Zap, label: "Direct API", desc: "No third-party middleware" },
-];
+const highlightIcons = [Lock, CreditCard, Shield, Zap];
 
 const codeSnippet = `import { BetterPayment } from "better-payment";
 
@@ -47,24 +44,24 @@ const roadmap = [
   { name: "Ziraat Bankası", href: "https://github.com/furkanczay/better-payment/issues/36" },
 ];
 
-export default function Banks() {
+export default function Banks({ lang, t }: { lang: Locale; t: Dictionary["banks"] }) {
+  const highlights = t.highlights.map((h, i) => ({ ...h, icon: highlightIcons[i] }));
   return (
     <section id="banks" className="py-24 px-5 sm:px-8 bg-muted/30 border-y border-border">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-10">
           <div>
             <p className="text-xs font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
-              Direct bank integrations
+              {t.eyebrow}
             </p>
             <h2 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-tight">
-              Bank virtual POS,
+              {t.titleLine1}
               <br />
-              <span className="text-muted-foreground font-medium">same interface.</span>
+              <span className="text-muted-foreground font-medium">{t.titleLine2}</span>
             </h2>
           </div>
           <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
-            Talk to a bank&apos;s virtual POS directly, without a payment institution in
-            between, using the same request and result types.
+            {t.lead}
           </p>
         </div>
 
@@ -77,14 +74,12 @@ export default function Banks() {
                 </div>
                 <div>
                   <h3 className="text-xl font-semibold text-foreground leading-tight">Akbank</h3>
-                  <p className="text-sm text-muted-foreground mt-0.5">Sanal POS · direct integration</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">{t.akbankTagline}</p>
                 </div>
               </div>
 
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Akbank&apos;s Sanal POS JSON API with HMAC-SHA512 signed requests,
-                signature-verified 3D Secure (3D_PAY) callbacks, refunds, voids and order status
-                queries.
+                {t.akbankDescription}
               </p>
 
               <div className="grid grid-cols-2 gap-3">
@@ -103,17 +98,17 @@ export default function Banks() {
               </div>
 
               <Link
-                href="/docs/banks/akbank"
+                href={localePath(lang, "/docs/banks/akbank")}
                 className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:underline underline-offset-4 group w-fit"
               >
-                View Akbank docs
+                {t.viewDocs}
                 <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
               </Link>
             </div>
 
             <div className="p-8 lg:p-10 min-w-0">
               <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground mb-4">
-                Example
+                {t.example}
               </p>
               <Code code={codeSnippet} file="lib/akbank.ts" />
             </div>
@@ -122,7 +117,7 @@ export default function Banks() {
 
         <div className="mt-6">
           <p className="text-[11px] font-mono text-muted-foreground uppercase tracking-[0.18em] mb-3 ml-1">
-            On the roadmap
+            {t.roadmap}
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {roadmap.map((bank) => (

@@ -2,8 +2,10 @@ import { buttonVariants } from "@/lib/button-variants";
 import { ArrowRight, GitBranch } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import type { Dictionary } from "@/lib/i18n/dictionary";
+import { localePath, type Locale } from "@/lib/i18n/config";
 
-export default function CTA() {
+export default function CTA({ lang, t }: { lang: Locale; t: Dictionary["cta"] }) {
   return (
     <section className="py-24 px-5 sm:px-8 bg-muted/30 border-y border-border">
       <div className="max-w-6xl mx-auto">
@@ -13,18 +15,20 @@ export default function CTA() {
               {/* Copy */}
               <div className="max-w-lg">
                 <p className="text-xs font-mono uppercase tracking-[0.18em] text-muted-foreground mb-4">
-                  Open Source · MIT License
+                  {t.eyebrow}
                 </p>
                 <h2 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-tight">
-                  Stop rewriting
+                  {t.titleLine1}
                   <br />
-                  payment logic.
+                  {t.titleLine2}
                 </h2>
                 <p className="mt-4 text-base text-muted-foreground leading-relaxed max-w-md">
-                  One package for iyzico, PayTR, Parampos and Akbank, with full
-                  TypeScript support. Upgrading from 3.x? Read{" "}
-                  <Link href="/docs/whats-new" className="text-foreground underline underline-offset-4">
-                    what&apos;s new in 0.0.1
+                  {t.lead}{" "}
+                  <Link
+                    href={localePath(lang, "/docs/whats-new")}
+                    className="text-foreground underline underline-offset-4"
+                  >
+                    {t.whatsNew}
                   </Link>
                   .
                 </p>
@@ -41,13 +45,13 @@ export default function CTA() {
               {/* Actions */}
               <div className="flex flex-col sm:flex-row lg:flex-col xl:flex-row gap-3 shrink-0">
                 <Link
-                  href="/docs"
+                  href={localePath(lang, "/docs")}
                   className={cn(
                     buttonVariants({ size: "lg" }),
                     "gap-2 h-11 px-7 text-sm font-medium whitespace-nowrap",
                   )}
                 >
-                  Read the Docs <ArrowRight className="w-3.5 h-3.5" />
+                  {t.readDocs} <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
                 <a
                   href="https://github.com/furkanczay/better-payment"
@@ -58,7 +62,7 @@ export default function CTA() {
                     "gap-2 h-11 px-7 text-sm font-medium whitespace-nowrap",
                   )}
                 >
-                  <GitBranch className="w-4 h-4" /> View on GitHub
+                  <GitBranch className="w-4 h-4" /> {t.github}
                 </a>
               </div>
             </div>

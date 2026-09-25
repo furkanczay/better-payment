@@ -1,0 +1,116 @@
+---
+title: iyzico
+description: iyzico entegrasyon referansı — ödemeler, 3D Secure, checkout form, PWI, abonelikler.
+---
+
+iyzico bir JSON REST API kullanır. Her istek IYZWSv2 (HMAC-SHA256) ile imzalanır.
+
+## Yapılandırma [#configuration]
+
+```typescript
+iyzico: {
+  enabled: true,
+  config: {
+    apiKey: process.env.IYZICO_API_KEY!,
+    secretKey: process.env.IYZICO_SECRET_KEY!,
+    // baseUrl: defaults from mode (sandbox-api.iyzipay.com / api.iyzipay.com)
+    locale: 'tr', // optional
+  },
+}
+```
+
+## Doğrudan ödeme (3D'siz) [#direct-payment-non-3d]
+
+```typescript
+const result = await payment.iyzico.createPayment(paymentRequest);
+// result.paymentId — iyzico paymentId
+```
+
+## 3D Secure
+
+```typescript
+const init = await payment.iyzico.initThreeDSPayment({
+  ...paymentRequest,
+  callbackUrl: 'https://yoursite.com/api/pay/iyzico/payment/complete-3ds',
+});
+// Render init.threeDSHtmlContent (already base64-decoded)
+```
+
+iyzico `callbackUrl` adresine `status`, `paymentId`, `conversationData`, `conversationId` ve `mdStatus` alanlarını POST eder. Bu gövdeyi olduğu gibi geçirin:
+
+```typescript
+const result = await payment.iyzico.completeThreeDSPayment(callbackBody);
+```
+
+Ödeme yalnızca callback'te `status=success` ve `mdStatus=1` varsa onaylanır (auth). Diğer tüm callback'ler iyzico çağrılmadan `failure` döner.
+
+## Checkout Form
+
+iyzico'nun barındırdığı ödeme formu. Kart verileri sunucularınıza hiç ulaşmaz.
+
+```typescript
+const form = await payment.iyzico.initCheckoutForm({
+  price: '100.00',
+  paidPrice: '100.00',
+  currency: 'TRY',
+  basketId: 'B1',
+  callbackUrl: 'https://yoursite.com/checkout/callback',
+  enabledInstallments: [1, 2, 3, 6, 9],
+  buyer, shippingAddress, billingAddress, basketItems,
+});
+// form.checkoutFormContent or form.paymentPageUrl, and form.token
+
+const result = await payment.iyzico.retrieveCheckoutForm(token, conversationId);
+```
+
+<Callout type="info">
+  `result.status` ödemenin sonucunu gösterir. API çağrısı başarılı olup ödemenin kendisi başarısız olabilir (`paymentStatus: 'FAILURE'`); bu durumda `status` `failure` olur. 3DS hâlâ sürerken `status` `pending` olur.
+</Callout>
+
+## PWI (Korumalı Havale/EFT)
+
+```typescript
+const init = await payment.iyzico.initPWIPayment({ /* same shape as the checkout form */ });
+const result = await payment.iyzico.retrievePWIPayment(init.token!);
+// result.status: 'pending' (paymentStatus WAITING), 'success' (SUCCESS) or 'failure'
+// result.iban, result.bankName while waiting
+```
+
+## Taksit ve BIN [#installments--bin]
+
+```typescript
+const info = await payment.iyzico.installmentInfo({ binNumber: '552879', price: '100.00' });
+// info.installmentDetails[].installmentPrices[]
+
+const bin = await payment.iyzico.binCheck('552879');
+// bin.cardType, bin.cardAssociation, bin.cardFamily, bin.bankName
+```
+
+## İade, iptal ve durum sorgusu [#refund-cancel--status]
+
+```typescript
+// refund takes the paymentTransactionId of the basket item
+await payment.iyzico.refund({ paymentId: 'payment-transaction-id', price: '50.00', currency: 'TRY', ip: '1.2.3.4' });
+
+await payment.iyzico.cancel({ paymentId: 'payment-id', ip: '1.2.3.4' });
+
+const status = await payment.iyzico.getPayment('payment-id');
+```
+
+## Abonelikler (v2 API) [#subscriptions-v2-api]
+
+```typescript
+await payment.iyzico.createSubscriptionProduct({ name: 'Pro', description: '...' });
+await payment.iyzico.createPricingPlan({
+  productReferenceCode, name: 'Monthly', price: '99.90',
+  paymentInterval: PaymentInterval.MONTHLY, paymentIntervalCount: 1,
+});
+
+await payment.iyzico.initializeSubscription({ pricingPlanReferenceCode, subscriptionInitialStatus: SubscriptionStatus.ACTIVE, customer, paymentCard });
+await payment.iyzico.retrieveSubscription({ subscriptionReferenceCode }); // GET
+await payment.iyzico.upgradeSubscription({ subscriptionReferenceCode, newPricingPlanReferenceCode });
+await payment.iyzico.updateSubscriptionCard({ subscriptionReferenceCode, callbackUrl });
+await payment.iyzico.cancelSubscription({ subscriptionReferenceCode });
+```
+
+Abonelik yanıtları iyzico'nun yapısını (`data`, `systemTime`) korur. `status` alanları `success` / `failure` olarak eşlenir; yanıtın tamamı `rawResponse` içindedir.

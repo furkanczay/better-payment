@@ -1,0 +1,70 @@
+---
+title: Express, Fastify, Hono
+description: Ödeme handler'ını Express, Fastify, Hono veya düz bir Node.js sunucusuna bağlayın.
+---
+
+Her adapter ayrı bir import'tur ve hiç bağımlılığı yoktur; yalnızca kullandığınız yüklenir. Next.js için [Next.js rehberine](/docs/integrations/nextjs), Workers, Deno ve Bun için [edge ortamlarına](/docs/integrations/edge) bakın.
+
+Tüm adapter'lar:
+- JSON ve form-urlencoded gövdeleri (banka callback'leri) handler'a geçirir
+- PayTR'nin `OK` yanıtını düz metin olarak gönderir
+- yönlendirmelerin (`callbackRedirect`) `Location` başlığını korur
+
+Onları handler'ın `basePath`'i altına bağlayın (varsayılan `/api/pay`).
+
+## Express
+
+```typescript
+import express from 'express';
+import { toExpressHandler } from 'better-payment/express';
+import { payment } from './payment';
+
+const app = express();
+app.all('/api/pay/*path', toExpressHandler(payment)); // Express 4: '/api/pay/*'
+```
+
+Adapter ham gövdeyi kendisi okuduğu için ödeme route'larında `express.json()` ya da `express.urlencoded()` kullanmanız gerekmez. Önce bir body parser çalışmışsa onun sonucu kullanılır. Beklenmeyen hatalar `next(error)`'a iletilir.
+
+## Fastify
+
+```typescript
+import Fastify from 'fastify';
+import { toFastifyPlugin } from 'better-payment/fastify';
+
+const app = Fastify();
+await app.register(toFastifyPlugin(payment), { prefix: '/api/pay' });
+```
+
+Fastify, `application/x-www-form-urlencoded` gövdeleri varsayılan olarak reddeder (415); oysa iyzico, Param, Akbank ve PayTR callback'lerini bu formatta gönderir. Plugin bu formatı yalnızca kendi route'ları için kabul eder; diğer route'larınız Fastify'ın varsayılanlarıyla kalır.
+
+## Hono
+
+```typescript
+import { Hono } from 'hono';
+import { toHonoHandler } from 'better-payment/hono';
+
+const app = new Hono();
+app.all('/api/pay/*', toHonoHandler(payment));
+```
+
+Hono, better-payment gibi Node.js, Bun, Deno ve Cloudflare Workers'da çalışır.
+
+## Düz Node.js [#plain-nodejs]
+
+```typescript
+import { createServer } from 'node:http';
+import { toNodeHandler } from 'better-payment/express';
+
+createServer(toNodeHandler(payment)).listen(3000);
+```
+
+## Tembel başlatma [#lazy-initialization]
+
+Tüm adapter'lar `BetterPayment` örneğini (ya da handler'ını) döndüren bir fonksiyonu da kabul eder. Fonksiyon her istekte çağrılır, böylece örneği ilk kullanımda oluşturabilirsiniz:
+
+```typescript
+let instance: BetterPayment | undefined;
+const getPayment = () => (instance ??= new BetterPayment({ /* ... */ }));
+
+app.all('/api/pay/*path', toExpressHandler(getPayment));
+```

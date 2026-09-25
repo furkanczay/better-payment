@@ -1,0 +1,69 @@
+---
+title: Hata kodları
+description: Başarısız sonuçlardaki sağlayıcıdan bağımsız hata kodları ve müşteriye gösterilebilecek mesaj önerileri.
+---
+
+Her başarısız sonuçta iki hata alanı vardır:
+
+- `code`: bir `PaymentErrorCode`; tüm sağlayıcılarda aynıdır. Kararlarınızı buna göre verin.
+- `errorCode`: sağlayıcının ham kodu (iyzico `10051`, PayTR `failed_reason_code`, Akbank `VPS-xxxx`, ...). Loglayın ve sağlayıcı desteğine iletin.
+
+```typescript
+import { PaymentErrorCode, PaymentStatus } from 'better-payment';
+
+const result = await payment.use('iyzico').createPayment(order);
+
+if (result.status === PaymentStatus.FAILURE) {
+  switch (result.code) {
+    case PaymentErrorCode.INSUFFICIENT_FUNDS:
+    case PaymentErrorCode.LIMIT_EXCEEDED:
+      return askForAnotherCard();
+    case PaymentErrorCode.INVALID_HASH:
+    case PaymentErrorCode.FRAUD_SUSPECTED:
+      return flagForReview(result);
+    default:
+      return showGenericError();
+  }
+}
+```
+
+`code` yalnızca başarısız sonuçlarda ve `NETWORK_ERROR` içeren `pending` sonuçlarda bulunur; başarılı sonuçlarda yoktur. Henüz eşlenmemiş sağlayıcı kodları `UNKNOWN` olur ve ham değer `errorCode`'da kalır.
+
+`PaymentErrorCode`, `better-payment/client`'tan da dışa açılır; böylece tarayıcı kodu da ona göre karar verebilir.
+
+## Kodlar [#codes]
+
+| Kod | Anlamı | Önerilen mesaj (EN) | Önerilen mesaj (TR) |
+| ---- | ------- | ---------------------- | ------------------- |
+| `INSUFFICIENT_FUNDS` | Bakiye ya da kredi limiti yetersiz | Your card has insufficient funds. Try another card. | Kartınızın bakiyesi veya limiti yetersiz. Başka bir kart deneyin. |
+| `CARD_DECLINED` | Banka belirli bir sebep belirtmeden reddetti | Your bank declined the payment. Contact your bank or try another card. | Bankanız ödemeyi onaylamadı. Bankanızla görüşün veya başka bir kart deneyin. |
+| `INVALID_CARD` | Kart numarası, BIN ya da kartı çıkaran banka geçersiz | Check your card number. | Kart numaranızı kontrol edin. |
+| `EXPIRED_CARD` | Süresi dolmuş kart ya da yanlış son kullanma tarihi | Check your card's expiry date. | Kartınızın son kullanma tarihini kontrol edin. |
+| `INVALID_CVC` | Yanlış CVC/CVV | Check the security code on the back of your card. | Kartınızın arkasındaki güvenlik kodunu kontrol edin. |
+| `THREEDS_FAILED` | 3D Secure doğrulaması başarısız oldu ya da tamamlanmadı | Verification failed. Try again and complete the SMS step. | Doğrulama başarısız oldu. Tekrar deneyin ve SMS adımını tamamlayın. |
+| `FRAUD_SUSPECTED` | Dolandırıcılık şüphesi ya da kayıp/çalıntı bildirilmiş kart | We couldn't complete this payment. Contact your bank. | Bu ödeme tamamlanamadı. Bankanızla görüşün. |
+| `LIMIT_EXCEEDED` | Tutar ya da işlem sayısı limiti aşıldı | Your card's limit was exceeded. Try another card. | Kartınızın işlem limiti aşıldı. Başka bir kart deneyin. |
+| `DUPLICATE_ORDER` | Sipariş numarası daha önce kullanılmış | This order was already submitted. | Bu sipariş zaten gönderildi. |
+| `CANCELLED_BY_CUSTOMER` | Müşteri ödeme sayfasından ayrıldı | Payment was cancelled. | Ödeme iptal edildi. |
+| `INVALID_REQUEST` | Sağlayıcıya ulaşmadan reddedildi (eksik ya da geçersiz alan) | Something went wrong. Please try again. | Bir sorun oluştu. Lütfen tekrar deneyin. |
+| `NETWORK_ERROR` | Sağlayıcıdan yanıt gelmedi; sonuç bilinmiyor (`pending`) | We're checking your payment. Don't pay again. | Ödemeniz kontrol ediliyor. Lütfen tekrar ödeme yapmayın. |
+| `INVALID_HASH` | Callback imzası doğrulanamadı (sahte kabul edin) | Payment could not be verified. | Ödeme doğrulanamadı. |
+| `PROVIDER_ERROR` | Sağlayıcı, banka ya da üye işyeri yapılandırması sorunu | Payment is temporarily unavailable. Please try again later. | Ödeme geçici olarak yapılamıyor. Lütfen daha sonra tekrar deneyin. |
+| `UNKNOWN` | Henüz eşlenmemiş; `errorCode`'a bakın | Payment failed. Please try again or use another card. | Ödeme başarısız oldu. Tekrar deneyin veya başka bir kart kullanın. |
+
+<Callout type="warn">
+  `INVALID_HASH` ya da `FRAUD_SUSPECTED` ayrıntılarını asla müşteriye göstermeyin. `INVALID_REQUEST` için isteği kendi tarafınızda düzeltin; hata mesajı alanın adını verir. `NETWORK_ERROR` için müşterinin tekrar denemesine izin vermeden önce ödemeyi `getPayment()` ile kontrol edin.
+</Callout>
+
+## Neler eşleniyor [#what-is-mapped]
+
+| Sağlayıcı | `code`'un kaynağı |
+| -------- | ---------------- |
+| iyzico | Ödeme hata kodları (`10005`, `10051`, `10054`, `10084`, `102xx`, ...). Tablo `IYZICO_ERROR_CODES` olarak dışa açılır. |
+| PayTR | `failed_reason_code` 1–3, 6, 8–11 ve 99. `0` kodunun sebebi serbest metindir ve `UNKNOWN` kalır. Tablo `PAYTR_ERROR_CODES` olarak dışa açılır. |
+| Akbank | Bankanın ISO 8583 `hostResponseCode`'u (`51`, `05`, `54`, ...); `ISO8583_ERROR_CODES` olarak dışa açılır. `VPS-xxxx` kodu `errorCode`'da kalır. |
+| Parampos | İmza, 3D Secure ve doğrulama hataları. Param'ın `Sonuc` kodları henüz eşlenmedi ve `UNKNOWN` olur. |
+
+Tüm sağlayıcılar better-payment'in kendi atadığı kodları da kullanır: `NETWORK_ERROR`, `INVALID_HASH`, 3D Secure hataları (`MD_STATUS_x`) ve istek doğrulama (`VALIDATION_ERROR` → `INVALID_REQUEST`).
+
+Eksik bir kod mu var? Sağlayıcıyı, ham `errorCode`'u ve mesajını yazarak bir issue açın.

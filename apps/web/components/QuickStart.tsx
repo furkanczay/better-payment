@@ -1,17 +1,17 @@
 import Link from "next/link";
 import Code from "@/components/Code";
+import type { Dictionary } from "@/lib/i18n/dictionary";
+import { localePath, type Locale } from "@/lib/i18n/config";
 
 const steps = [
   {
     number: "01",
-    title: "Install the package",
     file: "terminal",
     shell: true,
     code: "npm install better-payment",
   },
   {
     number: "02",
-    title: "Configure your providers",
     file: "lib/payment.ts",
     code: `import { BetterPayment } from "better-payment";
 
@@ -30,7 +30,6 @@ export const payment = new BetterPayment({
   },
   {
     number: "03",
-    title: "Start a 3D Secure payment",
     file: "app/checkout.ts",
     code: `import { payment } from "@/lib/payment";
 
@@ -52,18 +51,18 @@ const result = await payment.iyzico.initThreeDSPayment({
   },
 ];
 
-export default function QuickStart() {
+export default function QuickStart({ lang, t }: { lang: Locale; t: Dictionary["quickStart"] }) {
   return (
     <section id="quickstart" className="py-24 px-5 sm:px-8">
       <div className="max-w-4xl mx-auto">
         <div className="mb-14 max-w-lg">
           <p className="text-xs font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
-            Quick start
+            {t.eyebrow}
           </p>
           <h2 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-tight">
-            Up and running
+            {t.titleLine1}
             <br />
-            <span className="text-muted-foreground font-medium">in minutes.</span>
+            <span className="text-muted-foreground font-medium">{t.titleLine2}</span>
           </h2>
         </div>
 
@@ -81,7 +80,7 @@ export default function QuickStart() {
 
               <div className={`flex-1 min-w-0 ${idx < steps.length - 1 ? "pb-10" : ""}`}>
                 <h3 className="font-semibold text-foreground text-[15px] mb-4 mt-1.5">
-                  {step.title}
+                  {t.steps[idx]}
                 </h3>
                 <Code code={step.code} file={step.file} shell={step.shell} />
               </div>
@@ -91,10 +90,10 @@ export default function QuickStart() {
 
         <div className="mt-12 pl-[calc(36px+1.5rem)] sm:pl-[calc(36px+2rem)]">
           <Link
-            href="/docs"
+            href={localePath(lang, "/docs")}
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors group"
           >
-            View full documentation
+            {t.fullDocs}
             <span className="group-hover:translate-x-0.5 transition-transform">→</span>
           </Link>
         </div>

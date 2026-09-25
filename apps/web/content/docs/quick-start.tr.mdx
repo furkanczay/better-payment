@@ -1,0 +1,138 @@
+---
+title: Hızlı Başlangıç
+description: İlk ödemenizi 5 dakikadan kısa sürede alın.
+---
+
+## 1. BetterPayment'i başlatın [#1-initialize-betterpayment]
+
+```typescript
+import { BetterPayment, ProviderType } from 'better-payment';
+
+const payment = new BetterPayment({
+  mode: 'sandbox', // sandbox URLs and provider test modes; default is 'production'
+  defaultProvider: ProviderType.IYZICO,
+  providers: {
+    iyzico: {
+      enabled: true,
+      config: {
+        apiKey: process.env.IYZICO_API_KEY!,
+        secretKey: process.env.IYZICO_SECRET_KEY!,
+      },
+    },
+  },
+});
+```
+
+## 2. Ödeme isteğini oluşturun [#2-build-a-payment-request]
+
+İsteği sunucuda, kendi sipariş verilerinizden oluşturun. Tutarları asla tarayıcıdan almayın.
+
+```typescript
+import { Currency, BasketItemType } from 'better-payment';
+
+const request = {
+  price: '100.00',
+  paidPrice: '100.00',
+  currency: Currency.TRY,
+  installment: 1,
+  basketId: 'B67832',
+  conversationId: 'ORDER123', // your order id (letters and digits only for PayTR)
+  paymentCard: {
+    cardHolderName: 'John Doe',
+    cardNumber: '5528790000000008',
+    expireMonth: '12',
+    expireYear: '2030',
+    cvc: '123',
+  },
+  buyer: {
+    id: 'BY789',
+    name: 'John',
+    surname: 'Doe',
+    gsmNumber: '+905350000000',
+    email: 'johndoe@example.com',
+    identityNumber: '74300864791',
+    registrationAddress: 'Nidakule Göztepe, Merdivenköy Mah.',
+    city: 'Istanbul',
+    country: 'Turkey',
+    ip: '85.34.78.112',
+  },
+  shippingAddress: {
+    contactName: 'Jane Doe',
+    city: 'Istanbul',
+    country: 'Turkey',
+    address: 'Nidakule Göztepe, Merdivenköy Mah.',
+  },
+  billingAddress: {
+    contactName: 'Jane Doe',
+    city: 'Istanbul',
+    country: 'Turkey',
+    address: 'Nidakule Göztepe, Merdivenköy Mah.',
+  },
+  basketItems: [
+    {
+      id: 'BI101',
+      name: 'Binocular',
+      category1: 'Collectibles',
+      itemType: BasketItemType.PHYSICAL,
+      price: '100.00',
+    },
+  ],
+};
+```
+
+## 3. 3D Secure'u başlatın [#3-start-3d-secure]
+
+```typescript
+const init = await payment.initThreeDSPayment({
+  ...request,
+  callbackUrl: 'https://yoursite.com/api/pay/iyzico/payment/complete-3ds',
+});
+
+if (init.status === 'pending') {
+  // Render init.threeDSHtmlContent in the browser
+  // (or redirect to init.redirectUrl when the provider returns one)
+}
+```
+
+## 4. 3D Secure'u tamamlayın [#4-complete-3d-secure]
+
+Banka sonucu `callbackUrl` adresine POST eder. Bu POST gövdesini olduğu gibi geçirin:
+
+```typescript
+const result = await payment.completeThreeDSPayment(callbackBody);
+
+if (result.status === 'success') {
+  // mark the order as paid
+}
+```
+
+Kütüphane callback'i sizin kimlik bilgilerinizle kontrol eder ve sağlayıcı gerektiriyorsa ödemeyi tamamlar. Sahte ya da başarısız bir callback her zaman `failure` döner. [HTTP handler](/docs/api/handler) bunu sizin için yapar.
+
+## 5. Sonuçları işleyin [#5-handle-results]
+
+| status | anlamı |
+|--------|---------|
+| `success` | Sağlayıcı tarafından onaylandı |
+| `failure` | Reddedildi; `errorCode` / `errorMessage` alanlarına bakın |
+| `pending` | Müşteri bekleniyor **ya da** sonuç bilinmiyor (`errorCode: 'NETWORK_ERROR'`) |
+| `cancelled` | İptal edildi veya tamamen iade edildi (durum sorguları) |
+
+<Callout type="warn">
+  `NETWORK_ERROR` durumunda ödeme yine de gerçekleşmiş olabilir. Yeniden denemeden önce `getPayment(paymentId)` ile kontrol edin. Ödeme, iade ve iptal istekleri asla otomatik olarak tekrarlanmaz.
+</Callout>
+
+## Birden fazla sağlayıcı kullanmak [#using-multiple-providers]
+
+```typescript
+const payment = new BetterPayment({
+  defaultProvider: ProviderType.IYZICO,
+  providers: {
+    iyzico: { enabled: true, config: { /* ... */ } },
+    paytr: { enabled: true, config: { /* ... */ } },
+  },
+});
+
+await payment.createPayment(request);                 // default provider
+await payment.paytr.initThreeDSPayment(paytrRequest); // specific provider
+await payment.use(ProviderType.PAYTR).getPayment('ORDER123');
+```

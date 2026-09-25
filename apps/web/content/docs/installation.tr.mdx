@@ -1,0 +1,86 @@
+---
+title: Kurulum
+description: better-payment'i kurun ve ortamınızı hazırlayın.
+---
+
+## Gereksinimler [#requirements]
+
+- Node.js `>= 20.0.0` ya da bir edge ortamı: Vercel Edge, Cloudflare Workers, Deno veya Bun
+- TypeScript `>= 5.0` (önerilir)
+
+<Callout type="info">
+  `better-payment`'in hiç runtime bağımlılığı yoktur. Yalnızca `fetch` ve WebCrypto kullandığı için aynı paket Node.js'te ve [edge ortamlarında](/docs/integrations/edge) çalışır. `better-payment/client` tarayıcıda güvenle kullanılabilir.
+</Callout>
+
+## Kurulum [#install]
+
+<Tabs items={["npm", "pnpm", "yarn", "bun"]}>
+  <Tab value="npm">
+    ```bash
+    npm install better-payment
+    ```
+  </Tab>
+  <Tab value="pnpm">
+    ```bash
+    pnpm add better-payment
+    ```
+  </Tab>
+  <Tab value="yarn">
+    ```bash
+    yarn add better-payment
+    ```
+  </Tab>
+  <Tab value="bun">
+    ```bash
+    bun add better-payment
+    ```
+  </Tab>
+</Tabs>
+
+## Ortam değişkenleri [#environment-variables]
+
+Sağlayıcı kimlik bilgilerinizle bir `.env.local` (ya da `.env`) dosyası oluşturun:
+
+```bash
+# iyzico
+IYZICO_API_KEY=your-api-key
+IYZICO_SECRET_KEY=your-secret-key
+
+# PayTR (Mağaza Paneli > Bilgi)
+PAYTR_MERCHANT_ID=your-merchant-id
+PAYTR_MERCHANT_KEY=your-merchant-key
+PAYTR_MERCHANT_SALT=your-merchant-salt
+
+# Akbank Sanal POS
+AKBANK_MERCHANT_SAFE_ID=your-merchant-safe-id
+AKBANK_TERMINAL_SAFE_ID=your-terminal-safe-id
+AKBANK_SECRET_KEY=your-secret-key
+
+# Parampos
+PARAMPOS_CLIENT_CODE=your-client-code
+PARAMPOS_CLIENT_USERNAME=your-username
+PARAMPOS_CLIENT_PASSWORD=your-password
+PARAMPOS_GUID=your-guid
+```
+
+<Callout type="warn">
+  Kimlik bilgilerini asla sürüm kontrolüne eklemeyin. Onları ortam değişkenlerinde tutun ve `.env` dosyasının `.gitignore` içinde olduğundan emin olun.
+</Callout>
+
+## Kurulumu doğrulayın [#verify-installation]
+
+```typescript
+import { BetterPayment, VERSION } from 'better-payment';
+
+const payment = new BetterPayment({
+  mode: 'sandbox',
+  providers: {
+    iyzico: {
+      enabled: true,
+      config: { apiKey: 'test', secretKey: 'test' },
+    },
+  },
+});
+
+console.log(VERSION, payment.getEnabledProviders()); // '0.0.1' ['iyzico']
+```

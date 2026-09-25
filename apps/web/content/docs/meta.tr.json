@@ -1,0 +1,20 @@
+{
+  "title": "better-payment",
+  "pages": [
+    "index",
+    "whats-new",
+    "installation",
+    "quick-start",
+    "configuration",
+    "---Sağlayıcılar---",
+    "providers",
+    "---Bankalar---",
+    "banks",
+    "---Entegrasyonlar---",
+    "integrations",
+    "---API Referansı---",
+    "api",
+    "---Rehberler---",
+    "guides"
+  ]
+}

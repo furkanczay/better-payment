@@ -12,6 +12,7 @@ better-payment projesine katkıda bulunmayı düşündüğünüz için teşekkü
 - [Commit Mesajları](#commit-mesajları)
 - [Yeni Provider Ekleme](#yeni-provider-ekleme)
 - [Test Yazma](#test-yazma)
+- [Dokümantasyon Çevirileri](#dokümantasyon-çevirileri)
 - [Sürüm ve Yayın](#sürüm-ve-yayın)
 
 ## Davranış Kuralları
@@ -415,6 +416,23 @@ CI'da `.github/workflows/sandbox.yml` her gece ve elle tetiklendiğinde çalış
 Değişkenler aynı isimlerle repository secret olarak tanımlanır. Elle tetiklerken
 `record` seçeneği işaretlenirse kaydedilen yanıtlar workflow artifact'ı olarak
 yüklenir.
+
+## Dokümantasyon Çevirileri
+
+Web sitesi ve dokümantasyon İngilizce (varsayılan, `/docs/...`) ve Türkçe (`/tr/docs/...`) yayınlanır. Her `content/docs/<yol>.mdx` sayfasının bir `<yol>.tr.mdx` çevirisi, her `meta.json`'ın bir `meta.tr.json`'ı vardır. Ana sayfa metinleri `apps/web/lib/i18n/dictionary.ts` içindedir.
+
+- Yalnızca metin çevrilir; kod blokları İngilizce sayfayla birebir aynı kalır.
+- Başlık yapısı aynı kalır ve her Türkçe başlık İngilizce başlığın id'sini taşır (`## Taksit [#installments]`).
+- Bir İngilizce sayfayı değiştirdiğinizde Türkçesini aynı PR'da güncelleyin.
+- Terimler için sözlüğe uyun (ön provizyon, taksit, sanal POS, …).
+
+Kurallar ve terim sözlüğü: [apps/web/TRANSLATIONS.md](../../apps/web/TRANSLATIONS.md). CI şu kontrolü çalıştırır:
+
+```bash
+cd apps/web
+node scripts/check-translations.mjs        # eksik çeviri, farklı kod bloğu, başlık id'leri
+node scripts/check-translations.mjs --fix  # başlık id'lerini ekler
+```
 
 ## Sürüm ve Yayın
 
