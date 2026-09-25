@@ -51,8 +51,8 @@ jobs:
         run: pnpm test:sandbox
         env:
           SANDBOX_RECORD: ${{ inputs.record && '1' || '' }}
-          IYZICO_SANDBOX_API_KEY: ${{ secrets.IYZICO_SANDBOX_API_KEY }}
-          IYZICO_SANDBOX_SECRET_KEY: ${{ secrets.IYZICO_SANDBOX_SECRET_KEY }}
+          IYZICO_SANDBOX_API_KEY: ${{ secrets.IYZICO_SANDBOX_API_KEY || secrets.IYZICO_API_KEY }}
+          IYZICO_SANDBOX_SECRET_KEY: ${{ secrets.IYZICO_SANDBOX_SECRET_KEY || secrets.IYZICO_SECRET_KEY }}
           PAYTR_SANDBOX_MERCHANT_ID: ${{ secrets.PAYTR_SANDBOX_MERCHANT_ID }}
           PAYTR_SANDBOX_MERCHANT_KEY: ${{ secrets.PAYTR_SANDBOX_MERCHANT_KEY }}
           PAYTR_SANDBOX_MERCHANT_SALT: ${{ secrets.PAYTR_SANDBOX_MERCHANT_SALT }}

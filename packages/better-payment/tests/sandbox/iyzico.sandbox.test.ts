@@ -11,6 +11,7 @@ import {
   requireEnv,
   sandboxCard,
   threeDSRequest,
+  withSandboxRetry,
 } from './setup';
 
 const env = requireEnv('IYZICO_SANDBOX_API_KEY', 'IYZICO_SANDBOX_SECRET_KEY');
@@ -42,8 +43,8 @@ describe.skipIf(!env)('iyzico sandbox', () => {
       }).iyzico;
 
   it('charges, looks up and partially refunds a payment', async () => {
-    const payment = await iyzico.createPayment(
-      paymentRequest(card, { conversationId: orderId('IYZ') })
+    const payment = await withSandboxRetry(() =>
+      iyzico.createPayment(paymentRequest(card, { conversationId: orderId('IYZ') }))
     );
     record('iyzico', 'create-payment', payment.rawResponse);
     expect(payment.status, describeResult(payment)).toBe(PaymentStatus.SUCCESS);
@@ -69,8 +70,8 @@ describe.skipIf(!env)('iyzico sandbox', () => {
   });
 
   it('cancels a payment', async () => {
-    const payment = await iyzico.createPayment(
-      paymentRequest(card, { conversationId: orderId('IYZ') })
+    const payment = await withSandboxRetry(() =>
+      iyzico.createPayment(paymentRequest(card, { conversationId: orderId('IYZ') }))
     );
     expect(payment.status, describeResult(payment)).toBe(PaymentStatus.SUCCESS);
 
@@ -80,8 +81,10 @@ describe.skipIf(!env)('iyzico sandbox', () => {
   });
 
   it('reports a declined card as failure with the provider error', async () => {
-    const payment = await iyzico.createPayment(
-      paymentRequest(insufficientFundsCard, { conversationId: orderId('IYZ') })
+    const payment = await withSandboxRetry(() =>
+      iyzico.createPayment(
+        paymentRequest(insufficientFundsCard, { conversationId: orderId('IYZ') })
+      )
     );
     record('iyzico', 'create-payment-declined', payment.rawResponse);
     expect(payment.status).toBe(PaymentStatus.FAILURE);
