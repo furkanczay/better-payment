@@ -5,13 +5,7 @@
  * Kullanıcılar havale/EFT ile ödeme yapar ve ödeme onaylandığında satıcıya aktarılır.
  */
 
-import {
-  BetterPayment,
-  ProviderType,
-  Currency,
-  BasketItemType,
-  PWIPaymentStatus,
-} from 'better-payment';
+import { BetterPayment, ProviderType, Currency, BasketItemType, PWIPaymentStatus } from 'better-payment';
 
 // 1. BetterPayment'ı yapılandır
 const betterPay = new BetterPayment({
@@ -231,9 +225,7 @@ async function main() {
     await checkPWIPaymentStatus(token);
 
     console.log('\n---\n');
-    console.log(
-      "💡 İpucu: Kullanıcı havale yaptıktan sonra callback endpoint'inize bildirim gelir."
-    );
+    console.log('💡 İpucu: Kullanıcı havale yaptıktan sonra callback endpoint\'inize bildirim gelir.');
     console.log('💡 Ayrıca periyodik olarak ödeme durumunu sorgulayabilirsiniz.');
   }
 }
@@ -243,4 +235,9 @@ if (require.main === module) {
   main().catch(console.error);
 }
 
-export { initializePWIPayment, checkPWIPaymentStatus, handlePWICallback, periodicPaymentCheck };
+export {
+  initializePWIPayment,
+  checkPWIPaymentStatus,
+  handlePWICallback,
+  periodicPaymentCheck,
+};

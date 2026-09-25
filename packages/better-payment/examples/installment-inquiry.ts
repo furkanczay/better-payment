@@ -50,7 +50,9 @@ async function simpleInstallmentInquiry() {
 
         detail.installmentPrices.forEach((installment) => {
           if (installment.installmentNumber === 1) {
-            console.log(`✓ Tek Çekim: ${installment.totalPrice.toFixed(2)} TL`);
+            console.log(
+              `✓ Tek Çekim: ${installment.totalPrice.toFixed(2)} TL`
+            );
           } else {
             const totalWithInterest = installment.totalPrice;
             const monthlyPayment = installment.installmentPrice;
@@ -105,10 +107,14 @@ async function compareInstallmentOptions() {
         current.installmentNumber > max.installmentNumber ? current : max
       );
 
-      console.log(`   Maksimum Taksit: ${maxInstallment.installmentNumber} ay`);
+      console.log(
+        `   Maksimum Taksit: ${maxInstallment.installmentNumber} ay`
+      );
 
       // 6 taksit varsa göster
-      const sixInstallment = detail.installmentPrices.find((i) => i.installmentNumber === 6);
+      const sixInstallment = detail.installmentPrices.find(
+        (i) => i.installmentNumber === 6
+      );
       if (sixInstallment) {
         console.log(
           `   6 Taksit: ${sixInstallment.totalPrice.toFixed(2)} TL (Aylık: ${sixInstallment.installmentPrice.toFixed(
@@ -191,9 +197,9 @@ async function calculateInterestRates(binNumber: string, price: string) {
             const totalWithInterest = installment.totalPrice;
             const interest = totalWithInterest - originalPrice;
             const interestRate = ((interest / originalPrice) * 100).toFixed(2);
-            const monthlyRate = (parseFloat(interestRate) / installment.installmentNumber).toFixed(
-              2
-            );
+            const monthlyRate = (
+              parseFloat(interestRate) / installment.installmentNumber
+            ).toFixed(2);
 
             console.log(
               `${installment.installmentNumber} Taksit: %${interestRate} toplam faiz (%${monthlyRate} aylık)`
@@ -242,9 +248,7 @@ async function handleCardInput(cardNumber: string, amount: string) {
       // Taksit seçeneklerini listele
       console.log('\n💰 Mevcut Taksit Seçenekleri:');
       detail.installmentPrices.forEach((installment) => {
-        console.log(
-          `   • ${installment.installmentNumber === 1 ? 'Tek Çekim' : installment.installmentNumber + ' Taksit'}: ${installment.totalPrice.toFixed(2)} TL`
-        );
+        console.log(`   • ${installment.installmentNumber === 1 ? 'Tek Çekim' : installment.installmentNumber + ' Taksit'}: ${installment.totalPrice.toFixed(2)} TL`);
       });
 
       return detail;
