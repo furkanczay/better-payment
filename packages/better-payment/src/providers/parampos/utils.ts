@@ -58,6 +58,25 @@ export function generateParamposPaymentHash(
  *
  * Formula: base64(sha1(islemGUID + md + mdStatus + orderId + GUID))
  */
+/**
+ * Islem_Hash of a pre-authorization (TP_Islem_Odeme_OnProv_WMD):
+ * base64(sha1(ISO-8859-9(CLIENT_CODE + GUID + Islem_Tutar + Toplam_Tutar +
+ * Siparis_ID + Hata_URL + Basarili_URL))). Unlike a sale, the installment is
+ * not part of it; the URLs are empty for non-3D pre-authorizations.
+ */
+export function generateParamposPreAuthHash(
+  clientCode: string,
+  guid: string,
+  transactionAmount: string,
+  totalAmount: string,
+  orderId: string,
+  failUrl = '',
+  successUrl = ''
+): string {
+  const hashString = `${clientCode}${guid}${transactionAmount}${totalAmount}${orderId}${failUrl}${successUrl}`;
+  return crypto.createHash('sha1').update(encodeIso88599(hashString)).digest('base64');
+}
+
 export function generateParampos3DSVerificationHash(
   islemGuid: string,
   md: string,

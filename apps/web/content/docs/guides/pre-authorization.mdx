@@ -1,0 +1,70 @@
+---
+title: Pre-authorization
+description: Block an amount on the card now, charge it later with capture, or release it with void.
+---
+
+A normal payment charges the card immediately. A **pre-authorization** only blocks the amount: the customer sees a pending transaction and their limit goes down, but nothing is charged until you **capture** it. If the order does not go through, **void** the authorization and the block disappears without a refund.
+
+Typical uses:
+
+- **Hotels and rentals:** block a deposit at booking, and charge the final amount (with extras or damage) at check-out.
+- **Stock-checked orders:** block at checkout, and capture when the item ships. If it is out of stock, void; the customer never waits for a refund.
+- **Marketplaces:** capture when the seller accepts the order.
+- **Variable totals** (goods sold by weight, hourly services): block an estimate and capture the real amount.
+
+## Flow
+
+```typescript
+// 1. Block the amount (non-3D) …
+const auth = await payment.use('akbank').authorize(order);
+// … or with 3D Secure: render threeDSHtmlContent, then completeThreeDSPayment() on the callback
+const init = await payment.use('akbank').initThreeDSAuthorize({ ...order, callbackUrl });
+
+if (auth.status === 'success') {
+  // auth.paymentId identifies the authorization; store it with the order
+}
+
+// 2a. Charge it: the full amount, or less (partial capture)
+await payment.use('akbank').capture({
+  paymentId: auth.paymentId!,
+  amount: '80.00',
+  ip: customerIp,
+});
+
+// 2b. …or release it; nothing is charged
+await payment.use('akbank').voidAuthorization({ paymentId: auth.paymentId!, ip: customerIp });
+```
+
+The 3D Secure variant is completed exactly like a 3D payment: the bank posts to your `callbackUrl`, and `completeThreeDSPayment()` (or the handler's `payment/complete-3ds` route) verifies it. A `success` result then means the amount is **blocked**, not charged. Remember which orders were started with `initThreeDSAuthorize()` so that you capture them later.
+
+## Providers
+
+| Provider | Authorize | 3D authorize | Capture | Void |
+| -------- | --------- | ------------ | ------- | ---- |
+| iyzico | `/payment/preauth` | `/payment/3dsecure/initialize/preauth` | `/payment/postauth` | `/payment/cancel` |
+| Parampos | `TP_Islem_Odeme_OnProv_WMD` (NS) | `TP_Islem_Odeme_OnProv_WMD` (3D) | `TP_Islem_Odeme_OnProv_Kapa` | `TP_Islem_Iptal_OnProv` |
+| Akbank | txnCode `1004` | txnCode `3004` (3D_PAY) | txnCode `1005` | txnCode `1003` |
+| PayTR | not yet ([#60](https://github.com/furkanczay/better-payment/issues/60)) | — | — | — |
+
+- `paymentId` is iyzico's payment id, and your order id for Parampos and Akbank.
+- `amount` is required for `capture()`. Pass less than the authorized amount for a partial capture.
+- Unsupported providers throw `NOT_SUPPORTED`; the HTTP handler answers `400`.
+
+<Callout type="warn">
+  Pre-authorization usually has to be **enabled on your merchant account** by the bank or provider. An authorization also **expires** if it is not captured: typically after 7–30 days, depending on the bank. After that the block is released automatically and capture fails.
+</Callout>
+
+## HTTP handler
+
+| Route | Action | Needs `authorize` |
+| ----- | ------ | ----------------- |
+| `POST /:provider/authorize` | `authorize` | — |
+| `POST /:provider/authorize/init-3ds` | `authorize/init-3ds` | — |
+| `POST /:provider/capture` | `capture` | 🔒 |
+| `POST /:provider/void` | `void` | 🔒 |
+
+Capture and void move money, so they can only be enabled together with an `authorize` hook, like refunds. All four accept an `Idempotency-Key` header. The browser client has the same methods: `client.akbank.authorize(...)`, `client.akbank.capture(...)`, and so on.
+
+## Verification
+
+The iyzico flow (authorize, partial capture, void, 3D authorize) runs every night against the real iyzico sandbox. Parampos and Akbank follow the providers' specifications and reference test vectors, and have not yet been run against their sandboxes.

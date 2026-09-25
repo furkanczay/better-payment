@@ -14,6 +14,8 @@ import {
   RefundResponse,
   CancelRequest,
   CancelResponse,
+  CaptureRequest,
+  VoidAuthorizationRequest,
   InstallmentInfoRequest,
   InstallmentInfoResponse,
   PaymentStatus,
@@ -178,11 +180,24 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
    * Non-3D sale (txnCode 1000)
    */
   async createPayment(request: PaymentRequest): Promise<PaymentResponse> {
+    return this.cardTransaction(AKBANK_TXN_CODES.SALE, request);
+  }
+
+  /** Pre-authorization (txnCode 1004): blocks the amount without charging it */
+  async authorize(request: PaymentRequest): Promise<PaymentResponse> {
+    return this.cardTransaction(AKBANK_TXN_CODES.PRE_AUTH, request);
+  }
+
+  private async cardTransaction(
+    txnCode: string,
+    request: PaymentRequest
+  ): Promise<PaymentResponse> {
     const orderId = request.conversationId || generateOrderId();
+    const preAuth = txnCode === AKBANK_TXN_CODES.PRE_AUTH;
     try {
       this.validatePayment(request, AKBANK_CARD_RULES);
       const body = {
-        ...this.baseRequest(AKBANK_TXN_CODES.SALE),
+        ...this.baseRequest(txnCode),
         card: {
           cardNumber: request.paymentCard.cardNumber,
           cvv2: request.paymentCard.cvc,
@@ -214,10 +229,11 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
         rawResponse: data,
       });
     } catch (error) {
-      return this.failure<PaymentResponse>(error, 'Payment failed', {
-        paymentId: orderId,
-        conversationId: orderId,
-      });
+      return this.failure<PaymentResponse>(
+        error,
+        preAuth ? 'Pre-authorization failed' : 'Payment failed',
+        { paymentId: orderId, conversationId: orderId }
+      );
     }
   }
 
@@ -230,6 +246,23 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
   async initThreeDSPayment(
     request: ThreeDSPaymentRequest & { failUrl?: string }
   ): Promise<ThreeDSInitResponse> {
+    return this.threeDSForm(AKBANK_TXN_CODES.SECURE_SALE, request);
+  }
+
+  /**
+   * 3D Secure pre-authorization (txnCode 3004, 3D_PAY). The bank posts the
+   * result to callbackUrl; completeThreeDSPayment() verifies it as usual.
+   */
+  async initThreeDSAuthorize(
+    request: ThreeDSPaymentRequest & { failUrl?: string }
+  ): Promise<ThreeDSInitResponse> {
+    return this.threeDSForm(AKBANK_TXN_CODES.SECURE_PRE_AUTH, request);
+  }
+
+  private async threeDSForm(
+    txnCode: string,
+    request: ThreeDSPaymentRequest & { failUrl?: string }
+  ): Promise<ThreeDSInitResponse> {
     const orderId = request.conversationId || generateOrderId();
     try {
       this.validatePayment(request, AKBANK_CARD_RULES);
@@ -239,7 +272,7 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
 
       const fields: Record<string, string> = {
         paymentModel: '3D_PAY',
-        txnCode: AKBANK_TXN_CODES.SECURE_SALE,
+        txnCode,
         merchantSafeId: this.config.merchantSafeId,
         terminalSafeId: this.config.terminalSafeId,
         orderId,
@@ -391,6 +424,43 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
         conversationId: request.conversationId,
       });
     }
+  }
+  /**
+   * Capture of a pre-authorization (txnCode 1005). `amount` may be lower than
+   * the authorized amount (partial capture).
+   */
+  async capture(request: CaptureRequest): Promise<PaymentResponse> {
+    try {
+      this.validateCapture(request);
+      const data = await this.process({
+        ...this.baseRequest(AKBANK_TXN_CODES.POST_AUTH),
+        order: { orderId: request.paymentId },
+        transaction: {
+          amount: formatAkbankAmount(request.amount),
+          currencyCode: getAkbankCurrencyCode(request.currency),
+        },
+        customer: { ipAddress: request.ip },
+      });
+      const approved = data.responseCode === AKBANK_SUCCESS_CODE;
+
+      return this.withErrorCode({
+        status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        paymentId: request.paymentId,
+        conversationId: request.conversationId ?? request.paymentId,
+        ...(approved ? {} : Akbank.errorOf(data)),
+        rawResponse: data,
+      });
+    } catch (error) {
+      return this.failure<PaymentResponse>(error, 'Capture failed', {
+        paymentId: request.paymentId,
+        conversationId: request.conversationId ?? request.paymentId,
+      });
+    }
+  }
+
+  /** Releases a pre-authorization: Akbank voids it like any other transaction (txnCode 1003) */
+  async voidAuthorization(request: VoidAuthorizationRequest): Promise<CancelResponse> {
+    return this.cancel(request);
   }
 
   /**

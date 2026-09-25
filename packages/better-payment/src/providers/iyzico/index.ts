@@ -19,6 +19,8 @@ import {
   RefundResponse,
   CancelRequest,
   CancelResponse,
+  CaptureRequest,
+  VoidAuthorizationRequest,
   PaymentStatus,
   CheckoutFormRequest,
   CheckoutFormInitResponse,
@@ -320,13 +322,23 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
    * Direkt ödeme (3D Secure olmadan)
    */
   async createPayment(request: PaymentRequest): Promise<PaymentResponse> {
+    return this.cardPayment('/payment/auth', request, 'Payment failed');
+  }
+
+  /** Pre-authorization (`/payment/preauth`): blocks the amount without charging it */
+  async authorize(request: PaymentRequest): Promise<PaymentResponse> {
+    return this.cardPayment('/payment/preauth', request, 'Pre-authorization failed');
+  }
+
+  private async cardPayment(
+    path: string,
+    request: PaymentRequest,
+    fallback: string
+  ): Promise<PaymentResponse> {
     try {
       this.validatePayment(request, IYZICO_CARD_PAYMENT_RULES);
       const iyzicoRequest = this.mapToIyzicoRequest(request);
-      const response = await this.sendRequest<IyzicoPaymentResponse>(
-        '/payment/auth',
-        iyzicoRequest
-      );
+      const response = await this.sendRequest<IyzicoPaymentResponse>(path, iyzicoRequest);
 
       return this.withErrorCode({
         status: this.mapStatus(response.status),
@@ -338,7 +350,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         rawResponse: response,
       });
     } catch (error) {
-      return this.failure(error, 'Payment failed');
+      return this.failure(error, fallback);
     }
   }
 
@@ -346,6 +358,26 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
    * 3D Secure ödeme başlat
    */
   async initThreeDSPayment(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
+    return this.threeDSInit('/payment/3dsecure/initialize', request, '3DS initialization failed');
+  }
+
+  /**
+   * 3D Secure pre-authorization (`/payment/3dsecure/initialize/preauth`).
+   * Complete it with completeThreeDSPayment() as usual.
+   */
+  async initThreeDSAuthorize(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
+    return this.threeDSInit(
+      '/payment/3dsecure/initialize/preauth',
+      request,
+      '3DS pre-authorization failed'
+    );
+  }
+
+  private async threeDSInit(
+    path: string,
+    request: ThreeDSPaymentRequest,
+    fallback: string
+  ): Promise<ThreeDSInitResponse> {
     try {
       this.validatePayment(request, IYZICO_CARD_PAYMENT_RULES);
       const iyzicoRequest = {
@@ -353,10 +385,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         callbackUrl: request.callbackUrl,
       };
 
-      const response = await this.sendRequest<IyzicoThreeDSInitResponse>(
-        '/payment/3dsecure/initialize',
-        iyzicoRequest
-      );
+      const response = await this.sendRequest<IyzicoThreeDSInitResponse>(path, iyzicoRequest);
 
       // İyzico threeDSHtmlContent'i Base64 encoded olarak döndürür, decode edelim
       let decodedHtmlContent: string | undefined;
@@ -379,7 +408,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         rawResponse: response,
       });
     } catch (error) {
-      return this.failure(error, '3DS initialization failed');
+      return this.failure(error, fallback);
     }
   }
 
@@ -480,6 +509,40 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
     } catch (error) {
       return this.failure(error, 'Cancel failed');
     }
+  }
+  /**
+   * Capture of a pre-authorization (`/payment/postauth`). `amount` becomes the
+   * charged `paidPrice`; a lower amount is a partial capture.
+   */
+  async capture(request: CaptureRequest): Promise<PaymentResponse> {
+    try {
+      this.validateCapture(request);
+      const response = await this.sendRequest<IyzicoPaymentResponse>('/payment/postauth', {
+        locale: this.config.locale || 'tr',
+        conversationId: request.conversationId,
+        paymentId: request.paymentId,
+        ip: request.ip,
+        paidPrice: request.amount,
+        currency: request.currency || 'TRY',
+      });
+
+      return this.withErrorCode({
+        status: this.mapStatus(response.status),
+        paymentId: response.paymentId ?? request.paymentId,
+        conversationId: response.conversationId,
+        errorCode: response.errorCode,
+        errorMessage: response.errorMessage,
+        errorGroup: response.errorGroup,
+        rawResponse: response,
+      });
+    } catch (error) {
+      return this.failure(error, 'Capture failed');
+    }
+  }
+
+  /** Releases a pre-authorization: iyzico voids it with `/payment/cancel` */
+  async voidAuthorization(request: VoidAuthorizationRequest): Promise<CancelResponse> {
+    return this.cancel(request);
   }
 
   /**

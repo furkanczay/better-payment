@@ -162,6 +162,11 @@ this id to `refund`, `cancel` and `getPayment`.
   `/api/pay/paytr/callback`; the handler verifies the notification and replies
   `OK`.
 
+Pre-authorization (block now, charge later) works on iyzico, Parampos and Akbank:
+`authorize()` / `initThreeDSAuthorize()`, then `capture({ paymentId, amount, ip })` or
+`voidAuthorization({ paymentId, ip })`. See the
+[pre-authorization guide](https://better-payment.czaylabs.com/docs/guides/pre-authorization).
+
 Installments: pass `installment` in the request. For Parampos, set `paidPrice`
 to the total including commission: `payment.parampos.calculatePaidPrice({ binNumber,
 price, installment })` computes it from your Param rates. Akbank has no
@@ -240,6 +245,8 @@ export const POST = handler;
 | `POST /:provider/payment/token`        | `payment/token` (PayTR)  | —                                     |
 | `GET  /:provider/payment/:id`          | `payment/get`            | — (needs `authorize`)                 |
 | `POST /:provider/refund`, `/cancel`    | `refund`, `cancel`       | — (needs `authorize`)                 |
+| `POST /:provider/authorize[/init-3ds]` | `authorize`, `authorize/init-3ds` | —                          |
+| `POST /:provider/capture`, `/void`     | `capture`, `void`        | — (needs `authorize`)                 |
 | `POST /iyzico/checkout/*`, `/pwi/*`    | iyzico only              | —                                     |
 | `POST /iyzico/subscription/*`          | iyzico only              | — (management actions need `authorize`) |
 | `GET  /health`                        | health check             | ✓                                     |

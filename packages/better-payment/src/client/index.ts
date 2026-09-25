@@ -7,6 +7,8 @@ import {
   RefundResponse,
   CancelRequest,
   CancelResponse,
+  CaptureRequest,
+  VoidAuthorizationRequest,
   BinCheckResponse,
   InstallmentInfoRequest,
   InstallmentInfoResponse,
@@ -139,6 +141,35 @@ class ProviderClient {
    */
   async completeThreeDSPayment(callbackData: Record<string, unknown>): Promise<PaymentResponse> {
     return this.request<PaymentResponse>('POST', 'payment/complete-3ds', callbackData);
+  }
+
+  /**
+   * Pre-authorization: blocks the amount on the card (`POST /:provider/authorize`)
+   */
+  async authorize(request: PaymentRequest): Promise<PaymentResponse> {
+    return this.request<PaymentResponse>('POST', 'authorize', request);
+  }
+
+  /**
+   * 3D Secure pre-authorization (`POST /:provider/authorize/init-3ds`).
+   * Render `threeDSHtmlContent`; the callback completes it like a 3D payment.
+   */
+  async initThreeDSAuthorize(request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
+    return this.request<ThreeDSInitResponse>('POST', 'authorize/init-3ds', request);
+  }
+
+  /**
+   * Captures a pre-authorization (`POST /:provider/capture`, needs `authorize` on the server)
+   */
+  async capture(request: CaptureRequest): Promise<PaymentResponse> {
+    return this.request<PaymentResponse>('POST', 'capture', request);
+  }
+
+  /**
+   * Releases a pre-authorization (`POST /:provider/void`, needs `authorize` on the server)
+   */
+  async voidAuthorization(request: VoidAuthorizationRequest): Promise<CancelResponse> {
+    return this.request<CancelResponse>('POST', 'void', request);
   }
 
   /**

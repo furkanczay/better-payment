@@ -11,6 +11,8 @@ import {
   BinCheckResponse,
   InstallmentInfoRequest,
   InstallmentInfoResponse,
+  CaptureRequest,
+  VoidAuthorizationRequest,
   PaymentStatus,
 } from '../types';
 import { BetterPaymentLogger } from './logger';
@@ -19,6 +21,7 @@ import { BetterPaymentError } from './errors';
 import { PaymentErrorCode, resolveErrorCode } from './error-codes';
 import { NETWORK_ERROR_CODE, type FailureResult } from './failure';
 import {
+  validateCaptureRequest,
   validatePaymentRequest,
   validateRefundAmount,
   type PaymentValidationRules,
@@ -223,6 +226,46 @@ export abstract class PaymentProvider<
       await new Promise<void>((resolve) => setTimeout(resolve, retry.delay ?? 1000));
       return client(config);
     });
+  }
+
+  /**
+   * Pre-authorization: blocks the amount on the card without charging it.
+   * Charge it later with capture(), or release it with voidAuthorization().
+   * A `success` result means the amount is blocked.
+   */
+  async authorize(_request: PaymentRequest): Promise<PaymentResponse> {
+    throw this.notSupported('Pre-authorization');
+  }
+
+  /**
+   * Pre-authorization with 3D Secure. Complete it with completeThreeDSPayment()
+   * as usual; `success` then means the amount is blocked.
+   */
+  async initThreeDSAuthorize(_request: ThreeDSPaymentRequest): Promise<ThreeDSInitResponse> {
+    throw this.notSupported('Pre-authorization');
+  }
+
+  /** Charges (all or part of) a pre-authorized amount */
+  async capture(_request: CaptureRequest): Promise<PaymentResponse> {
+    throw this.notSupported('Capture');
+  }
+
+  /** Releases a pre-authorization; nothing is charged */
+  async voidAuthorization(_request: VoidAuthorizationRequest): Promise<CancelResponse> {
+    throw this.notSupported('Voiding a pre-authorization');
+  }
+
+  protected notSupported(feature: string, detail?: string): BetterPaymentError {
+    return new BetterPaymentError(
+      `${feature} is not supported by this provider${detail ? `: ${detail}` : ''}`,
+      'NOT_SUPPORTED'
+    );
+  }
+
+  /** Validates a capture request (payment id and amount) */
+  protected validateCapture(request: CaptureRequest): void {
+    if (this.config.validate === false) return;
+    validateCaptureRequest(request, this.constructor.name);
   }
 
   /**
