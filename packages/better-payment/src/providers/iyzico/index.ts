@@ -7,6 +7,8 @@ import {
 } from '../../core/PaymentProvider';
 import { ConfigurationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
+import { IYZICO_ERROR_CODES } from './error-codes';
+import type { PaymentErrorCode } from '../../core/error-codes';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -118,12 +120,16 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
     }
   }
 
+  protected errorCodeTable(): Record<string, PaymentErrorCode> {
+    return IYZICO_ERROR_CODES;
+  }
+
   private failure<T extends FailureResult>(
     error: unknown,
     fallback: string,
     extra: Partial<T> = {}
   ): T {
-    return failureResult<T>('iyzico', error, fallback, extra);
+    return this.withErrorCode(failureResult<T>('iyzico', error, fallback, extra));
   }
 
   /**
@@ -297,7 +303,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         iyzicoRequest
       );
 
-      return {
+      return this.withErrorCode({
         status: this.mapStatus(response.status),
         paymentId: response.paymentId,
         conversationId: response.conversationId,
@@ -305,7 +311,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         errorMessage: response.errorMessage,
         errorGroup: response.errorGroup,
         rawResponse: response,
-      };
+      });
     } catch (error) {
       return this.failure(error, 'Payment failed');
     }
@@ -337,7 +343,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         }
       }
 
-      return {
+      return this.withErrorCode({
         status: this.mapStatus(response.status),
         threeDSHtmlContent: decodedHtmlContent,
         paymentId: response.paymentId,
@@ -345,7 +351,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         errorCode: response.errorCode,
         errorMessage: response.errorMessage,
         rawResponse: response,
-      };
+      });
     } catch (error) {
       return this.failure(error, '3DS initialization failed');
     }
@@ -362,7 +368,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
       callbackData.status !== 'success' ||
       String(callbackData.mdStatus) !== '1'
     ) {
-      return {
+      return this.withErrorCode({
         status: PaymentStatus.FAILURE,
         paymentId: callbackData?.paymentId,
         conversationId: callbackData?.conversationId,
@@ -372,7 +378,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
             : 'INVALID_CALLBACK',
         errorMessage: '3D Secure authentication failed',
         rawResponse: callbackData,
-      };
+      });
     }
 
     try {
@@ -384,7 +390,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         conversationData: callbackData.conversationData,
       });
 
-      return {
+      return this.withErrorCode({
         status: this.mapStatus(response.status),
         paymentId: response.paymentId,
         conversationId: response.conversationId,
@@ -392,7 +398,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         errorMessage: response.errorMessage,
         errorGroup: response.errorGroup,
         rawResponse: response,
-      };
+      });
     } catch (error) {
       return this.failure(error, '3DS completion failed');
     }
@@ -412,14 +418,14 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         ip: request.ip,
       });
 
-      return {
+      return this.withErrorCode({
         status: this.mapStatus(response.status),
         refundId: response.paymentTransactionId,
         conversationId: response.conversationId,
         errorCode: response.errorCode,
         errorMessage: response.errorMessage,
         rawResponse: response,
-      };
+      });
     } catch (error) {
       return this.failure(error, 'Refund failed');
     }
@@ -437,13 +443,13 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         ip: request.ip,
       });
 
-      return {
+      return this.withErrorCode({
         status: this.mapStatus(response.status),
         conversationId: response.conversationId,
         errorCode: response.errorCode,
         errorMessage: response.errorMessage,
         rawResponse: response,
-      };
+      });
     } catch (error) {
       return this.failure(error, 'Cancel failed');
     }
@@ -463,7 +469,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         { retryable: true }
       );
 
-      return {
+      return this.withErrorCode({
         status: this.mapStatus(response.status),
         paymentId: response.paymentId,
         conversationId: response.conversationId,
@@ -471,7 +477,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         errorMessage: response.errorMessage,
         errorGroup: response.errorGroup,
         rawResponse: response,
-      };
+      });
     } catch (error) {
       return this.failure(error, 'Get payment failed');
     }
@@ -489,7 +495,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         iyzicoRequest
       );
 
-      return {
+      return this.withErrorCode({
         status: this.mapStatus(response.status),
         checkoutFormContent: response.checkoutFormContent,
         paymentPageUrl: response.paymentPageUrl,
@@ -499,7 +505,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         errorCode: response.errorCode,
         errorMessage: response.errorMessage,
         rawResponse: response,
-      };
+      });
     } catch (error) {
       return this.failure(error, 'Checkout form initialization failed');
     }
@@ -522,7 +528,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         }
       );
 
-      return {
+      return this.withErrorCode({
         // status reflects the payment itself, not just the API call
         status: mapIyzicoPaymentStatus(response.status, response.paymentStatus),
         paymentId: response.paymentId,
@@ -549,7 +555,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         errorCode: response.errorCode,
         errorMessage: response.errorMessage,
         rawResponse: response,
-      };
+      });
     } catch (error) {
       return this.failure(error, 'Retrieve checkout form failed');
     }
@@ -566,11 +572,11 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
    * to the unified PaymentStatus and the raw response is attached.
    */
   private mapSubscriptionResponse<T>(response: IyzicoSubscriptionResponse): T {
-    return {
+    return this.withErrorCode({
       ...response,
       status: this.mapStatus(response.status),
       rawResponse: response,
-    } as T;
+    }) as T;
   }
 
   async initializeSubscription(
@@ -875,7 +881,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         iyzicoRequest
       );
 
-      return {
+      return this.withErrorCode({
         status: this.mapStatus(response.status),
         htmlContent: response.htmlContent,
         token: response.token,
@@ -885,7 +891,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         errorCode: response.errorCode,
         errorMessage: response.errorMessage,
         rawResponse: response,
-      };
+      });
     } catch (error) {
       return this.failure(error, 'PWI payment initialization failed');
     }
@@ -930,7 +936,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         }
       );
 
-      return {
+      return this.withErrorCode({
         // status reflects the transfer itself: WAITING -> pending, SUCCESS -> success
         status: mapIyzicoPaymentStatus(response.status, response.paymentStatus),
         token: response.token,
@@ -954,7 +960,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         errorCode: response.errorCode,
         errorMessage: response.errorMessage,
         rawResponse: response,
-      };
+      });
     } catch (error) {
       return this.failure(error, 'PWI payment retrieve failed');
     }
@@ -1007,14 +1013,14 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         iyzicoRequest
       );
 
-      return {
+      return this.withErrorCode({
         status: this.mapStatus(response.status),
         installmentDetails: response.installmentDetails,
         conversationId: response.conversationId,
         errorCode: response.errorCode,
         errorMessage: response.errorMessage,
         rawResponse: response,
-      };
+      });
     } catch (error) {
       return this.failure(error, 'Installment info request failed');
     }

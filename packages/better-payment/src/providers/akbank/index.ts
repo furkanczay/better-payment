@@ -1,7 +1,8 @@
 import axios, { AxiosInstance } from 'axios';
 import { PaymentProvider, RetryableRequestConfig } from '../../core/PaymentProvider';
-import { ConfigurationError } from '../../core/errors';
+import { ConfigurationError, ValidationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
+import { ISO8583_ERROR_CODES, PaymentErrorCode, resolveErrorCode } from '../../core/error-codes';
 import { generateOrderId } from '../../core/utils';
 import {
   PaymentRequest,
@@ -140,12 +141,25 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
     return response.data ?? {};
   }
 
+  /**
+   * The bank's ISO 8583 host response code is the most specific reason; the
+   * Akbank response code (VPS-xxxx) is used when it is missing.
+   */
+  protected resolveErrorCode(result: FailureResult): PaymentErrorCode {
+    const raw = result.rawResponse as { hostResponseCode?: unknown } | undefined;
+    const host = typeof raw?.hostResponseCode === 'string' ? raw.hostResponseCode : undefined;
+    if (host && ISO8583_ERROR_CODES[host]) return ISO8583_ERROR_CODES[host];
+    return resolveErrorCode(result.errorCode, {
+      TERMINAL_MISMATCH: PaymentErrorCode.INVALID_HASH,
+    });
+  }
+
   private failure<T extends FailureResult>(
     error: unknown,
     fallback: string,
     extra: Partial<T> = {}
   ): T {
-    return failureResult<T>('Akbank', error, fallback, extra);
+    return this.withErrorCode(failureResult<T>('Akbank', error, fallback, extra));
   }
 
   private static errorOf(data: AkbankApiResponse): { errorCode?: string; errorMessage?: string } {
@@ -186,13 +200,13 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
       const data = await this.process(body);
       const approved = data.responseCode === AKBANK_SUCCESS_CODE;
 
-      return {
+      return this.withErrorCode({
         status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
         paymentId: orderId,
         conversationId: orderId,
         ...(approved ? {} : Akbank.errorOf(data)),
         rawResponse: data,
-      };
+      });
     } catch (error) {
       return this.failure<PaymentResponse>(error, 'Payment failed', {
         paymentId: orderId,
@@ -213,7 +227,7 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
     const orderId = request.conversationId || generateOrderId();
     try {
       if (!request.callbackUrl) {
-        throw new Error('callbackUrl is required for 3D Secure payments');
+        throw new ValidationError('callbackUrl is required for 3D Secure payments');
       }
 
       const fields: Record<string, string> = {
@@ -256,12 +270,12 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
         '<script>document.getElementById("akbank-3d-form").submit();</script>' +
         '</body></html>';
 
-      return {
+      return this.withErrorCode({
         status: PaymentStatus.PENDING,
         threeDSHtmlContent: html,
         paymentId: orderId,
         conversationId: orderId,
-      };
+      });
     } catch (error) {
       return this.failure<ThreeDSInitResponse>(error, '3DS initialization failed', {
         paymentId: orderId,
@@ -281,40 +295,40 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
     const orderId = callbackData?.orderId;
 
     if (!verifyAkbank3DCallback(callbackData ?? {}, this.config.secretKey)) {
-      return {
+      return this.withErrorCode({
         status: PaymentStatus.FAILURE,
         paymentId: orderId,
         conversationId: orderId,
         errorCode: 'INVALID_HASH',
         errorMessage: 'Invalid 3D Secure callback signature',
         rawResponse: callbackData,
-      };
+      });
     }
 
     if (
       callbackData.merchantSafeId !== this.config.merchantSafeId ||
       callbackData.terminalSafeId !== this.config.terminalSafeId
     ) {
-      return {
+      return this.withErrorCode({
         status: PaymentStatus.FAILURE,
         paymentId: orderId,
         conversationId: orderId,
         errorCode: 'TERMINAL_MISMATCH',
         errorMessage: 'Callback belongs to a different terminal',
         rawResponse: callbackData,
-      };
+      });
     }
 
     const approved = callbackData.responseCode === AKBANK_SUCCESS_CODE;
 
-    return {
+    return this.withErrorCode({
       status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
       paymentId: orderId,
       conversationId: orderId,
       errorCode: approved ? undefined : callbackData.responseCode,
       errorMessage: approved ? undefined : callbackData.hostMessage || callbackData.responseMessage,
       rawResponse: callbackData,
-    };
+    });
   }
 
   /**
@@ -332,13 +346,13 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
       });
       const approved = data.responseCode === AKBANK_SUCCESS_CODE;
 
-      return {
+      return this.withErrorCode({
         status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
         refundId: approved ? data.transaction?.rrn || data.transaction?.authCode : undefined,
         conversationId: request.conversationId,
         ...(approved ? {} : Akbank.errorOf(data)),
         rawResponse: data,
-      };
+      });
     } catch (error) {
       return this.failure<RefundResponse>(error, 'Refund failed', {
         conversationId: request.conversationId,
@@ -357,13 +371,13 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
       });
       const approved = data.responseCode === AKBANK_SUCCESS_CODE;
 
-      return {
+      return this.withErrorCode({
         status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
         transactionId: approved ? data.transaction?.rrn : undefined,
         conversationId: request.conversationId,
         ...(approved ? {} : Akbank.errorOf(data)),
         rawResponse: data,
-      };
+      });
     } catch (error) {
       return this.failure<CancelResponse>(error, 'Cancel failed', {
         conversationId: request.conversationId,
@@ -385,13 +399,13 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
       );
 
       if (data.responseCode !== AKBANK_SUCCESS_CODE) {
-        return {
+        return this.withErrorCode({
           status: PaymentStatus.FAILURE,
           paymentId,
           conversationId: paymentId,
           ...Akbank.errorOf(data),
           rawResponse: data,
-        };
+        });
       }
 
       const list: AkbankTxnDetail[] = data.txnDetailList ?? [];
@@ -401,14 +415,14 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
             tx.txnCode === AKBANK_TXN_CODES.SALE || tx.txnCode === AKBANK_TXN_CODES.SECURE_SALE
         ) ?? list[0];
 
-      return {
+      return this.withErrorCode({
         status: mapAkbankTxnStatus(sale),
         paymentId,
         conversationId: paymentId,
         errorMessage:
           sale && sale.responseCode !== AKBANK_SUCCESS_CODE ? sale.responseMessage : undefined,
         rawResponse: data,
-      };
+      });
     } catch (error) {
       return this.failure<PaymentResponse>(error, 'Get payment failed', {
         paymentId,

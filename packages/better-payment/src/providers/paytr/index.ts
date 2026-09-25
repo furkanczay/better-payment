@@ -1,8 +1,10 @@
 import axios, { AxiosInstance } from 'axios';
 import crypto from 'crypto';
 import { PaymentProvider, RetryableRequestConfig } from '../../core/PaymentProvider';
-import { ConfigurationError } from '../../core/errors';
+import { ConfigurationError, ValidationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
+import { PAYTR_ERROR_CODES } from './error-codes';
+import type { PaymentErrorCode } from '../../core/error-codes';
 import { generateOrderId, parseAmount } from '../../core/utils';
 import {
   PaymentRequest,
@@ -98,12 +100,16 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
     return (this.config.locale || 'tr').toLowerCase().startsWith('en') ? 'en' : 'tr';
   }
 
+  protected errorCodeTable(): Record<string, PaymentErrorCode> {
+    return PAYTR_ERROR_CODES;
+  }
+
   private failure<T extends FailureResult>(
     error: unknown,
     fallback: string,
     extra: Partial<T> = {}
   ): T {
-    return failureResult<T>('PayTR', error, fallback, extra);
+    return this.withErrorCode(failureResult<T>('PayTR', error, fallback, extra));
   }
 
   private post<T>(path: string, data: Record<string, string>, retryable = false): Promise<T> {
@@ -188,7 +194,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
       const data = await this.post<PayTRDirectPaymentResponse>('/odeme', body);
       const approved = data.status === 'success';
 
-      return {
+      return this.withErrorCode({
         status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
         paymentId: merchantOid,
         conversationId: merchantOid,
@@ -197,7 +203,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
           ? undefined
           : String(data.failed_reason_msg ?? data.err_msg ?? data.msg ?? data.reason ?? ''),
         rawResponse: data,
-      };
+      });
     } catch (error) {
       return this.failure<PaymentResponse>(error, 'Payment failed', {
         paymentId: merchantOid,
@@ -223,7 +229,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
     try {
       merchantOid = this.resolveMerchantOid(request.conversationId);
       if (!request.callbackUrl) {
-        throw new Error('callbackUrl is required');
+        throw new ValidationError('callbackUrl is required');
       }
 
       const userBasket = this.buildBasket(request.basketItems);
@@ -276,23 +282,23 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
 
       if (data.status === 'success' && data.token) {
         const iframeUrl = `${this.config.baseUrl!.replace(/\/$/, '')}/odeme/guvenli/${data.token}`;
-        return {
+        return this.withErrorCode({
           status: PaymentStatus.PENDING,
           threeDSHtmlContent: buildIframeHtml(iframeUrl),
           redirectUrl: iframeUrl,
           paymentId: merchantOid,
           conversationId: merchantOid,
           rawResponse: data,
-        };
+        });
       }
 
-      return {
+      return this.withErrorCode({
         status: PaymentStatus.FAILURE,
         paymentId: merchantOid,
         conversationId: merchantOid,
         errorMessage: data.reason || 'Payment initialization failed',
         rawResponse: data,
-      };
+      });
     } catch (error) {
       return this.failure<ThreeDSInitResponse>(error, '3DS initialization failed', {
         paymentId: merchantOid,
@@ -316,26 +322,26 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
         this.config.merchantKey
       )
     ) {
-      return {
+      return this.withErrorCode({
         status: PaymentStatus.FAILURE,
         paymentId: callbackData?.merchant_oid,
         conversationId: callbackData?.merchant_oid,
         errorCode: 'INVALID_HASH',
         errorMessage: 'Invalid callback signature',
         rawResponse: callbackData,
-      };
+      });
     }
 
     const approved = callbackData.status === 'success';
 
-    return {
+    return this.withErrorCode({
       status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
       paymentId: callbackData.merchant_oid,
       conversationId: callbackData.merchant_oid,
       errorCode: approved ? undefined : callbackData.failed_reason_code,
       errorMessage: approved ? undefined : callbackData.failed_reason_msg,
       rawResponse: callbackData,
-    };
+    });
   }
 
   /**
@@ -361,21 +367,21 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
       const data = await this.post<PayTRRefundResponse>('/odeme/iade', body);
 
       if (data.status === 'success') {
-        return {
+        return this.withErrorCode({
           status: PaymentStatus.SUCCESS,
           refundId: data.reference_no || data.merchant_oid,
           conversationId: request.conversationId,
           rawResponse: data,
-        };
+        });
       }
 
-      return {
+      return this.withErrorCode({
         status: PaymentStatus.FAILURE,
         conversationId: request.conversationId,
         errorCode: data.err_no,
         errorMessage: data.err_msg,
         rawResponse: data,
-      };
+      });
     } catch (error) {
       return this.failure<RefundResponse>(error, 'Refund failed', {
         conversationId: request.conversationId,
@@ -393,13 +399,13 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
       if (!amount) {
         const status = await this.queryStatus(request.paymentId);
         if (status.status !== 'success' || !status.payment_amount) {
-          return {
+          return this.withErrorCode({
             status: PaymentStatus.FAILURE,
             conversationId: request.conversationId,
             errorMessage:
               status.err_msg || 'Could not determine payment amount for cancellation; pass price',
             rawResponse: status,
-          };
+          });
         }
         amount = String(status.payment_amount).replace(',', '.');
       }
@@ -412,14 +418,14 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
         conversationId: request.conversationId,
       });
 
-      return {
+      return this.withErrorCode({
         status: refund.status,
         transactionId: refund.refundId,
         conversationId: refund.conversationId,
         errorCode: refund.errorCode,
         errorMessage: refund.errorMessage,
         rawResponse: refund.rawResponse,
-      };
+      });
     } catch (error) {
       return this.failure<CancelResponse>(error, 'Cancel failed', {
         conversationId: request.conversationId,
@@ -490,12 +496,12 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
 
       const action = `${this.config.baseUrl!.replace(/\/$/, '')}/odeme`;
 
-      return {
+      return this.withErrorCode({
         status: PaymentStatus.PENDING,
         threeDSHtmlContent: buildAutoSubmitForm(action, fields),
         paymentId: merchantOid,
         conversationId: merchantOid,
-      };
+      });
     } catch (error) {
       return this.failure<ThreeDSInitResponse>(error, 'Token payment failed', {
         paymentId: merchantOid,
@@ -529,14 +535,14 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
       const data = await this.queryStatus(paymentId);
 
       if (data.status !== 'success') {
-        return {
+        return this.withErrorCode({
           status: PaymentStatus.FAILURE,
           paymentId,
           conversationId: paymentId,
           errorCode: data.err_no,
           errorMessage: data.err_msg,
           rawResponse: data,
-        };
+        });
       }
 
       // Status query amounts are in TL and may use a decimal comma ("1,16")
@@ -548,12 +554,12 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
       );
       const fullyRefunded = paid > 0 && refunded >= paid;
 
-      return {
+      return this.withErrorCode({
         status: fullyRefunded ? PaymentStatus.CANCELLED : PaymentStatus.SUCCESS,
         paymentId,
         conversationId: paymentId,
         rawResponse: data,
-      };
+      });
     } catch (error) {
       return this.failure<PaymentResponse>(error, 'Get payment failed', {
         paymentId,
@@ -623,11 +629,11 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
       );
 
       if (rates.status !== 'success') {
-        return {
+        return this.withErrorCode({
           status: PaymentStatus.FAILURE,
           errorMessage: rates.err_msg || 'Installment rates query failed',
           rawResponse: rates,
-        };
+        });
       }
 
       const family = (bin.cardFamily || '').toLowerCase();
@@ -663,12 +669,12 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
         installmentPrices,
       };
 
-      return {
+      return this.withErrorCode({
         status: PaymentStatus.SUCCESS,
         installmentDetails: [detail],
         conversationId: request.conversationId,
         rawResponse: { bin: bin.rawResponse, rates },
-      };
+      });
     } catch (error) {
       return this.failure<InstallmentInfoResponse>(error, 'Installment info failed');
     }

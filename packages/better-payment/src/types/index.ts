@@ -1,3 +1,4 @@
+import type { PaymentErrorCode } from '../core/error-codes';
 export { PaymentStatus } from './common';
 export type { PaymentCard, Address } from './common';
 import { PaymentStatus, PaymentCard, Address } from './common';
@@ -79,6 +80,9 @@ export interface PaymentResponse {
   status: PaymentStatus;
   paymentId?: string;
   conversationId?: string;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   errorGroup?: string;
@@ -103,6 +107,9 @@ export interface ThreeDSInitResponse {
   redirectUrl?: string;
   paymentId?: string;
   conversationId?: string;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   rawResponse?: unknown;
@@ -126,6 +133,9 @@ export interface RefundResponse {
   status: PaymentStatus;
   refundId?: string;
   conversationId?: string;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   rawResponse?: unknown;
@@ -154,6 +164,9 @@ export interface CancelResponse {
   transactionId?: string;
   voidId?: string;
   conversationId?: string;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   rawResponse?: unknown;
@@ -200,6 +213,9 @@ export interface CheckoutFormInitResponse {
   token?: string;
   tokenExpireTime?: number;
   conversationId?: string;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   rawResponse?: unknown;
@@ -231,6 +247,9 @@ export interface CheckoutFormRetrieveResponse {
   iyziCommissionFee?: number;
   paymentTransactionId?: string;
   conversationId?: string;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   rawResponse?: unknown;
@@ -262,6 +281,9 @@ export interface PWIPaymentInitResponse {
   tokenExpireTime?: number;
   paymentPageUrl?: string; // Ödeme sayfası URL'i
   conversationId?: string;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   rawResponse?: unknown;
@@ -299,6 +321,9 @@ export interface PWIPaymentRetrieveResponse {
   buyerSurname?: string;
   buyerEmail?: string;
   conversationId?: string;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   rawResponse?: unknown;
@@ -346,6 +371,9 @@ export interface InstallmentInfoResponse {
   status: PaymentStatus;
   installmentDetails?: InstallmentPrice[]; // Taksit detayları
   conversationId?: string;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   rawResponse?: unknown;

@@ -11,10 +11,13 @@ import {
   BinCheckResponse,
   InstallmentInfoRequest,
   InstallmentInfoResponse,
+  PaymentStatus,
 } from '../types';
 import { BetterPaymentLogger } from './logger';
 import type { RetryConfig } from './retry';
 import { BetterPaymentError } from './errors';
+import { PaymentErrorCode, resolveErrorCode } from './error-codes';
+import { NETWORK_ERROR_CODE, type FailureResult } from './failure';
 
 /**
  * Tüm provider'larda ortak olan yapılandırma alanları.
@@ -58,6 +61,30 @@ export abstract class PaymentProvider<
    * Yapılandırmayı doğrula. Provider'lar kendi zorunlu alanlarını kontrol eder.
    */
   protected validateConfig(): void {}
+
+  /**
+   * The provider's documented error codes mapped to PaymentErrorCode.
+   * Codes missing from the table resolve to UNKNOWN.
+   */
+  protected errorCodeTable(): Record<string, PaymentErrorCode> {
+    return {};
+  }
+
+  /** Resolves the normalized code of a failed result */
+  protected resolveErrorCode(result: FailureResult): PaymentErrorCode {
+    return resolveErrorCode(result.errorCode, this.errorCodeTable());
+  }
+
+  /**
+   * Adds the normalized `code` to failed results (and to NETWORK_ERROR results,
+   * which are pending). Other results are returned unchanged.
+   */
+  protected withErrorCode<T extends FailureResult>(result: T): T {
+    if (result.status !== PaymentStatus.FAILURE && result.errorCode !== NETWORK_ERROR_CODE) {
+      return result;
+    }
+    return { ...result, code: this.resolveErrorCode(result) };
+  }
 
   /**
    * Direkt ödeme (3D Secure olmadan)

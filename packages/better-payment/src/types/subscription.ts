@@ -1,3 +1,4 @@
+import type { PaymentErrorCode } from '../core/error-codes';
 /**
  * Subscription Types
  *
@@ -58,6 +59,9 @@ export interface SubscriptionInitializeRequest {
 export interface SubscriptionInitializeResponse {
   status: PaymentStatus;
   systemTime?: number;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   data?: {
@@ -88,6 +92,9 @@ export interface SubscriptionCancelRequest {
 export interface SubscriptionCancelResponse {
   status: PaymentStatus;
   systemTime?: number;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   data?: {
@@ -112,6 +119,9 @@ export interface SubscriptionUpgradeRequest {
 export interface SubscriptionUpgradeResponse {
   status: PaymentStatus;
   systemTime?: number;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   data?: {
@@ -134,6 +144,9 @@ export interface SubscriptionRetrieveRequest {
 export interface SubscriptionRetrieveResponse {
   status: PaymentStatus;
   systemTime?: number;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   data?: {
@@ -168,6 +181,9 @@ export interface SubscriptionCardUpdateRequest {
 export interface SubscriptionCardUpdateResponse {
   status: PaymentStatus;
   systemTime?: number;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   token?: string;
@@ -192,6 +208,9 @@ export interface SubscriptionProductCreateRequest {
 export interface SubscriptionProductResponse {
   status: PaymentStatus;
   systemTime?: number;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   data?: {
@@ -224,6 +243,9 @@ export interface PricingPlanCreateRequest {
 export interface PricingPlanResponse {
   status: PaymentStatus;
   systemTime?: number;
+  /** Normalized error code, set on failures */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   data?: {

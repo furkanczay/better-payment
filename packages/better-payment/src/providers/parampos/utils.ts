@@ -6,6 +6,7 @@
 
 import * as crypto from 'crypto';
 import { safeEqual, formatDecimal } from '../../core/utils';
+import { ValidationError } from '../../core/errors';
 
 export const PARAMPOS_NAMESPACE = 'https://turkpos.com.tr/';
 
@@ -120,7 +121,7 @@ export function formatParamposExpiryMonth(month: string | number): string {
   const monthStr = month.toString().padStart(2, '0');
   const monthNum = parseInt(monthStr, 10);
   if (!/^\d{2}$/.test(monthStr) || monthNum < 1 || monthNum > 12) {
-    throw new Error(`Invalid month: ${month}`);
+    throw new ValidationError(`Invalid month: ${month}`);
   }
   return monthStr;
 }
@@ -136,7 +137,7 @@ export function formatParamposExpiryYear(year: string | number): string {
   if (/^\d{4}$/.test(yearStr)) {
     return yearStr;
   }
-  throw new Error(`Invalid year format: ${year}`);
+  throw new ValidationError(`Invalid year format: ${year}`);
 }
 
 /**

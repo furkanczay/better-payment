@@ -10,7 +10,7 @@ import {
   PaymentProviderConfig,
   RetryableRequestConfig,
 } from '../../core/PaymentProvider';
-import { ConfigurationError } from '../../core/errors';
+import { ConfigurationError, ValidationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
 import { generateOrderId } from '../../core/utils';
 import {
@@ -126,7 +126,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
     fallback: string,
     extra: Partial<T> = {}
   ): T {
-    return failureResult<T>('Parampos', error, fallback, extra);
+    return this.withErrorCode(failureResult<T>('Parampos', error, fallback, extra));
   }
 
   private buildPaymentFields(
@@ -183,7 +183,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
   private assertTry(currency: string | undefined): void {
     const value = (currency || 'TRY').toUpperCase();
     if (value !== 'TRY' && value !== 'TL') {
-      throw new Error(
+      throw new ValidationError(
         `Parampos provider currently supports only TRY payments (received ${currency})`
       );
     }
@@ -208,14 +208,14 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
 
       const approved = isParamposSuccess(result.Sonuc) && Number(result.Islem_ID) > 0;
 
-      return {
+      return this.withErrorCode({
         status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
         paymentId: orderId,
         conversationId: orderId,
         errorCode: approved ? undefined : result.Sonuc,
         errorMessage: approved ? undefined : result.Sonuc_Str || result.Bank_HostMsg,
         rawResponse: result,
-      };
+      });
     } catch (error) {
       return this.failure<PaymentResponse>(error, 'Payment failed', {
         paymentId: orderId,
@@ -235,7 +235,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
     try {
       this.assertTry(request.currency);
       if (!request.callbackUrl) {
-        throw new Error('callbackUrl is required for 3D Secure payments');
+        throw new ValidationError('callbackUrl is required for 3D Secure payments');
       }
       const installment = Math.max(1, request.installment ?? 1);
       const fields = this.buildPaymentFields(
@@ -248,23 +248,23 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
       const result = await this.sendSoapRequest('TP_WMD_UCD', fields);
 
       if (!isParamposSuccess(result.Sonuc) || !result.UCD_HTML || result.UCD_HTML === 'NONSECURE') {
-        return {
+        return this.withErrorCode({
           status: PaymentStatus.FAILURE,
           paymentId: orderId,
           conversationId: orderId,
           errorCode: result.Sonuc,
           errorMessage: result.Sonuc_Str || '3D Secure form could not be created',
           rawResponse: result,
-        };
+        });
       }
 
-      return {
+      return this.withErrorCode({
         status: PaymentStatus.PENDING,
         threeDSHtmlContent: result.UCD_HTML,
         paymentId: orderId,
         conversationId: orderId,
         rawResponse: result,
-      };
+      });
     } catch (error) {
       return this.failure<ThreeDSInitResponse>(error, '3D Secure initialization failed', {
         paymentId: orderId,
@@ -285,25 +285,25 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
     const orderId = callbackData?.orderId;
     try {
       if (!verifyParampos3DSCallback(callbackData ?? {}, this.config.guid)) {
-        return {
+        return this.withErrorCode({
           status: PaymentStatus.FAILURE,
           paymentId: orderId,
           conversationId: orderId,
           errorCode: 'INVALID_HASH',
           errorMessage: 'Invalid 3D Secure callback signature',
           rawResponse: callbackData,
-        };
+        });
       }
 
       if (callbackData.mdStatus !== '1') {
-        return {
+        return this.withErrorCode({
           status: PaymentStatus.FAILURE,
           paymentId: orderId,
           conversationId: orderId,
           errorCode: `MD_STATUS_${callbackData.mdStatus}`,
           errorMessage: callbackData.bankResult || '3D Secure authentication failed',
           rawResponse: callbackData,
-        };
+        });
       }
 
       const result = await this.sendSoapRequest('TP_WMD_Pay', {
@@ -315,7 +315,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
 
       const approved = isParamposSuccess(result.Sonuc) && Number(result.Dekont_ID) > 0;
 
-      return {
+      return this.withErrorCode({
         status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
         paymentId: orderId,
         conversationId: orderId,
@@ -324,7 +324,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
           ? undefined
           : result.Sonuc_Ack || result.Sonuc_Str || result.Bank_HostMsg,
         rawResponse: { callback: callbackData, payment: result },
-      };
+      });
     } catch (error) {
       return this.failure<PaymentResponse>(error, '3D Secure completion failed', {
         paymentId: orderId,
@@ -354,14 +354,14 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
       const result = await this.cancelOrRefund('IADE', request.paymentId, request.price);
       const approved = isParamposSuccess(result.Sonuc);
 
-      return {
+      return this.withErrorCode({
         status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
         refundId: approved ? result.Bank_Trans_ID || request.paymentId : undefined,
         conversationId: request.conversationId,
         errorCode: approved ? undefined : result.Sonuc,
         errorMessage: approved ? undefined : result.Sonuc_Str,
         rawResponse: result,
-      };
+      });
     } catch (error) {
       return this.failure<RefundResponse>(error, 'Refund failed', {
         conversationId: request.conversationId,
@@ -381,13 +381,13 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
         const status = await this.queryOrder(request.paymentId);
         const total = parseParamposAmount(status.Toplam_Tutar);
         if (!isParamposSuccess(status.Sonuc) || total === undefined) {
-          return {
+          return this.withErrorCode({
             status: PaymentStatus.FAILURE,
             conversationId: request.conversationId,
             errorMessage:
               status.Sonuc_Str || 'Could not determine payment amount for cancellation; pass price',
             rawResponse: status,
-          };
+          });
         }
         amount = total.toFixed(2);
       }
@@ -395,14 +395,14 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
       const result = await this.cancelOrRefund('IPTAL', request.paymentId, amount);
       const approved = isParamposSuccess(result.Sonuc);
 
-      return {
+      return this.withErrorCode({
         status: approved ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
         transactionId: approved ? result.Bank_Trans_ID : undefined,
         conversationId: request.conversationId,
         errorCode: approved ? undefined : result.Sonuc,
         errorMessage: approved ? undefined : result.Sonuc_Str,
         rawResponse: result,
-      };
+      });
     } catch (error) {
       return this.failure<CancelResponse>(error, 'Cancellation failed', {
         conversationId: request.conversationId,
@@ -431,23 +431,23 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
       const result = await this.queryOrder(paymentId);
 
       if (!isParamposSuccess(result.Sonuc)) {
-        return {
+        return this.withErrorCode({
           status: PaymentStatus.FAILURE,
           paymentId,
           conversationId: paymentId,
           errorCode: result.Sonuc,
           errorMessage: result.Sonuc_Str,
           rawResponse: result,
-        };
+        });
       }
 
-      return {
+      return this.withErrorCode({
         status: mapParamposOrderStatus(result.Durum as ParamposOrderStatus | undefined),
         paymentId: result.Siparis_ID || paymentId,
         conversationId: result.Siparis_ID || paymentId,
         errorMessage: result.Durum === 'SUCCESS' ? undefined : result.Odeme_Sonuc_Aciklama,
         rawResponse: result,
-      };
+      });
     } catch (error) {
       return this.failure<PaymentResponse>(error, 'Payment inquiry failed', { paymentId });
     }
