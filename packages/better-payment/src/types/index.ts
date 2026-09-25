@@ -82,7 +82,7 @@ export interface PaymentResponse {
   errorCode?: string;
   errorMessage?: string;
   errorGroup?: string;
-  rawResponse?: any;
+  rawResponse?: unknown;
 }
 
 /**
@@ -105,7 +105,7 @@ export interface ThreeDSInitResponse {
   conversationId?: string;
   errorCode?: string;
   errorMessage?: string;
-  rawResponse?: any;
+  rawResponse?: unknown;
 }
 
 /**
@@ -128,7 +128,7 @@ export interface RefundResponse {
   conversationId?: string;
   errorCode?: string;
   errorMessage?: string;
-  rawResponse?: any;
+  rawResponse?: unknown;
 }
 
 /**
@@ -202,7 +202,7 @@ export interface CheckoutFormInitResponse {
   conversationId?: string;
   errorCode?: string;
   errorMessage?: string;
-  rawResponse?: any;
+  rawResponse?: unknown;
 }
 
 /**
@@ -233,7 +233,7 @@ export interface CheckoutFormRetrieveResponse {
   conversationId?: string;
   errorCode?: string;
   errorMessage?: string;
-  rawResponse?: any;
+  rawResponse?: unknown;
 }
 
 /**
@@ -264,7 +264,7 @@ export interface PWIPaymentInitResponse {
   conversationId?: string;
   errorCode?: string;
   errorMessage?: string;
-  rawResponse?: any;
+  rawResponse?: unknown;
 }
 
 /**
@@ -301,7 +301,7 @@ export interface PWIPaymentRetrieveResponse {
   conversationId?: string;
   errorCode?: string;
   errorMessage?: string;
-  rawResponse?: any;
+  rawResponse?: unknown;
 }
 
 /**
@@ -348,7 +348,7 @@ export interface InstallmentInfoResponse {
   conversationId?: string;
   errorCode?: string;
   errorMessage?: string;
-  rawResponse?: any;
+  rawResponse?: unknown;
 }
 
 // Export subscription types

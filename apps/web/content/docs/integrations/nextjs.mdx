@@ -27,7 +27,7 @@ export function getBetterPayment(): BetterPayment {
       },
       handler: {
         allowedActions: ['payment/init-3ds', 'payment/complete-3ds', 'callback'],
-        transformRequest: async (ctx) => buildPaymentRequestFromOrder(ctx.body.orderId, ctx.body.paymentCard),
+        transformRequest: async (ctx) => buildPaymentRequestFromOrder(ctx.body?.orderId, ctx.body?.paymentCard),
         onCallback: async (result) => markOrder(result.paymentId, result.status),
         callbackRedirect: (result) => `/orders/${result.paymentId}?payment=${result.status}`,
       },

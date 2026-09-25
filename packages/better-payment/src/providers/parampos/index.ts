@@ -11,7 +11,8 @@ import {
   RetryableRequestConfig,
 } from '../../core/PaymentProvider';
 import { ConfigurationError } from '../../core/errors';
-import { generateOrderId, errorMessage, isNetworkError } from '../../core/utils';
+import { failureResult, FailureResult } from '../../core/failure';
+import { generateOrderId } from '../../core/utils';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -37,6 +38,7 @@ import {
   parseParamposSoapResponse,
   isParamposSuccess,
   parseParamposAmount,
+  XmlValue,
 } from './utils';
 
 /**
@@ -52,10 +54,6 @@ export interface ParamposConfig extends PaymentProviderConfig {
   /** Merchant GUID (anahtar). Used for hashes, never sent to the browser. */
   guid: string;
 }
-
-const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
-const NETWORK_ERROR_MESSAGE =
-  'No response from Parampos. The transaction may have been processed; verify it with getPayment() before retrying.';
 
 /**
  * Parampos Payment Provider
@@ -108,7 +106,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
    */
   private async sendSoapRequest(
     soapAction: string,
-    fields: Record<string, any>,
+    fields: Record<string, XmlValue>,
     options: { retryable?: boolean } = {}
   ): Promise<ParamposResult> {
     const envelope = buildParamposSoapEnvelope(soapAction, fields);
@@ -123,28 +121,12 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
     return parseParamposSoapResponse<ParamposResult>(String(response.data), `${soapAction}Result`);
   }
 
-  private failure<
-    T extends {
-      status: PaymentStatus;
-      errorCode?: string;
-      errorMessage?: string;
-      rawResponse?: any;
-    },
-  >(error: unknown, fallback: string, extra: Partial<T> = {}): T {
-    if (isNetworkError(error)) {
-      return {
-        status: PaymentStatus.PENDING,
-        errorCode: NETWORK_ERROR_CODE,
-        errorMessage: NETWORK_ERROR_MESSAGE,
-        ...extra,
-      } as T;
-    }
-    return {
-      status: PaymentStatus.FAILURE,
-      errorMessage: errorMessage(error, fallback),
-      rawResponse: (error as any)?.response?.data,
-      ...extra,
-    } as T;
+  private failure<T extends FailureResult>(
+    error: unknown,
+    fallback: string,
+    extra: Partial<T> = {}
+  ): T {
+    return failureResult<T>('Parampos', error, fallback, extra);
   }
 
   private buildPaymentFields(
@@ -153,7 +135,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
     securityType: 'NS' | '3D',
     installment: number,
     callbackUrl?: string
-  ): Record<string, any> {
+  ): Record<string, XmlValue> {
     const transactionAmount = formatParamposAmount(request.price);
     const totalAmount = formatParamposAmount(request.paidPrice ?? request.price);
     const hash = generateParamposPaymentHash(

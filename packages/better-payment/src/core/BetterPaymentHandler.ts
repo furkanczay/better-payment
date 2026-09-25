@@ -3,6 +3,9 @@ import { ProviderType } from './BetterPaymentConfig';
 import { ConfigurationError } from './errors';
 import { VERSION } from '../version';
 import { PaymentStatus } from '../types';
+import type { PaymentResponse } from '../types';
+import type { PaymentProvider } from './PaymentProvider';
+import { errorMessage } from './utils';
 import type {
   CheckoutFormRequest,
   PWIPaymentRequest,
@@ -16,6 +19,7 @@ import type {
   PricingPlanCreateRequest,
 } from '../types';
 import { Iyzico } from '../providers/iyzico';
+import type { PayTR } from '../providers/paytr';
 
 /**
  * HTTP Request interface for framework-agnostic handling
@@ -24,7 +28,8 @@ export interface BetterPaymentRequest {
   method: string;
   url: string;
   headers: Record<string, string>;
-  body?: any;
+  /** Raw body (string) or an already parsed object */
+  body?: unknown;
 }
 
 /**
@@ -35,7 +40,7 @@ export interface BetterPaymentRequest {
 export interface BetterPaymentResponse {
   status: number;
   headers: Record<string, string>;
-  body: any;
+  body: unknown;
 }
 
 /**
@@ -126,8 +131,11 @@ export interface HandlerContext {
   action: HandlerAction;
   params: Record<string, string>;
   request: BetterPaymentRequest;
-  /** Parsed request body (form-urlencoded callbacks are converted to objects) */
-  body: any;
+  /**
+   * Parsed request body (form-urlencoded callbacks are converted to objects).
+   * Undefined when the request has no object body.
+   */
+  body: Record<string, unknown> | undefined;
 }
 
 export interface BetterPaymentHandlerOptions {
@@ -152,22 +160,39 @@ export interface BetterPaymentHandlerOptions {
    * buyer on the server instead of trusting the client, e.g. look up the order
    * by id and build the payment request from your database.
    */
-  transformRequest?: (ctx: HandlerContext) => any | Promise<any>;
+  transformRequest?: (ctx: HandlerContext) => object | undefined | Promise<object | undefined>;
   /**
    * Called with the verified result of a provider callback. Update your order here.
    * Errors thrown here make the handler return 500 (PayTR will then retry the notification).
    */
-  onCallback?: (result: any, ctx: HandlerContext) => void | Promise<void>;
+  onCallback?: (result: PaymentResponse, ctx: HandlerContext) => void | Promise<void>;
   /**
    * For browser callbacks (3D Secure return), return a URL to redirect the
    * customer to (303). When undefined, the result is returned as JSON.
    */
   callbackRedirect?: (
-    result: any,
+    result: PaymentResponse,
     ctx: HandlerContext
   ) => string | undefined | Promise<string | undefined>;
   /** Include error messages of unexpected exceptions in 500 responses. Default: false */
   exposeErrors?: boolean;
+}
+
+interface TokenBody {
+  token: string;
+  conversationId?: string;
+}
+
+function supportsTokenPayment(
+  provider: PaymentProvider
+): provider is PaymentProvider & Pick<PayTR, 'createPaymentWithToken'> {
+  return typeof (provider as Partial<PayTR>).createPaymentWithToken === 'function';
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 interface RouteContext {
@@ -265,7 +290,7 @@ export class BetterPaymentHandler {
         action,
         params: route.params,
         request,
-        body: this.parseBody(request),
+        body: asRecord(this.parseBody(request)),
       };
 
       if (this.options.authorize) {
@@ -281,17 +306,18 @@ export class BetterPaymentHandler {
       }
 
       if (this.options.transformRequest && !CALLBACK_HANDLER_ACTIONS.includes(action)) {
-        ctx.body = await this.options.transformRequest(ctx);
+        ctx.body = asRecord(await this.options.transformRequest(ctx));
       }
 
       return await this.handleAction(ctx);
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof HttpError) {
         return this.errorResponse(error.status, error.message);
       }
+      const fallback = 'Internal server error';
       return this.errorResponse(
         500,
-        this.options.exposeErrors && error?.message ? error.message : 'Internal server error'
+        this.options.exposeErrors ? errorMessage(error, fallback) : fallback
       );
     }
   }
@@ -340,7 +366,7 @@ export class BetterPaymentHandler {
     return { provider, action: rest.join('/'), params };
   }
 
-  private parseBody(request: BetterPaymentRequest): any {
+  private parseBody(request: BetterPaymentRequest): unknown {
     const body = request.body;
     const contentType = (this.header(request, 'content-type') || '').toLowerCase();
     if (typeof body === 'string') {
@@ -369,11 +395,15 @@ export class BetterPaymentHandler {
     }
   }
 
-  private requireBody(ctx: HandlerContext): any {
-    if (!ctx.body || typeof ctx.body !== 'object') {
+  /**
+   * Returns the request body. The type parameter is an unchecked cast: the
+   * provider validates the fields it needs.
+   */
+  private requireBody<T extends object = Record<string, unknown>>(ctx: HandlerContext): T {
+    if (!ctx.body) {
       throw new HttpError(400, 'Request body is required');
     }
-    return ctx.body;
+    return ctx.body as T;
   }
 
   private requireIyzico(ctx: HandlerContext): Iyzico {
@@ -385,7 +415,7 @@ export class BetterPaymentHandler {
   }
 
   private async handleAction(ctx: HandlerContext): Promise<BetterPaymentResponse> {
-    const provider: any = this.betterPayment.use(ctx.provider);
+    const provider = this.betterPayment.use(ctx.provider);
 
     switch (ctx.action) {
       case 'payment':
@@ -398,7 +428,7 @@ export class BetterPaymentHandler {
 
       case 'payment/token':
         this.requireMethod(ctx, 'POST');
-        if (typeof provider.createPaymentWithToken !== 'function') {
+        if (!supportsTokenPayment(provider)) {
           throw new HttpError(400, 'This provider does not support token payments');
         }
         return this.resultResponse(await provider.createPaymentWithToken(this.requireBody(ctx)));
@@ -434,8 +464,8 @@ export class BetterPaymentHandler {
         }
         try {
           return this.jsonResponse(200, await provider.binCheck(binNumber));
-        } catch (error: any) {
-          return this.errorResponse(422, error?.message || 'BIN check failed');
+        } catch (error: unknown) {
+          return this.errorResponse(422, errorMessage(error, 'BIN check failed'));
         }
       }
 
@@ -449,7 +479,7 @@ export class BetterPaymentHandler {
 
       case 'checkout/retrieve': {
         this.requireMethod(ctx, 'POST');
-        const { token, conversationId } = this.requireBody(ctx);
+        const { token, conversationId } = this.requireBody<TokenBody>(ctx);
         return this.resultResponse(
           await this.requireIyzico(ctx).retrieveCheckoutForm(token, conversationId)
         );
@@ -463,7 +493,7 @@ export class BetterPaymentHandler {
 
       case 'pwi/retrieve': {
         this.requireMethod(ctx, 'POST');
-        const { token, conversationId } = this.requireBody(ctx);
+        const { token, conversationId } = this.requireBody<TokenBody>(ctx);
         return this.resultResponse(
           await this.requireIyzico(ctx).retrievePWIPayment(token, conversationId)
         );
@@ -537,7 +567,10 @@ export class BetterPaymentHandler {
    * otherwise PayTR keeps re-sending them. Browser callbacks (3D return) can be
    * redirected with `callbackRedirect`.
    */
-  private async handleCallback(ctx: HandlerContext, provider: any): Promise<BetterPaymentResponse> {
+  private async handleCallback(
+    ctx: HandlerContext,
+    provider: PaymentProvider
+  ): Promise<BetterPaymentResponse> {
     const result = await provider.completeThreeDSPayment(this.requireBody(ctx));
     const invalidSignature = result?.errorCode === 'INVALID_HASH';
 
@@ -570,8 +603,8 @@ export class BetterPaymentHandler {
    * Maps a provider result to an HTTP response:
    * success/pending -> 200, failure -> 422 (the body carries the details)
    */
-  private resultResponse(result: any): BetterPaymentResponse {
-    const failed = result && typeof result === 'object' && result.status === PaymentStatus.FAILURE;
+  private resultResponse(result: unknown): BetterPaymentResponse {
+    const failed = asRecord(result)?.status === PaymentStatus.FAILURE;
     return this.jsonResponse(failed ? 422 : 200, result);
   }
 
@@ -584,7 +617,7 @@ export class BetterPaymentHandler {
     });
   }
 
-  private jsonResponse(status: number, body: any): BetterPaymentResponse {
+  private jsonResponse(status: number, body: unknown): BetterPaymentResponse {
     return { status, headers: { ...JSON_HEADERS }, body };
   }
 

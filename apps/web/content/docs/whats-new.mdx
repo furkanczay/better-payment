@@ -94,7 +94,7 @@ and sensitive actions also need an `authorize` hook:
 handler: {
   allowedActions: ['payment/init-3ds', 'payment/complete-3ds', 'callback', 'refund'],
   authorize: async (ctx) => /* your auth */ true,
-  transformRequest: async (ctx) => buildRequestFromOrder(ctx.body.orderId), // amounts from your DB
+  transformRequest: async (ctx) => buildRequestFromOrder(ctx.body?.orderId), // amounts from your DB
   onCallback: async (result) => updateOrder(result.paymentId, result.status),
 }
 ```

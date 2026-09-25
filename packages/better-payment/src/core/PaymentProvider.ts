@@ -72,7 +72,7 @@ export abstract class PaymentProvider<
   /**
    * 3D Secure ödeme tamamla (callback'ten sonra)
    */
-  abstract completeThreeDSPayment(callbackData: any): Promise<PaymentResponse>;
+  abstract completeThreeDSPayment(callbackData: unknown): Promise<PaymentResponse>;
 
   /**
    * İade işlemi

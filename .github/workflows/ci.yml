@@ -44,11 +44,17 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
+      - name: Typecheck examples
+        run: pnpm typecheck:examples
+
+      - name: Test (with coverage thresholds)
+        run: pnpm test:coverage
 
       - name: Build
         run: pnpm build
+
+      - name: Bundle size
+        run: pnpm size
 
       - name: Check package contents
         run: |

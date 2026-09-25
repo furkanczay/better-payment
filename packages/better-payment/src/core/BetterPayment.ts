@@ -218,7 +218,7 @@ export class BetterPayment {
   /**
    * Default provider ile 3DS ödeme tamamla
    */
-  async completeThreeDSPayment(callbackData: any): Promise<PaymentResponse> {
+  async completeThreeDSPayment(callbackData: unknown): Promise<PaymentResponse> {
     return this.getDefaultProvider().completeThreeDSPayment(callbackData);
   }
 

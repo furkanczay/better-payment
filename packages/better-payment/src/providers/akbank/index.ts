@@ -1,7 +1,8 @@
 import axios, { AxiosInstance } from 'axios';
 import { PaymentProvider, RetryableRequestConfig } from '../../core/PaymentProvider';
 import { ConfigurationError } from '../../core/errors';
-import { generateOrderId, errorMessage, isNetworkError } from '../../core/utils';
+import { failureResult, FailureResult } from '../../core/failure';
+import { generateOrderId } from '../../core/utils';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -33,10 +34,6 @@ import type {
   Akbank3DCallbackData,
   AkbankTxnDetail,
 } from './types';
-
-const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
-const NETWORK_ERROR_MESSAGE =
-  'No response from Akbank. The transaction may have been processed; verify it with getPayment() before retrying.';
 
 function escapeHtml(value: string): string {
   return value
@@ -143,28 +140,12 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
     return response.data ?? {};
   }
 
-  private failure<
-    T extends {
-      status: PaymentStatus;
-      errorCode?: string;
-      errorMessage?: string;
-      rawResponse?: any;
-    },
-  >(error: unknown, fallback: string, extra: Partial<T> = {}): T {
-    if (isNetworkError(error)) {
-      return {
-        status: PaymentStatus.PENDING,
-        errorCode: NETWORK_ERROR_CODE,
-        errorMessage: NETWORK_ERROR_MESSAGE,
-        ...extra,
-      } as T;
-    }
-    return {
-      status: PaymentStatus.FAILURE,
-      errorMessage: errorMessage(error, fallback),
-      rawResponse: (error as any)?.response?.data,
-      ...extra,
-    } as T;
+  private failure<T extends FailureResult>(
+    error: unknown,
+    fallback: string,
+    extra: Partial<T> = {}
+  ): T {
+    return failureResult<T>('Akbank', error, fallback, extra);
   }
 
   private static errorOf(data: AkbankApiResponse): { errorCode?: string; errorMessage?: string } {

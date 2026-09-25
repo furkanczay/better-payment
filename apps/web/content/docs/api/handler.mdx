@@ -36,7 +36,7 @@ const payment = new BetterPayment({
     // Build the provider request on the server; never trust the browser's amounts
     transformRequest: async (ctx) => {
       if (ctx.action !== 'payment/init-3ds') return ctx.body;
-      const order = await db.orders.find(ctx.body.orderId);
+      const order = await db.orders.find(ctx.body?.orderId);
       return {
         price: order.total,
         paidPrice: order.total,
@@ -44,7 +44,7 @@ const payment = new BetterPayment({
         conversationId: order.id,
         basketId: order.id,
         callbackUrl: `${process.env.APP_URL}/api/pay/iyzico/payment/complete-3ds`,
-        paymentCard: ctx.body.paymentCard,
+        paymentCard: ctx.body?.paymentCard,
         buyer: order.buyer,
         shippingAddress: order.shippingAddress,
         billingAddress: order.billingAddress,
@@ -118,13 +118,13 @@ interface BetterPaymentRequest {
   method: string;
   url: string; // absolute or path-only
   headers: Record<string, string>;
-  body?: any;  // parsed object, or a raw string (JSON / x-www-form-urlencoded)
+  body?: unknown; // parsed object, or a raw string (JSON / x-www-form-urlencoded)
 }
 
 interface BetterPaymentResponse {
   status: number;
   headers: Record<string, string>;
-  body: any;   // JSON object, or a string for text/plain responses
+  body: unknown;  // JSON object, or a string for text/plain responses
 }
 
 interface HandlerContext {
@@ -132,9 +132,13 @@ interface HandlerContext {
   action: HandlerAction;
   params: Record<string, string>; // { paymentId } for payment/get
   request: BetterPaymentRequest;
-  body: any;
+  body: Record<string, unknown> | undefined; // undefined when there is no object body
 }
 ```
+
+`ctx.body` comes from the client, so its fields are typed `unknown`: validate them
+(or cast after validating) before you use them. `onCallback` and `callbackRedirect`
+receive a `PaymentResponse`.
 
 ## Express
 
