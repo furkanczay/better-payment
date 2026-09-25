@@ -75,6 +75,25 @@ export function threeDSRequest(
   return { ...paymentRequest(card), callbackUrl: CALLBACK_URL, ...overrides };
 }
 
+/**
+ * Sandbox environments sometimes reset connections (ECONNRESET). The library
+ * correctly reports that as pending + NETWORK_ERROR and never retries a
+ * payment; the sandbox suite retries once so a flaky test host does not hide
+ * real provider regressions. Never do this with real money: check the outcome
+ * with getPayment() instead.
+ */
+export async function withSandboxRetry<T extends { errorCode?: string }>(
+  attempt: () => Promise<T>,
+  retries = 1
+): Promise<T> {
+  let result = await attempt();
+  for (let i = 0; i < retries && result.errorCode === 'NETWORK_ERROR'; i++) {
+    console.warn('sandbox: retrying after NETWORK_ERROR', result);
+    result = await attempt();
+  }
+  return result;
+}
+
 /** Readable assertion message: includes the provider error when the status is wrong */
 export function describeResult(result: {
   status: PaymentStatus;
