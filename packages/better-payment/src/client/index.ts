@@ -326,12 +326,15 @@ export class BetterPaymentClient {
   readonly paytr: ProviderClient;
   readonly akbank: ProviderClient;
   readonly parampos: ProviderClient;
+  /** The in-memory test provider (`MockProvider` from `better-payment/testing`) */
+  readonly mock: ProviderClient;
 
   constructor(private config: BetterPaymentClientConfig) {
     this.iyzico = new ProviderClient(ProviderType.IYZICO, config);
     this.paytr = new ProviderClient(ProviderType.PAYTR, config);
     this.akbank = new ProviderClient(ProviderType.AKBANK, config);
     this.parampos = new ProviderClient(ProviderType.PARAMPOS, config);
+    this.mock = new ProviderClient(ProviderType.MOCK, config);
   }
 
   /**

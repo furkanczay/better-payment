@@ -4,6 +4,7 @@ import {
   ProviderType,
   ProviderInstances,
   PROVIDER_DEFAULT_URLS,
+  type RemoteProviderType,
 } from './BetterPaymentConfig';
 import { ProviderNotEnabledError, ConfigurationError } from './errors';
 import { Iyzico } from '../providers/iyzico';
@@ -106,7 +107,10 @@ export class BetterPayment {
     return new BetterPaymentHandler(this, options);
   }
 
-  private withDefaults<T extends PaymentProviderConfig>(providerType: ProviderType, config: T): T {
+  private withDefaults<T extends PaymentProviderConfig>(
+    providerType: RemoteProviderType,
+    config: T
+  ): T {
     const mode = this.config.mode || 'production';
     const defaults = PROVIDER_DEFAULT_URLS[providerType];
     return {
@@ -153,6 +157,16 @@ export class BetterPayment {
       this.providers[ProviderType.PARAMPOS] = new Parampos(
         this.withDefaults(ProviderType.PARAMPOS, providers[ProviderType.PARAMPOS].config)
       );
+    }
+
+    const mock = providers[ProviderType.MOCK];
+    if (mock?.enabled) {
+      if (typeof mock.provider?.createPayment !== 'function') {
+        throw new ConfigurationError(
+          "providers.mock.provider must be a provider instance, e.g. new MockProvider() from 'better-payment/testing'"
+        );
+      }
+      this.providers[ProviderType.MOCK] = mock.provider;
     }
 
     if (this.defaultProvider && !this.providers[this.defaultProvider]) {

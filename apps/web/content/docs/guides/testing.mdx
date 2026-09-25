@@ -1,0 +1,140 @@
+---
+title: Testing your integration
+description: Test checkout, 3D Secure and refund flows with the in-memory MockProvider, without a sandbox or network access.
+---
+
+`better-payment/testing` provides `MockProvider`, an in-memory provider that behaves like a real one:
+- it validates requests
+- it keeps payments in memory, so `getPayment`, `refund` and `cancel` see earlier calls
+- it returns 3D Secure HTML and signs its callbacks, so they go through the real handler code: signature check, duplicate-callback handling, `onCallback`
+
+It makes no network calls and needs no credentials.
+
+<Callout type="warn">
+  Use `MockProvider` only in tests and local development. Never enable it in production: anyone could "pay" with a magic card number.
+</Callout>
+
+## Setup
+
+```typescript
+import { BetterPayment } from 'better-payment';
+import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
+
+const mock = new MockProvider();
+
+const payment = new BetterPayment({
+  providers: {
+    mock: { enabled: true, provider: mock },
+  },
+  handler: { /* the same options as in production */ },
+});
+
+const result = await payment.use('mock').createPayment({
+  ...order,
+  paymentCard: { cardHolderName: 'Test User', cardNumber: MOCK_CARDS.SUCCESS, expireMonth: '12', expireYear: '2030', cvc: '123' },
+});
+```
+
+A common pattern is to build the `BetterPayment` config from the environment and pass `mock` in tests. Handler routes are `/api/pay/mock/...`, and the browser client has `client.mock`.
+
+## Magic card numbers
+
+Use any future expiry date and any CVC. Any other valid card number succeeds.
+
+| Card | Result |
+| ---- | ------ |
+| `4242424242424242`, `5555555555554444` | Success |
+| `4000000000000002` | `CARD_DECLINED` |
+| `4000000000009995` | `INSUFFICIENT_FUNDS` |
+| `4000000000000069` | `EXPIRED_CARD` |
+| `4000000000000127` | `INVALID_CVC` |
+| `4100000000000019` | `FRAUD_SUSPECTED` |
+| `4000000000009987` | `LIMIT_EXCEEDED` |
+| `4000000000000119` | `PROVIDER_ERROR` |
+| `4000002760003184` | Declined without 3D Secure (`CARD_DECLINED`, raw `THREEDS_REQUIRED`); succeeds with 3D Secure |
+| `4000008400001629` | 3D Secure authentication fails (`THREEDS_FAILED`) |
+| `4000000000000341` | The payment is processed but the response is lost: `pending` with `NETWORK_ERROR`. `getPayment()` then reports `success`. |
+| `4000000000005126` | Payment succeeds; refunds and cancels fail (`PROVIDER_ERROR`) |
+
+The numbers are exported as `MOCK_CARDS` (`MOCK_CARDS.INSUFFICIENT_FUNDS`, …). A card saved with `saveCard` keeps its behaviour when you pay with its token.
+
+## Controlling the next operation
+
+```typescript
+mock.failNext('refund', PaymentErrorCode.PROVIDER_ERROR); // the next refund fails
+mock.failNext('payment');                                 // the next payment is declined (CARD_DECLINED)
+mock.networkErrorNext('capture');                         // the next capture goes through, but its response is lost
+mock.reset();                                             // clear payments, saved cards and queued outcomes
+```
+
+Operations: `payment` (`createPayment`, `authorize`), `threeDSInit`, `threeDSComplete`, `refund`, `cancel`, `capture`, `void`.
+
+## 3D Secure
+
+`initThreeDSPayment()` returns `threeDSHtmlContent`: a page that immediately posts the signed result to your `callbackUrl`. In a browser test (Playwright, Cypress) you render it as usual. In a unit test you take the callback directly:
+
+```typescript
+const init = await payment.use('mock').initThreeDSPayment({ ...order, callbackUrl });
+const callback = await mock.threeDSCallback(init.paymentId!);                     // approved
+const abandoned = await mock.threeDSCallback(init.paymentId!, { approve: false }); // failed / abandoned
+
+// Post it to the handler like the bank would, or call the provider directly
+await payment.handler.handle({
+  method: 'POST',
+  url: '/api/pay/mock/payment/complete-3ds',
+  headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams(callback).toString(),
+});
+```
+
+Callbacks are HMAC-signed with a secret that is random per `MockProvider`. A tampered callback, or one signed by another instance, fails with `INVALID_HASH`, like a forged bank callback.
+
+## An end-to-end test
+
+A checkout → 3D Secure → refund flow through your real handler, with Vitest (Jest works the same way):
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { BetterPayment } from 'better-payment';
+import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
+
+it('charges and refunds an order', async () => {
+  const mock = new MockProvider();
+  const payment = new BetterPayment({
+    providers: { mock: { enabled: true, provider: mock } },
+    handler: { allowedActions: 'all', authorize: () => true },
+  });
+  const call = (method: string, path: string, body?: unknown) =>
+    payment.handler.handle({
+      method,
+      url: `/api/pay/mock/${path}`,
+      headers: { 'content-type': 'application/json' },
+      body,
+    });
+
+  const init = await call('POST', 'payment/init-3ds', { ...order, callbackUrl: 'https://shop.test/return' });
+  const { paymentId } = init.body as { paymentId: string };
+
+  const done = await call('POST', 'payment/complete-3ds', await mock.threeDSCallback(paymentId));
+  expect(done.body).toMatchObject({ status: 'success' });
+
+  const refund = await call('POST', 'refund', { paymentId, price: '25.00', currency: 'TRY', ip: '127.0.0.1' });
+  expect(refund.status).toBe(200);
+  expect(mock.getRecord(paymentId)).toMatchObject({ refundedAmount: 2500 });
+});
+```
+
+## Inspecting state
+
+`mock.getRecord(paymentId)` and `mock.payments` return what the mock bank knows about each payment:
+- `state`: `pending_3ds`, `succeeded`, `authorized`, `failed`, `cancelled` or `voided`
+- amounts in minor units: `amount`, `capturedAmount`, `refundedAmount`
+- `refunds`, `installment`, `cardLastFour` and `errorCode`
+
+`getPayment()` returns the same record as `rawResponse`.
+
+## Also supported
+
+- Pre-authorization: `authorize`, `initThreeDSAuthorize`, `capture` (partial) and `voidAuthorization`.
+- Stored cards: `saveCard` during a payment or on its own, `listCards`, `deleteCard`, and paying with `storedCard`.
+- `binCheck()` and `installmentInfo()`. Installment rates are configurable with `new MockProvider({ installmentRates: { 1: 0, 3: 2.5 } })`.
