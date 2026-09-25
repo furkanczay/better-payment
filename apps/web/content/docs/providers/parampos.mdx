@@ -24,8 +24,8 @@ parampos: {
 
 - `price` → `Islem_Tutar`, `paidPrice` → `Toplam_Tutar` (the amount charged,
   including installment commission). Amounts are sent with a decimal comma.
-- For installments, compute `paidPrice` from the rates defined on your Param
-  account. The library never adds commission itself.
+- For installments, `paidPrice` must include the commission from your Param
+  rates. Get it with `calculatePaidPrice()` (below); the library never guesses rates.
 - Only **TRY** is supported (`TP_WMD_UCD`). Other currencies return `failure`.
 
 `paymentId` is your order id (`Siparis_ID`): the `conversationId` you pass, or
@@ -78,6 +78,32 @@ const status = await payment.parampos.getPayment('ORDER123'); // TP_Islem_Sorgul
 const bin = await payment.parampos.binCheck('444676'); // BIN_SanalPos
 ```
 
-<Callout type="info">
-  Installment queries are not implemented for Parampos yet.
-</Callout>
+## Installments
+
+`installmentInfo()` combines `BIN_SanalPos` (which card program the card belongs to) with `TP_Ozel_Oran_SK_Liste` (your customer-facing rates) and returns the available installment counts with Param's totals:
+
+```typescript
+const info = await payment.parampos.installmentInfo({ binNumber: '435508', price: '100.00' });
+// installmentPrices: [
+//   { installmentNumber: 1, totalPrice: 101.75, installmentPrice: 101.75, commissionRate: 1.75 },
+//   { installmentNumber: 3, totalPrice: 104.10, installmentPrice: 34.70, commissionRate: 4.1 },
+//   ...
+// ]
+```
+
+To charge with installments, compute `paidPrice` (Toplam_Tutar) the same way:
+
+```typescript
+const paidPrice = await payment.parampos.calculatePaidPrice({
+  binNumber: '435508',
+  price: '250.00',
+  installment: 3,
+}); // '260.25'
+
+await payment.parampos.initThreeDSPayment({ ...order, price: '250.00', paidPrice, installment: 3 });
+```
+
+- Total: `Toplam_Tutar = price + price × rate / 100`, rounded half up to kuruş.
+- Installment counts with a negative rate (Param's "not available") are left out; `calculatePaidPrice()` throws a `ValidationError` for them.
+- When `BIN_SanalPos` returns `DKK = 1`, the "Diğer Banka Kartları" rates apply.
+- `getInstallmentRates()` returns the raw rate table of every card program.

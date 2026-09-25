@@ -146,7 +146,10 @@ describe('Akbank provider', () => {
 
   it('BIN and installment queries are explicitly unsupported', async () => {
     await expect(akbank.binCheck('415956')).rejects.toThrow(/not supported/);
-    await expect(akbank.installmentInfo({ binNumber: '415956', price: '1' })).rejects.toThrow(/not supported/);
+    await expect(akbank.installmentInfo({ binNumber: '415956', price: '1' })).rejects.toMatchObject({
+      code: 'NOT_SUPPORTED',
+      message: expect.stringContaining('no installment-rate query'),
+    });
   });
 
   it('reports timeouts as PENDING', async () => {

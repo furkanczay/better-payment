@@ -312,3 +312,59 @@ export function maskCardNumber(cardNumber: string): string {
 
   return `${first4}${masked}${last4}`;
 }
+
+/**
+ * Rows of a .NET DataSet in a SOAP response (`<RowTag diffgr:id=...>...</RowTag>`),
+ * each as a flat record of its child elements.
+ */
+export function parseParamposDataSetRows(
+  soapXml: string,
+  rowTag: string
+): Record<string, string>[] {
+  const rows: Record<string, string>[] = [];
+  const rowRegex = new RegExp(`<${rowTag}(?:\\s[^>]*)?>([\\s\\S]*?)</${rowTag}>`, 'gi');
+  let rowMatch: RegExpExecArray | null;
+  while ((rowMatch = rowRegex.exec(soapXml)) !== null) {
+    const row: Record<string, string> = {};
+    const leafRegex = /<([\w:.-]+)(?:\s[^>]*)?>([^<]*)<\/\1>/g;
+    let leaf: RegExpExecArray | null;
+    while ((leaf = leafRegex.exec(rowMatch[1])) !== null) {
+      const tag = leaf[1].includes(':') ? leaf[1].split(':').pop()! : leaf[1];
+      row[tag] = unescapeXml(leaf[2]).trim();
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+/** Highest installment count Param reports rates for (MO_01..MO_12) */
+export const PARAMPOS_MAX_INSTALLMENTS = 12;
+
+/**
+ * Commission rates of a Param rate row, by installment count. Param marks an
+ * unavailable installment with a negative rate (-1 / -2); those are omitted.
+ */
+export function paramposRatesOf(row: Record<string, string>): Map<number, number> {
+  const rates = new Map<number, number>();
+  for (let i = 1; i <= PARAMPOS_MAX_INSTALLMENTS; i++) {
+    const raw = row[`MO_${String(i).padStart(2, '0')}`];
+    if (raw === undefined || raw === '') continue;
+    const rate = Number(raw.replace(',', '.'));
+    if (Number.isFinite(rate) && rate >= 0) rates.set(i, rate);
+  }
+  return rates;
+}
+
+/**
+ * Param's total: Toplam_Tutar = Islem_Tutar + Islem_Tutar × rate / 100,
+ * rounded half up to kuruş. Computed in integers to avoid float drift.
+ *
+ * @returns the total in minor units (kuruş)
+ */
+export function calculateParamposTotalMinor(priceMinor: number, ratePercent: number): number {
+  // rate with 4 decimals, as Param returns it (e.g. 1.7500)
+  const rateScaled = BigInt(Math.round(ratePercent * 10000));
+  // price × (100% + rate), scaled by 10^6; BigInt keeps large amounts exact
+  const numerator = BigInt(priceMinor) * (1_000_000n + rateScaled);
+  return Number((numerator + 500_000n) / 1_000_000n);
+}
