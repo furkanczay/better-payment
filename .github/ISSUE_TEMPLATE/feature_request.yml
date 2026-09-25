@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest an improvement to the library, the handler, the client or the docs.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what makes it hard today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How could better-payment help? An example of the API you would like is welcome.
+    validations:
+      required: true
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: Core or plugin?
+      description: Features that do not depend on a provider (routing, notifications, translations, ...) are usually plugins.
+      options:
+        - Not sure
+        - Core (every user needs it)
+        - Plugin
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds or other libraries you considered.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to work on this.

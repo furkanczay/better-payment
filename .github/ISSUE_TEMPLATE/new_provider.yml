@@ -1,0 +1,56 @@
+name: New provider
+description: Propose support for a payment institution or bank virtual POS.
+labels: ["enhancement", "area: provider"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [roadmap](https://github.com/furkanczay/better-payment/issues/44) first: some providers are already planned.
+        Read [Custom providers](https://better-payment.czaylabs.com/docs/plugins/custom-providers) to see what a provider implements.
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      placeholder: "Garanti BBVA, Sipay, Craftgate, ..."
+    validations:
+      required: true
+  - type: input
+    id: docs
+    attributes:
+      label: API documentation
+      description: Link to the provider's public developer documentation.
+    validations:
+      required: true
+  - type: dropdown
+    id: sandbox
+    attributes:
+      label: Is there a sandbox (test environment)?
+      options:
+        - "Yes, public test credentials"
+        - "Yes, credentials on request"
+        - "No / not sure"
+    validations:
+      required: true
+  - type: checkboxes
+    id: operations
+    attributes:
+      label: Operations the API supports
+      options:
+        - label: Payment without 3D Secure
+        - label: 3D Secure payment
+        - label: Refund / cancel
+        - label: Payment status query
+        - label: Pre-authorization and capture
+        - label: Stored cards
+        - label: Installments / BIN query
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Signature scheme, callback format, anything unusual.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I can implement it, and I have (or can get) sandbox access.

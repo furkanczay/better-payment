@@ -1,0 +1,65 @@
+name: Bug report
+description: Something does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Remove API keys, secrets, card numbers and personal data** from everything you paste.
+        Security problems (for example a callback that can be forged) go to [private reporting](https://github.com/furkanczay/better-payment/security/advisories/new), not here.
+  - type: input
+    id: version
+    attributes:
+      label: better-payment version
+      placeholder: "0.5.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      multiple: true
+      options:
+        - iyzico
+        - PayTR
+        - Parampos
+        - Akbank
+        - MockProvider
+        - Custom provider
+        - Not provider-specific
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime and framework
+      placeholder: "Node.js 22, Next.js 16 (App Router) / Cloudflare Workers / ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - sandbox
+        - production
+        - tests (MockProvider)
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Code to reproduce
+      description: The smallest code that shows the problem. Replace credentials with placeholders.
+      render: typescript
+  - type: textarea
+    id: result
+    attributes:
+      label: Result or error
+      description: The result object (`status`, `code`, `errorCode`, `errorMessage`) or the error and stack trace. Mask card data.
+      render: text
