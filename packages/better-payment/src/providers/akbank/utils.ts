@@ -1,5 +1,6 @@
 import * as crypto from 'crypto';
 import { safeEqual, formatDecimal } from '../../core/utils';
+import { ValidationError } from '../../core/errors';
 
 export const AKBANK_API_VERSION = '1.00';
 
@@ -115,7 +116,7 @@ export function formatAkbankExpiry(month: string, year: string): string {
   const mm = month.padStart(2, '0');
   const yy = year.length === 4 ? year.slice(-2) : year.padStart(2, '0');
   if (!/^\d{2}$/.test(mm) || Number(mm) < 1 || Number(mm) > 12 || !/^\d{2}$/.test(yy)) {
-    throw new Error(`Invalid card expiry: ${month}/${year}`);
+    throw new ValidationError(`Invalid card expiry: ${month}/${year}`);
   }
   return `${mm}${yy}`;
 }
@@ -135,7 +136,7 @@ export function getAkbankCurrencyCode(currency: string | undefined): number {
   };
   const code = map[(currency || 'TRY').toUpperCase()];
   if (!code) {
-    throw new Error(`Currency ${currency} is not supported by Akbank`);
+    throw new ValidationError(`Currency ${currency} is not supported by Akbank`);
   }
   return code;
 }

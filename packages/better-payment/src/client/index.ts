@@ -267,6 +267,9 @@ class ProviderClient {
  * document.getElementById('payment-iframe').innerHTML = threeds.threeDSHtmlContent;
  * ```
  */
+export { PaymentErrorCode } from '../core/error-codes';
+export { PaymentStatus } from '../types/common';
+
 export class BetterPaymentClient {
   readonly iyzico: ProviderClient;
   readonly paytr: ProviderClient;

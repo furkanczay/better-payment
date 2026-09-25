@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { ValidationError } from './errors';
 
 /**
  * Constant-time string comparison for signatures/hashes.
@@ -26,7 +27,7 @@ export function generateOrderId(prefix = 'BP'): string {
 export function parseAmount(amount: string | number, field = 'amount'): number {
   const value = typeof amount === 'number' ? amount : Number(String(amount).trim());
   if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`Invalid ${field}: ${amount}`);
+    throw new ValidationError(`Invalid ${field}: ${amount}`);
   }
   return value;
 }

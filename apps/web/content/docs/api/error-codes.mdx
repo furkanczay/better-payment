@@ -1,0 +1,69 @@
+---
+title: Error Codes
+description: Provider-independent error codes on failed results, with suggested customer messages.
+---
+
+Every failed result has two error fields:
+
+- `code`: a `PaymentErrorCode`, the same across providers. Branch on this.
+- `errorCode`: the provider's raw code (iyzico `10051`, PayTR `failed_reason_code`, Akbank `VPS-xxxx`, ...). Log it and send it to provider support.
+
+```typescript
+import { PaymentErrorCode, PaymentStatus } from 'better-payment';
+
+const result = await payment.use('iyzico').createPayment(order);
+
+if (result.status === PaymentStatus.FAILURE) {
+  switch (result.code) {
+    case PaymentErrorCode.INSUFFICIENT_FUNDS:
+    case PaymentErrorCode.LIMIT_EXCEEDED:
+      return askForAnotherCard();
+    case PaymentErrorCode.INVALID_HASH:
+    case PaymentErrorCode.FRAUD_SUSPECTED:
+      return flagForReview(result);
+    default:
+      return showGenericError();
+  }
+}
+```
+
+`code` is set only on failures, plus on `pending` results with `NETWORK_ERROR`. Successful results do not have it. Provider codes that are not mapped yet become `UNKNOWN` and keep the raw value in `errorCode`.
+
+`PaymentErrorCode` is also exported from `better-payment/client`, so browser code can branch on it.
+
+## Codes
+
+| Code | Meaning | Suggested message (EN) | Önerilen mesaj (TR) |
+| ---- | ------- | ---------------------- | ------------------- |
+| `INSUFFICIENT_FUNDS` | Not enough balance or credit limit | Your card has insufficient funds. Try another card. | Kartınızın bakiyesi veya limiti yetersiz. Başka bir kart deneyin. |
+| `CARD_DECLINED` | The bank declined without a specific reason | Your bank declined the payment. Contact your bank or try another card. | Bankanız ödemeyi onaylamadı. Bankanızla görüşün veya başka bir kart deneyin. |
+| `INVALID_CARD` | Card number, BIN or issuer not valid | Check your card number. | Kart numaranızı kontrol edin. |
+| `EXPIRED_CARD` | Expired card or wrong expiry date | Check your card's expiry date. | Kartınızın son kullanma tarihini kontrol edin. |
+| `INVALID_CVC` | Wrong CVC/CVV | Check the security code on the back of your card. | Kartınızın arkasındaki güvenlik kodunu kontrol edin. |
+| `THREEDS_FAILED` | 3D Secure verification failed or was not completed | Verification failed. Try again and complete the SMS step. | Doğrulama başarısız oldu. Tekrar deneyin ve SMS adımını tamamlayın. |
+| `FRAUD_SUSPECTED` | Suspected fraud, or card reported lost or stolen | We couldn't complete this payment. Contact your bank. | Bu ödeme tamamlanamadı. Bankanızla görüşün. |
+| `LIMIT_EXCEEDED` | Amount or transaction-count limit exceeded | Your card's limit was exceeded. Try another card. | Kartınızın işlem limiti aşıldı. Başka bir kart deneyin. |
+| `DUPLICATE_ORDER` | The order id was already used | This order was already submitted. | Bu sipariş zaten gönderildi. |
+| `CANCELLED_BY_CUSTOMER` | The customer left the payment page | Payment was cancelled. | Ödeme iptal edildi. |
+| `INVALID_REQUEST` | Rejected before reaching the provider (missing or invalid field) | Something went wrong. Please try again. | Bir sorun oluştu. Lütfen tekrar deneyin. |
+| `NETWORK_ERROR` | No response from the provider; the outcome is unknown (`pending`) | We're checking your payment. Don't pay again. | Ödemeniz kontrol ediliyor. Lütfen tekrar ödeme yapmayın. |
+| `INVALID_HASH` | A callback's signature did not verify (treat as forged) | Payment could not be verified. | Ödeme doğrulanamadı. |
+| `PROVIDER_ERROR` | Provider, bank or merchant configuration problem | Payment is temporarily unavailable. Please try again later. | Ödeme geçici olarak yapılamıyor. Lütfen daha sonra tekrar deneyin. |
+| `UNKNOWN` | Not mapped yet; see `errorCode` | Payment failed. Please try again or use another card. | Ödeme başarısız oldu. Tekrar deneyin veya başka bir kart kullanın. |
+
+<Callout type="warn">
+  Never show `INVALID_HASH` or `FRAUD_SUSPECTED` details to the customer. For `INVALID_REQUEST`, fix the request on your side; the error message names the field. For `NETWORK_ERROR`, check the payment with `getPayment()` before letting the customer retry.
+</Callout>
+
+## What is mapped
+
+| Provider | Source of `code` |
+| -------- | ---------------- |
+| iyzico | Payment error codes (`10005`, `10051`, `10054`, `10084`, `102xx`, ...). The table is exported as `IYZICO_ERROR_CODES`. |
+| PayTR | `failed_reason_code` 1–3, 6, 8–11 and 99. Code `0` has a free-text reason and stays `UNKNOWN`. The table is exported as `PAYTR_ERROR_CODES`. |
+| Akbank | The bank's ISO 8583 `hostResponseCode` (`51`, `05`, `54`, ...), exported as `ISO8583_ERROR_CODES`. The `VPS-xxxx` code stays in `errorCode`. |
+| Parampos | Signature, 3D Secure and validation failures. Param's `Sonuc` codes are not mapped yet and become `UNKNOWN`. |
+
+All providers also use the codes better-payment sets itself: `NETWORK_ERROR`, `INVALID_HASH`, 3D Secure failures (`MD_STATUS_x`) and request validation (`VALIDATION_ERROR` → `INVALID_REQUEST`).
+
+Missing a code? Open an issue with the provider, the raw `errorCode` and its message.

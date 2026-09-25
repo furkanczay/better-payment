@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { safeEqual, toMinorUnits, formatDecimal } from '../../core/utils';
 import type { PayTRBasketItem } from './types';
+import { ValidationError } from '../../core/errors';
 
 /**
  * PayTR signatures: base64(HMAC-SHA256(data + merchant_salt, merchant_key))
@@ -195,7 +196,7 @@ export function mapPayTRCurrency(currency: string | undefined): string {
   };
   const mapped = map[value];
   if (!mapped) {
-    throw new Error(`Currency ${currency} is not supported by PayTR`);
+    throw new ValidationError(`Currency ${currency} is not supported by PayTR`);
   }
   return mapped;
 }
@@ -205,7 +206,7 @@ export function mapPayTRCurrency(currency: string | undefined): string {
  */
 export function assertPayTRMerchantOid(merchantOid: string): void {
   if (!/^[A-Za-z0-9]{1,64}$/.test(merchantOid)) {
-    throw new Error(
+    throw new ValidationError(
       `Invalid PayTR merchant_oid "${merchantOid}": only letters and digits are allowed (max 64 characters)`
     );
   }

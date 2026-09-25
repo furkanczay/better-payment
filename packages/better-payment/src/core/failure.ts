@@ -1,5 +1,7 @@
 import { PaymentStatus } from '../types/common';
 import { errorMessage, isNetworkError } from './utils';
+import { ValidationError } from './errors';
+import type { PaymentErrorCode } from './error-codes';
 
 export const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
 
@@ -8,6 +10,9 @@ export const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
  */
 export interface FailureResult {
   status: PaymentStatus;
+  /** Normalized error code, set on every failure (and on NETWORK_ERROR) */
+  code?: PaymentErrorCode;
+  /** The provider's raw error code */
   errorCode?: string;
   errorMessage?: string;
   rawResponse?: unknown;
@@ -28,6 +33,8 @@ export function responseDataOf(error: unknown): unknown {
  *
  * - Transport errors (timeout, connection reset, no response) become PENDING with
  *   NETWORK_ERROR: the provider may still have processed the request.
+ * - A ValidationError (bad input caught before calling the provider) becomes
+ *   FAILURE with VALIDATION_ERROR.
  * - Any other error becomes FAILURE. `errorCode`/`errorMessage` from a JSON error
  *   body are used when present, and the body is attached as `rawResponse`.
  */
@@ -42,6 +49,15 @@ export function failureResult<T extends FailureResult>(
       status: PaymentStatus.PENDING,
       errorCode: NETWORK_ERROR_CODE,
       errorMessage: `No response from ${providerName}. The transaction may have been processed; verify it with getPayment() before retrying.`,
+      ...extra,
+    } as T;
+  }
+
+  if (error instanceof ValidationError) {
+    return {
+      status: PaymentStatus.FAILURE,
+      errorCode: 'VALIDATION_ERROR',
+      errorMessage: error.message,
       ...extra,
     } as T;
   }

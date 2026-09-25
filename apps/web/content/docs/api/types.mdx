@@ -112,10 +112,11 @@ interface PaymentResponse {
   status: PaymentStatus;
   paymentId?: string;
   conversationId?: string;
-  errorCode?: string;       // provider code, 'NETWORK_ERROR', 'INVALID_HASH', 'MD_STATUS_x', ...
+  code?: PaymentErrorCode;  // normalized, set on every failure (see Error Codes)
+  errorCode?: string;       // raw provider code, or 'NETWORK_ERROR', 'INVALID_HASH', 'MD_STATUS_x', ...
   errorMessage?: string;
   errorGroup?: string;
-  rawResponse?: any;
+  rawResponse?: unknown;
 }
 ```
 
@@ -128,9 +129,10 @@ interface ThreeDSInitResponse {
   redirectUrl?: string;         // PayTR iframe URL
   paymentId?: string;
   conversationId?: string;
+  code?: PaymentErrorCode;
   errorCode?: string;
   errorMessage?: string;
-  rawResponse?: any;
+  rawResponse?: unknown;
 }
 ```
 
@@ -141,15 +143,17 @@ interface RefundResponse {
   status: PaymentStatus;
   refundId?: string;
   conversationId?: string;
+  code?: PaymentErrorCode;
   errorCode?: string;
   errorMessage?: string;
-  rawResponse?: any;
+  rawResponse?: unknown;
 }
 
 interface CancelResponse {
   status: PaymentStatus;
   transactionId?: string;
   conversationId?: string;
+  code?: PaymentErrorCode;
   errorCode?: string;
   errorMessage?: string;
   rawResponse?: unknown;

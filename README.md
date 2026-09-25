@@ -128,6 +128,16 @@ When a request times out or the connection drops, the result is `pending` with
 payment. Check it with `getPayment()` before you retry. Payment, refund and cancel
 requests are never retried automatically.
 
+Failed results also carry `code`, a provider-independent `PaymentErrorCode`
+(`INSUFFICIENT_FUNDS`, `CARD_DECLINED`, `THREEDS_FAILED`, `INVALID_HASH`, ...).
+The provider's raw code stays in `errorCode`. Unmapped codes are `UNKNOWN`. See
+[Error Codes](https://better-payment.czaylabs.com/docs/api/error-codes) for the
+list and suggested customer messages.
+
+```typescript
+if (result.code === PaymentErrorCode.INSUFFICIENT_FUNDS) askForAnotherCard();
+```
+
 For PayTR, Parampos and Akbank, `paymentId` is your **order id**: the
 `conversationId` you pass in, or an alphanumeric id generated for you. Pass
 this id to `refund`, `cancel` and `getPayment`.
