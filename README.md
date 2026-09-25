@@ -216,28 +216,17 @@ const payment = new BetterPayment({
 });
 ```
 
+Mount it with an adapter. Each adapter handles raw form callbacks, PayTR's plain `OK` and redirects:
+
 ```typescript
-// Next.js App Router — app/api/pay/[...path]/route.ts
-async function handler(req: Request) {
-  const contentType = req.headers.get('content-type') ?? '';
-  const body = req.method === 'GET' ? undefined : await req.text();
+// Next.js — app/api/pay/[...path]/route.ts
+import { toNextJsHandler } from 'better-payment/next';
+export const { GET, POST } = toNextJsHandler(getBetterPayment);
 
-  const res = await payment.handler.handle({
-    method: req.method,
-    url: req.url,
-    headers: Object.fromEntries(req.headers.entries()),
-    body: contentType.includes('application/json') && body ? JSON.parse(body) : body,
-  });
-
-  const isJson = res.headers['Content-Type'] === 'application/json';
-  return new Response(isJson ? JSON.stringify(res.body) : res.body, {
-    status: res.status,
-    headers: res.headers,
-  });
-}
-
-export const GET = handler;
-export const POST = handler;
+// Express:  app.all('/api/pay/*path', toExpressHandler(payment))        — better-payment/express
+// Fastify:  app.register(toFastifyPlugin(payment), { prefix: '/api/pay' }) — better-payment/fastify
+// Hono:     app.all('/api/pay/*', toHonoHandler(payment))               — better-payment/hono
+// Workers, Deno, Bun: toFetchHandler(payment)                            — better-payment
 ```
 
 | Route (under `basePath`)              | Action                   | Enabled by default                    |

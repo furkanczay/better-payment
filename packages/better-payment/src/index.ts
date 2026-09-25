@@ -24,6 +24,14 @@ export type {
 export { PaymentProvider } from './core/PaymentProvider';
 export type { PaymentProviderConfig } from './core/PaymentProvider';
 export { HttpClient, HttpError } from './core/http';
+export {
+  toFetchHandler,
+  fromWebRequest,
+  toWebResponse,
+  resolveHandler,
+  serializeResponse,
+} from './adapters/fetch';
+export type { HandlerSource } from './adapters/fetch';
 export type { HttpRequestConfig, HttpResponse, HttpMethod } from './core/http';
 
 export {

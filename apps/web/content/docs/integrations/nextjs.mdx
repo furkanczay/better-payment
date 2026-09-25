@@ -45,40 +45,19 @@ export function getBetterPayment(): BetterPayment {
 
 ```typescript
 // app/api/pay/[...path]/route.ts
+import { toNextJsHandler } from 'better-payment/next';
 import { getBetterPayment } from '@/lib/payment';
 
-export const runtime = 'nodejs'; // 'edge' works too, see the edge runtimes guide
-
-async function handler(req: Request): Promise<Response> {
-  const contentType = req.headers.get('content-type') ?? '';
-  let body: unknown;
-
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    const text = await req.text();
-    body = contentType.includes('application/json') && text ? JSON.parse(text) : text;
-  }
-
-  const res = await getBetterPayment().handler.handle({
-    method: req.method,
-    url: req.url,
-    headers: Object.fromEntries(req.headers.entries()),
-    body,
-  });
-
-  // PayTR notifications must receive plain "OK"; redirects have an empty body
-  const payload = typeof res.body === 'string' ? res.body : JSON.stringify(res.body);
-  return new Response(res.status === 303 ? null : payload, {
-    status: res.status,
-    headers: res.headers,
-  });
-}
-
-export const GET = handler;
-export const POST = handler;
+export const { GET, POST } = toNextJsHandler(getBetterPayment);
 ```
 
-Form-urlencoded callbacks (iyzico, Param, Akbank, PayTR) are passed as raw
-strings; the handler parses them.
+Passing the `getBetterPayment` function (not its result) keeps the initialization lazy: the instance is created on the first request, so `next build` works without the environment variables.
+
+The adapter passes JSON and form-urlencoded bodies (the iyzico, Param, Akbank and PayTR callbacks) to the handler as raw text, and writes the handler's response unchanged:
+- PayTR's plain-text `OK` is not JSON-encoded.
+- Redirects (`callbackRedirect`) keep their `Location` header and have no body.
+
+The route works on both runtimes. Add `export const runtime = 'edge'` to run it on the [edge runtime](/docs/integrations/edge).
 
 ## 3. Start a payment from the frontend
 
