@@ -6,7 +6,7 @@ import {
   RetryableRequestConfig,
 } from '../../core/PaymentProvider';
 import { ConfigurationError } from '../../core/errors';
-import { errorMessage, isNetworkError } from '../../core/utils';
+import { failureResult, FailureResult } from '../../core/failure';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -58,6 +58,8 @@ import {
   IyzicoPWIPaymentRetrieveResponse,
   IyzicoInstallmentInfoRequest,
   IyzicoInstallmentInfoResponse,
+  IyzicoSubscriptionResponse,
+  IyzicoThreeDSCallbackData,
 } from './types';
 
 /**
@@ -67,10 +69,6 @@ export interface IyzicoConfig extends PaymentProviderConfig {
   apiKey: string;
   secretKey: string;
 }
-
-const NETWORK_ERROR_CODE = 'NETWORK_ERROR';
-const NETWORK_ERROR_MESSAGE =
-  'No response from iyzico. The transaction may have been processed; verify it with getPayment() before retrying.';
 
 /**
  * iyzico checkout form / 3DS payment status -> unified status
@@ -120,24 +118,12 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
     }
   }
 
-  private failure<T extends { status: PaymentStatus; errorCode?: string; errorMessage?: string }>(
-    error: any,
-    fallback: string
+  private failure<T extends FailureResult>(
+    error: unknown,
+    fallback: string,
+    extra: Partial<T> = {}
   ): T {
-    if (isNetworkError(error)) {
-      return {
-        status: PaymentStatus.PENDING,
-        errorCode: NETWORK_ERROR_CODE,
-        errorMessage: NETWORK_ERROR_MESSAGE,
-      } as T;
-    }
-    const data = error?.response?.data;
-    return {
-      status: PaymentStatus.FAILURE,
-      errorCode: data?.errorCode,
-      errorMessage: data?.errorMessage || errorMessage(error, fallback),
-      rawResponse: data,
-    } as unknown as T;
+    return failureResult<T>('iyzico', error, fallback, extra);
   }
 
   /**
@@ -368,7 +354,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
   /**
    * 3D Secure ödeme tamamla
    */
-  async completeThreeDSPayment(callbackData: any): Promise<PaymentResponse> {
+  async completeThreeDSPayment(callbackData: IyzicoThreeDSCallbackData): Promise<PaymentResponse> {
     // iyzico posts status=success and mdStatus=1 only when 3D authentication
     // succeeded. Anything else must not be authorized.
     if (
@@ -579,10 +565,10 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
    * Subscription API responses keep iyzico's shape; only `status` is mapped
    * to the unified PaymentStatus and the raw response is attached.
    */
-  private mapSubscriptionResponse<T>(response: any): T {
+  private mapSubscriptionResponse<T>(response: IyzicoSubscriptionResponse): T {
     return {
       ...response,
-      status: this.mapStatus(response?.status),
+      status: this.mapStatus(response.status),
       rawResponse: response,
     } as T;
   }
@@ -628,7 +614,10 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         },
       };
 
-      const response = await this.sendRequest<any>('/v2/subscription/initialize', iyzicoRequest);
+      const response = await this.sendRequest<IyzicoSubscriptionResponse>(
+        '/v2/subscription/initialize',
+        iyzicoRequest
+      );
 
       return this.mapSubscriptionResponse(response);
     } catch (error) {
@@ -640,7 +629,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
     request: SubscriptionCancelRequest
   ): Promise<SubscriptionCancelResponse> {
     try {
-      const response = await this.sendRequest<any>(
+      const response = await this.sendRequest<IyzicoSubscriptionResponse>(
         `/v2/subscription/subscriptions/${encodeURIComponent(request.subscriptionReferenceCode)}/cancel`,
         {}
       );
@@ -661,7 +650,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         resetRecurrenceCount: request.resetRecurrenceCount,
       };
 
-      const response = await this.sendRequest<any>(
+      const response = await this.sendRequest<IyzicoSubscriptionResponse>(
         `/v2/subscription/subscriptions/${encodeURIComponent(request.subscriptionReferenceCode)}/upgrade`,
         iyzicoRequest
       );
@@ -676,7 +665,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
     request: SubscriptionRetrieveRequest
   ): Promise<SubscriptionRetrieveResponse> {
     try {
-      const response = await this.sendRequest<any>(
+      const response = await this.sendRequest<IyzicoSubscriptionResponse>(
         `/v2/subscription/subscriptions/${encodeURIComponent(request.subscriptionReferenceCode)}`,
         {},
         { method: 'GET', retryable: true }
@@ -699,7 +688,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         callbackUrl: request.callbackUrl,
       };
 
-      const response = await this.sendRequest<any>(
+      const response = await this.sendRequest<IyzicoSubscriptionResponse>(
         '/v2/subscription/card-update/checkoutform/initialize',
         iyzicoRequest
       );
@@ -721,7 +710,10 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         description: request.description,
       };
 
-      const response = await this.sendRequest<any>('/v2/subscription/products', iyzicoRequest);
+      const response = await this.sendRequest<IyzicoSubscriptionResponse>(
+        '/v2/subscription/products',
+        iyzicoRequest
+      );
 
       return this.mapSubscriptionResponse(response);
     } catch (error) {
@@ -744,7 +736,7 @@ export class Iyzico extends PaymentProvider<IyzicoConfig> {
         recurrenceCount: request.recurrenceCount,
       };
 
-      const response = await this.sendRequest<any>(
+      const response = await this.sendRequest<IyzicoSubscriptionResponse>(
         `/v2/subscription/products/${encodeURIComponent(request.productReferenceCode)}/pricing-plans`,
         iyzicoRequest
       );

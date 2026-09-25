@@ -12,6 +12,24 @@ export interface IyzicoResponse {
   errorGroup?: string;
 }
 
+/**
+ * Subscription API response. Fields vary per endpoint; they are passed through as-is.
+ */
+export interface IyzicoSubscriptionResponse extends IyzicoResponse {
+  [key: string]: unknown;
+}
+
+/**
+ * Body iyzico POSTs to the 3D Secure callbackUrl
+ */
+export interface IyzicoThreeDSCallbackData {
+  status?: string;
+  paymentId?: string;
+  conversationId?: string;
+  conversationData?: string;
+  mdStatus?: string | number;
+}
+
 export interface IyzicoPaymentResponse extends IyzicoResponse {
   paymentId?: string;
   price?: number;

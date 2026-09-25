@@ -178,8 +178,8 @@ const payment = new BetterPayment({
     // never trust amounts from the browser
     transformRequest: async (ctx) => {
       if (ctx.action !== 'payment/init-3ds') return ctx.body;
-      const order = await db.orders.find(ctx.body.orderId);
-      return buildPaymentRequest(order, ctx.body.paymentCard);
+      const order = await db.orders.find(ctx.body?.orderId);
+      return buildPaymentRequest(order, ctx.body?.paymentCard);
     },
 
     // update your order from verified callbacks

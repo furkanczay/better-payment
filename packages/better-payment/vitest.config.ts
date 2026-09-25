@@ -7,7 +7,7 @@ export default defineConfig({
     environment: 'node',
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html', 'lcov'],
+      reporter: ['text-summary', 'json-summary', 'html', 'lcov'],
       exclude: [
         'node_modules/',
         'dist/',
@@ -20,11 +20,13 @@ export default defineConfig({
         'tsup.config.ts',
       ],
       include: ['src/**/*.ts'],
-      all: true,
-      lines: 80,
-      functions: 80,
-      branches: 80,
-      statements: 80,
+      // Floor just below the current numbers; raise it as coverage improves
+      thresholds: {
+        lines: 87,
+        functions: 92,
+        branches: 73,
+        statements: 87,
+      },
     },
     include: [
       'tests/**/*.test.ts',

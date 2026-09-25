@@ -194,7 +194,7 @@ async function saveTokenToDatabase(token: string, conversationId: string) {
   console.log('Token veritabanına kaydedildi:', token);
 }
 
-async function getPendingPaymentsFromDatabase() {
+async function getPendingPaymentsFromDatabase(): Promise<Array<{ token: string }>> {
   // Veritabanından bekleyen ödemeleri getir
   return [];
 }

@@ -175,7 +175,7 @@ export function unescapeXml(text: string): string {
     .replace(/&amp;/g, '&');
 }
 
-type XmlValue = string | number | undefined | null | { [key: string]: XmlValue };
+export type XmlValue = string | number | undefined | null | { [key: string]: XmlValue };
 
 /**
  * Serializes an ordered record into XML elements. Values are escaped.

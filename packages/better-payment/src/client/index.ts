@@ -76,17 +76,17 @@ class ProviderClient {
     }
 
     const response = await this.fetch(url, options);
-    const data: any = await response.json().catch(() => undefined);
+    const data: unknown = await response.json().catch(() => undefined);
+    const result = data && typeof data === 'object' ? (data as Record<string, unknown>) : undefined;
 
     // 422 = the provider rejected the operation; the body is the unified result
-    if (
-      response.ok ||
-      (response.status === 422 && data && typeof data === 'object' && 'status' in data)
-    ) {
+    if (response.ok || (response.status === 422 && result && 'status' in result)) {
       return data as T;
     }
 
-    throw new Error(data?.message || `HTTP ${response.status}: ${response.statusText}`);
+    const message =
+      typeof result?.message === 'string' && result.message ? result.message : undefined;
+    throw new Error(message || `HTTP ${response.status}: ${response.statusText}`);
   }
 
   /**
@@ -137,7 +137,7 @@ class ProviderClient {
    * const result = await client.iyzico.completeThreeDSPayment(callbackData);
    * ```
    */
-  async completeThreeDSPayment(callbackData: any): Promise<PaymentResponse> {
+  async completeThreeDSPayment(callbackData: Record<string, unknown>): Promise<PaymentResponse> {
     return this.request<PaymentResponse>('POST', 'payment/complete-3ds', callbackData);
   }
 
