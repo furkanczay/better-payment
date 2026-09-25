@@ -1,0 +1,84 @@
+---
+title: Migrating to 0.5
+description: betterPayment() replaces new BetterPayment(), and providers are created with factories.
+---
+
+0.5 adds [plugins](/docs/plugins) and [payment events](/docs/plugins/events). So that what plugins add is typed, the payment object is now created with `betterPayment()` instead of the `BetterPayment` class, and each provider with a factory. Provider methods, results, handler options, adapters and the browser client are unchanged.
+
+## Before and after
+
+```typescript
+// 0.4
+import { BetterPayment, ProviderType } from 'better-payment';
+import { MockProvider } from 'better-payment/testing';
+
+const payment = new BetterPayment({
+  mode: 'sandbox',
+  defaultProvider: ProviderType.IYZICO,
+  providers: {
+    iyzico: { enabled: true, config: { apiKey, secretKey } },
+    paytr: { enabled: true, config: { merchantId, merchantKey, merchantSalt } },
+    mock: { enabled: process.env.NODE_ENV === 'test', provider: new MockProvider() },
+  },
+});
+```
+
+```typescript
+// 0.5
+import { betterPayment, iyzico, paytr } from 'better-payment';
+import { MockProvider } from 'better-payment/testing';
+
+const payment = betterPayment({
+  mode: 'sandbox',
+  defaultProvider: 'iyzico',
+  providers: {
+    iyzico: iyzico({ apiKey, secretKey }),
+    paytr: paytr({ merchantId, merchantKey, merchantSalt }),
+    ...(process.env.NODE_ENV === 'test' ? { mock: new MockProvider() } : {}),
+  },
+});
+```
+
+## Changes
+
+| 0.4 | 0.5 |
+| --- | --- |
+| `new BetterPayment(config)` | `betterPayment(options)` |
+| `iyzico: { enabled: true, config: {...} }` | `iyzico: iyzico({...})`, and `paytr()`, `akbank()`, `parampos()` |
+| `enabled: false` | Leave the provider out |
+| `mock: { enabled: true, provider: new MockProvider() }` | `mock: new MockProvider()` |
+| `payment.paytr` throws when PayTR is not configured | `payment.paytr` exists only when PayTR is configured (a type error otherwise); `payment.use('paytr')` throws `ProviderNotEnabledError` |
+| `defaultProvider: ProviderType.IYZICO` | `defaultProvider: 'iyzico'` (the enum still works) |
+| Type `BetterPaymentConfig` | `BetterPaymentOptions` |
+| `getEnabledProviders()` returns `ProviderType[]` | Returns `string[]`: the keys of `providers` |
+| `HandlerContext.provider` is a `ProviderType` | `string`, or `undefined` for plugin endpoints |
+
+Any key works in `providers` now: it is the provider's id in `payment.use(id)` and in the handler routes.
+
+## Typing the payment object
+
+The type of the payment object depends on its providers and plugins, so let TypeScript infer it. For a lazily created instance:
+
+```typescript
+const createPayment = () => betterPayment({ /* ... */ });
+
+let instance: ReturnType<typeof createPayment> | undefined;
+export const getPayment = () => (instance ??= createPayment());
+```
+
+`BetterPayment` (without type arguments) is still exported as a type, for code that only uses the operations: `function charge(payment: BetterPayment) { ... }`.
+
+## From onCallback to events
+
+`onCallback` still works. Events cover more: every provider, callbacks as well as payments, refunds and cancels made from your code.
+
+```typescript
+// 0.4: provider callbacks only, through the handler
+handler: {
+  onCallback: async (result) => orders.update(result.conversationId, result.status),
+},
+
+// 0.5: every flow and every provider
+payment.on('payment.succeeded', (event) => orders.markPaid(event.conversationId, event.paymentId));
+payment.on('payment.failed', (event) => orders.markFailed(event.conversationId, event.code));
+```

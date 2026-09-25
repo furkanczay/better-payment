@@ -20,6 +20,7 @@ import {
   type CancelRequest,
   type CancelResponse,
   type PaymentProviderConfig,
+  type BetterPayment,
 } from 'better-payment';
 import { MockProvider } from 'better-payment/testing';
 
@@ -95,7 +96,14 @@ export const payment = betterPayment({
   plugins: [paytrAbove(5000), auditLog],
 });
 
+// Code that only uses the operations can take any payment object
+export function charge(generic: BetterPayment, request: PaymentRequest): Promise<PaymentResponse> {
+  return generic.createPayment(request);
+}
+
 export async function usage(): Promise<void> {
+  await charge(payment, {} as PaymentRequest);
+
   // Providers are typed by their key
   const provider: Iyzico = payment.iyzico;
   const terminal: string = payment.mypos.terminal;

@@ -45,6 +45,9 @@ export type {
 export { PaymentProvider } from './core/PaymentProvider';
 export type { PaymentProviderConfig } from './core/PaymentProvider';
 export { HttpClient, HttpError } from './core/http';
+/** WebCrypto helpers for custom providers (signatures, constant-time comparison) */
+export { hmac, digest, safeEqual, toBase64, toHex, randomHex } from './core/crypto';
+export type { DigestAlgorithm } from './core/crypto';
 export {
   toFetchHandler,
   fromWebRequest,

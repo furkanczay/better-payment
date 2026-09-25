@@ -70,17 +70,14 @@ PARAMPOS_GUID=your-guid
 ## Kurulumu doğrulayın [#verify-installation]
 
 ```typescript
-import { BetterPayment, VERSION } from 'better-payment';
+import { betterPayment, iyzico, VERSION } from 'better-payment';
 
-const payment = new BetterPayment({
+const payment = betterPayment({
   mode: 'sandbox',
   providers: {
-    iyzico: {
-      enabled: true,
-      config: { apiKey: 'test', secretKey: 'test' },
-    },
+    iyzico: iyzico({ apiKey: 'test', secretKey: 'test' }),
   },
 });
 
-console.log(VERSION, payment.getEnabledProviders()); // '0.0.1' ['iyzico']
+console.log(VERSION, payment.getEnabledProviders()); // '0.5.0' ['iyzico']
 ```

@@ -3,22 +3,18 @@ title: Hızlı Başlangıç
 description: İlk ödemenizi 5 dakikadan kısa sürede alın.
 ---
 
-## 1. BetterPayment'i başlatın [#1-initialize-betterpayment]
+## 1. Ödeme nesnesini oluşturun [#1-initialize-betterpayment]
 
 ```typescript
-import { BetterPayment, ProviderType } from 'better-payment';
+import { betterPayment, iyzico } from 'better-payment';
 
-const payment = new BetterPayment({
+export const payment = betterPayment({
   mode: 'sandbox', // sandbox URLs and provider test modes; default is 'production'
-  defaultProvider: ProviderType.IYZICO,
   providers: {
-    iyzico: {
-      enabled: true,
-      config: {
-        apiKey: process.env.IYZICO_API_KEY!,
-        secretKey: process.env.IYZICO_SECRET_KEY!,
-      },
-    },
+    iyzico: iyzico({
+      apiKey: process.env.IYZICO_API_KEY!,
+      secretKey: process.env.IYZICO_SECRET_KEY!,
+    }),
   },
 });
 ```
@@ -124,15 +120,29 @@ Kütüphane callback'i sizin kimlik bilgilerinizle kontrol eder ve sağlayıcı 
 ## Birden fazla sağlayıcı kullanmak [#using-multiple-providers]
 
 ```typescript
-const payment = new BetterPayment({
-  defaultProvider: ProviderType.IYZICO,
+const payment = betterPayment({
   providers: {
-    iyzico: { enabled: true, config: { /* ... */ } },
-    paytr: { enabled: true, config: { /* ... */ } },
+    iyzico: iyzico({ /* ... */ }),
+    paytr: paytr({ /* ... */ }),
   },
+  defaultProvider: 'iyzico',
 });
 
 await payment.createPayment(request);                 // default provider
 await payment.paytr.initThreeDSPayment(paytrRequest); // specific provider
-await payment.use(ProviderType.PAYTR).getPayment('ORDER123');
+await payment.use('paytr').getPayment('ORDER123');
+```
+
+## Siparişleri olaylarla güncelleyin [#update-orders-with-events]
+
+Her sonucu tek tek kontrol etmek yerine [ödeme olaylarını](/docs/plugins/events) dinleyin. Olaylar her sağlayıcı ve akış için, sonuç sağlayıcı tarafından doğrulandıktan sonra yayınlanır:
+
+```typescript
+payment.on('payment.succeeded', async (event) => {
+  await orders.markPaid(event.conversationId, event.paymentId);
+});
+
+payment.on('payment.failed', async (event) => {
+  await orders.markFailed(event.conversationId, event.code);
+});
 ```

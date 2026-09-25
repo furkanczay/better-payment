@@ -60,11 +60,13 @@ createServer(toNodeHandler(payment)).listen(3000);
 
 ## Lazy initialization
 
-Every adapter also accepts a function that returns the `BetterPayment` instance (or its handler). The function is called on each request, so you can create the instance on first use:
+Every adapter also accepts a function that returns the payment object (or its handler). The function is called on each request, so you can create the instance on first use:
 
 ```typescript
-let instance: BetterPayment | undefined;
-const getPayment = () => (instance ??= new BetterPayment({ /* ... */ }));
+const createPayment = () => betterPayment({ /* ... */ });
+
+let instance: ReturnType<typeof createPayment> | undefined;
+const getPayment = () => (instance ??= createPayment());
 
 app.all('/api/pay/*path', toExpressHandler(getPayment));
 ```

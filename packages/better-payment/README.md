@@ -57,45 +57,33 @@ Cloudflare Workers, Deno, Bun): it only uses `fetch` and WebCrypto. See the
 ## Quick Start
 
 ```typescript
-import { BetterPayment, ProviderType } from 'better-payment';
+import { betterPayment, iyzico, paytr, parampos, akbank } from 'better-payment';
 
-const payment = new BetterPayment({
+const payment = betterPayment({
   mode: 'sandbox', // sandbox URLs + provider test modes
   providers: {
-    iyzico: {
-      enabled: true,
-      config: {
-        apiKey: process.env.IYZICO_API_KEY!,
-        secretKey: process.env.IYZICO_SECRET_KEY!,
-      },
-    },
-    paytr: {
-      enabled: true,
-      config: {
-        merchantId: process.env.PAYTR_MERCHANT_ID!,
-        merchantKey: process.env.PAYTR_MERCHANT_KEY!,
-        merchantSalt: process.env.PAYTR_MERCHANT_SALT!,
-      },
-    },
-    parampos: {
-      enabled: true,
-      config: {
-        clientCode: process.env.PARAMPOS_CLIENT_CODE!,
-        clientUsername: process.env.PARAMPOS_CLIENT_USERNAME!,
-        clientPassword: process.env.PARAMPOS_CLIENT_PASSWORD!,
-        guid: process.env.PARAMPOS_GUID!,
-      },
-    },
-    akbank: {
-      enabled: true,
-      config: {
-        merchantSafeId: process.env.AKBANK_MERCHANT_SAFE_ID!,
-        terminalSafeId: process.env.AKBANK_TERMINAL_SAFE_ID!,
-        secretKey: process.env.AKBANK_SECRET_KEY!,
-      },
-    },
+    iyzico: iyzico({
+      apiKey: process.env.IYZICO_API_KEY!,
+      secretKey: process.env.IYZICO_SECRET_KEY!,
+    }),
+    paytr: paytr({
+      merchantId: process.env.PAYTR_MERCHANT_ID!,
+      merchantKey: process.env.PAYTR_MERCHANT_KEY!,
+      merchantSalt: process.env.PAYTR_MERCHANT_SALT!,
+    }),
+    parampos: parampos({
+      clientCode: process.env.PARAMPOS_CLIENT_CODE!,
+      clientUsername: process.env.PARAMPOS_CLIENT_USERNAME!,
+      clientPassword: process.env.PARAMPOS_CLIENT_PASSWORD!,
+      guid: process.env.PARAMPOS_GUID!,
+    }),
+    akbank: akbank({
+      merchantSafeId: process.env.AKBANK_MERCHANT_SAFE_ID!,
+      terminalSafeId: process.env.AKBANK_TERMINAL_SAFE_ID!,
+      secretKey: process.env.AKBANK_SECRET_KEY!,
+    }),
   },
-  defaultProvider: ProviderType.IYZICO,
+  defaultProvider: 'iyzico',
 });
 
 // Start a 3D Secure payment and render result.threeDSHtmlContent in the browser
@@ -186,7 +174,7 @@ A framework-agnostic handler that exposes REST endpoints under `/api/pay`. It is
 the card queries (`installment`, `bin-check`).
 
 ```typescript
-const payment = new BetterPayment({
+const payment = betterPayment({
   providers: { ... },
   handler: {
     // opt in to what your frontend needs
@@ -250,6 +238,33 @@ export const { GET, POST } = toNextJsHandler(getBetterPayment);
 Failed operations return HTTP 422 with the result body. Unexpected errors return a
 generic 500 unless you set `exposeErrors: true`.
 
+## Plugins and events
+
+Plugins add behaviour without changing the library: react to payment events,
+route payments, add methods and routes. A plugin is an object with an `id` and
+only the parts it needs:
+
+```typescript
+import { betterPayment, definePlugin } from 'better-payment';
+
+const auditLog = definePlugin({
+  id: 'audit-log',
+  events: {
+    '*': (event) => console.log(event.type, event.provider, event.paymentId),
+  },
+});
+
+const payment = betterPayment({ providers: { ... }, plugins: [auditLog] });
+
+// Typed payment events, for every provider and flow, after verification
+payment.on('payment.succeeded', (event) => orders.markPaid(event.conversationId));
+```
+
+See [Plugins](https://better-payment.czaylabs.com/docs/plugins),
+[payment events](https://better-payment.czaylabs.com/docs/plugins/events) and
+[writing a plugin](https://better-payment.czaylabs.com/docs/plugins/writing-plugins).
+Upgrading from 0.4? See [Migrating to 0.5](https://better-payment.czaylabs.com/docs/guides/migration-0-5).
+
 ## Testing
 
 `better-payment/testing` has an in-memory `MockProvider`. It needs no credentials and no network access, and uses magic card numbers for declines, 3D Secure failures and lost responses. Its 3D Secure callbacks are signed and go through the real handler.
@@ -258,9 +273,9 @@ generic 500 unless you set `exposeErrors: true`.
 import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
 
 const mock = new MockProvider();
-const payment = new BetterPayment({ providers: { mock: { enabled: true, provider: mock } } });
+const payment = betterPayment({ providers: { mock } });
 
-await payment.use('mock').createPayment({ ...order, paymentCard: { ...card, cardNumber: MOCK_CARDS.INSUFFICIENT_FUNDS } });
+await payment.mock.createPayment({ ...order, paymentCard: { ...card, cardNumber: MOCK_CARDS.INSUFFICIENT_FUNDS } });
 // → { status: 'failure', code: 'INSUFFICIENT_FUNDS' }
 ```
 
@@ -269,7 +284,7 @@ See the [testing guide](https://better-payment.czaylabs.com/docs/guides/testing)
 ## Logging & Retry
 
 ```typescript
-const payment = new BetterPayment({
+const payment = betterPayment({
   logger: {
     debug: (msg, meta) => console.debug(msg, meta),
     info: (msg, meta) => console.info(msg, meta),

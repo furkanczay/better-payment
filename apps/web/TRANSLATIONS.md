@@ -51,4 +51,8 @@ Use these terms consistently in the Turkish docs. Code identifiers (`capture()`,
 | retry | yeniden deneme |
 | edge runtime | edge ortamı |
 | handler, adapter, route, hook, token, sandbox | (English term kept) |
+| plugin, endpoint | (English term kept) |
+| payment event / listener | ödeme olayı / dinleyici |
+| payment object | ödeme nesnesi |
+| custom provider | özel sağlayıcı |
 | non-3D | 3D'siz |

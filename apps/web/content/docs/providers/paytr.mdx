@@ -9,16 +9,19 @@ PayTR uses form-urlencoded requests. Every token is signed as
 ## Configuration
 
 ```typescript
-paytr: {
-  enabled: true,
-  config: {
-    merchantId: process.env.PAYTR_MERCHANT_ID!,
-    merchantKey: process.env.PAYTR_MERCHANT_KEY!,
-    merchantSalt: process.env.PAYTR_MERCHANT_SALT!,
-    // testMode: defaults to mode === 'sandbox' (sends test_mode=1)
-    // timeoutLimit: 30 (minutes)
+import { betterPayment, paytr } from 'better-payment';
+
+const payment = betterPayment({
+  providers: {
+    paytr: paytr({
+      merchantId: process.env.PAYTR_MERCHANT_ID!,
+      merchantKey: process.env.PAYTR_MERCHANT_KEY!,
+      merchantSalt: process.env.PAYTR_MERCHANT_SALT!,
+      // testMode: defaults to mode === 'sandbox' (sends test_mode=1)
+      // timeoutLimit: 30 (minutes)
+    }),
   },
-}
+});
 ```
 
 ## Order ids

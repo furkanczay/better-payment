@@ -17,25 +17,24 @@ Hiç ağ çağrısı yapmaz ve kimlik bilgisi gerektirmez.
 ## Kurulum [#setup]
 
 ```typescript
-import { BetterPayment } from 'better-payment';
+import { betterPayment } from 'better-payment';
 import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
 
 const mock = new MockProvider();
 
-const payment = new BetterPayment({
-  providers: {
-    mock: { enabled: true, provider: mock },
-  },
+const payment = betterPayment({
+  providers: { mock },
   handler: { /* the same options as in production */ },
+  plugins: [/* the same plugins as in production */],
 });
 
-const result = await payment.use('mock').createPayment({
+const result = await payment.mock.createPayment({
   ...order,
   paymentCard: { cardHolderName: 'Test User', cardNumber: MOCK_CARDS.SUCCESS, expireMonth: '12', expireYear: '2030', cvc: '123' },
 });
 ```
 
-Yaygın bir yöntem, `BetterPayment` config'ini ortamdan oluşturmak ve testlerde `mock`'u vermektir. Handler route'ları `/api/pay/mock/...` altındadır; tarayıcı client'ında da `client.mock` vardır.
+Yaygın bir yöntem, `providers` nesnesini ortamdan oluşturmak ve testlerde `mock`'u vermektir. Plugin'ler ve [ödeme olayları](/docs/plugins/events) `MockProvider` ile gerçek bir sağlayıcıdaki gibi çalışır; böylece sipariş güncellemeleriniz de test edilir. Handler route'ları `/api/pay/mock/...` altındadır; tarayıcı client'ında da `client.mock` vardır.
 
 ## Sihirli kart numaraları [#magic-card-numbers]
 
@@ -95,13 +94,13 @@ Vitest ile, gerçek handler'ınız üzerinden bir ödeme → 3D Secure → iade 
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { BetterPayment } from 'better-payment';
+import { betterPayment } from 'better-payment';
 import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
 
 it('charges and refunds an order', async () => {
   const mock = new MockProvider();
-  const payment = new BetterPayment({
-    providers: { mock: { enabled: true, provider: mock } },
+  const payment = betterPayment({
+    providers: { mock },
     handler: { allowedActions: 'all', authorize: () => true },
   });
   const call = (method: string, path: string, body?: unknown) =>

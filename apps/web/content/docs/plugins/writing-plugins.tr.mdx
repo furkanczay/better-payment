@@ -1,0 +1,268 @@
+---
+title: Plugin Yazmak
+description: Plugin, id'si ve ihtiyaç duyduğu parçaları olan bir nesne döndüren bir fonksiyondur. Birkaç adımda yazın.
+---
+
+Plugin, plugin'in seçeneklerini alan ve bir nesne döndüren bir fonksiyondur. Nesnenin bir `id`'si ve yalnızca plugin'in ihtiyaç duyduğu parçaları vardır. Bu rehber plugin'leri adım adım oluşturur; sondaki [başvuru](#reference) bölümü tüm parçaları listeler.
+
+## En küçük plugin [#the-smallest-plugin]
+
+```typescript
+import { definePlugin } from 'better-payment';
+
+export const auditLog = () =>
+  definePlugin({
+    id: 'audit-log',
+    events: {
+      '*': (event) => console.log(event.type, event.provider, event.paymentId),
+    },
+  });
+```
+
+`plugins` dizisine ekleyin:
+
+```typescript
+const payment = betterPayment({
+  providers: { /* ... */ },
+  plugins: [auditLog()],
+});
+```
+
+`definePlugin()` nesneyi değiştirmeden döndürür. Nesnenin tam tipini korur; böylece plugin'in ödeme nesnesine eklediği her şey tiplidir. `id` benzersiz olmalıdır: aynı id'ye sahip iki plugin `ConfigurationError` fırlatır.
+
+## Hook'lar [#hooks]
+
+**Before hook'u** işlemden önce çalışır. `matcher` hangi işlemlerde çalışacağını seçer (verilmezse hepsinde), `handler` ise işlemin bağlamını alır: `operation`, `request`, `provider` ve `routable`. `ctx.operation` kontrolü `ctx.request`'i o işlemin istek tipine daraltır.
+
+Bu plugin kartları ilk hanelerine göre, sağlayıcıyı çağırmadan reddeder:
+
+```typescript
+import { definePlugin, PaymentStatus, PaymentErrorCode } from 'better-payment';
+
+interface BlockListOptions {
+  /** Card number prefixes (BINs) to reject */
+  bins: string[];
+  message?: string;
+}
+
+export const blockList = (options: BlockListOptions) =>
+  definePlugin({
+    id: 'block-list',
+    options,
+    hooks: {
+      before: [
+        {
+          matcher: (ctx) => ctx.operation === 'createPayment' || ctx.operation === 'initThreeDSPayment',
+          handler: (ctx) => {
+            if (ctx.operation !== 'createPayment' && ctx.operation !== 'initThreeDSPayment') return;
+            const cardNumber = ctx.request.paymentCard?.cardNumber ?? '';
+            if (!options.bins.some((bin) => cardNumber.startsWith(bin))) return;
+            // Return a result: the provider is not called
+            return {
+              result: {
+                status: PaymentStatus.FAILURE,
+                code: PaymentErrorCode.FRAUD_SUSPECTED,
+                errorCode: 'BLOCKED_BIN',
+                errorMessage: options.message ?? 'This card cannot be used',
+              },
+            };
+          },
+        },
+      ],
+    },
+    $ERROR_CODES: {
+      BLOCKED_BIN: 'This card cannot be used',
+    },
+  });
+```
+
+Handler işlemin devam etmesi için hiçbir şey döndürmez ya da bir nesne döndürür:
+
+| Dönüş | Etkisi |
+| ----- | ------ |
+| `{ request }` | İşlem bu istekle devam eder |
+| `{ provider }` | İşlem bu sağlayıcıda çalışır (yalnızca ödeme nesnesinde yapılan çağrılarda, bkz. [sağlayıcıyı seçmek](#choosing-the-provider)) |
+| `{ result }` | Sağlayıcı çağrılmaz ve sonuç budur. Kalan before hook'ları atlanır; after hook'ları ve olaylar çalışır |
+| hata fırlatmak | İşlem hata fırlatır |
+
+**After hook'u** işlemden sonra, `ctx.result` ve işlemi çalıştıran sağlayıcıyla çalışır. Sonucu değiştirmek için `{ result }` döndürün:
+
+```typescript
+hooks: {
+  after: [
+    {
+      handler: async (ctx) => {
+        await metrics.increment(`payment.${ctx.operation}.${ctx.provider}`);
+      },
+    },
+    {
+      matcher: (ctx) => ctx.operation === 'refund',
+      handler: (ctx) => ({ result: { ...ctx.result, refundedBy: ctx.provider } }),
+    },
+  ],
+},
+```
+
+Sağlayıcı hata fırlattığında (örneğin geçersiz bir yapılandırmada) after hook'ları çalışmaz; başarısız olanlar dahil her sonuç için çalışırlar.
+
+## Sağlayıcıyı seçmek [#choosing-the-provider]
+
+Bir before hook'u `{ provider }` döndürerek çağrıyı başka bir sağlayıcıya gönderebilir. Yalnızca ödeme nesnesinde yapılan çağrılar (`payment.createPayment()`) taşınabilir; bunlarda `ctx.routable` `true`'dur. Bir sağlayıcıda (`payment.iyzico.refund()`) ya da handler'ın bir sağlayıcı adresi üzerinden yapılan çağrılar her zaman o sağlayıcıda çalışır; orada başka bir sağlayıcı döndürmek hata fırlatır.
+
+```typescript
+export const paytrAbove = (limit: number) =>
+  definePlugin({
+    id: 'paytr-above',
+    hooks: {
+      before: [
+        {
+          matcher: (ctx) => ctx.routable && ctx.operation === 'createPayment',
+          handler: (ctx) => {
+            if (ctx.operation !== 'createPayment') return;
+            return Number(ctx.request.paidPrice) > limit ? { provider: 'paytr' } : undefined;
+          },
+        },
+      ],
+    },
+  });
+```
+
+`defaultProvider` yoksa (ve birden fazla sağlayıcı varsa) bir hook seçene kadar `ctx.provider` `undefined`'dır. [Ödeme olaylarındaki](/docs/plugins/events) `event.provider` değerini siparişle birlikte saklayın: iade ve durum sorguları ödemeyi alan sağlayıcıya gitmelidir.
+
+## init ve methods [#init-and-methods]
+
+`init` ilk işlemden önce bir kez çalışır ve async olabilir. Hata fırlatırsa o işlem başarısız olur ve sonraki işlem `init`'i yeniden çalıştırır. `methods` ödeme nesnesi oluşturulurken çalışır ve nesneye eklenecek üyeleri döndürür:
+
+```typescript
+interface Rate {
+  provider: string;
+  installment: number;
+  percent: number;
+}
+
+export const rates = (loadRates: () => Promise<Rate[]>) => {
+  let table: Rate[] = [];
+  return definePlugin({
+    id: 'rates',
+    init: async () => {
+      table = await loadRates();
+    },
+    methods: (ctx) => ({
+      rates: {
+        cheapest: (installment: number) =>
+          table
+            .filter((rate) => rate.installment === installment && ctx.providerIds.includes(rate.provider))
+            .sort((a, b) => a.percent - b.percent)[0],
+      },
+    }),
+  });
+};
+
+// payment.rates.cheapest(3) is typed
+```
+
+İkisi de plugin bağlamını alır: sağlayıcı kimlikleri, varsayılan sağlayıcı, mod, logger ve `use(id)`. `use(id)`, işlemleri hook'lar ve olaylarla çalışan bir sağlayıcı döndürür. Bir sağlayıcı kimliğiyle ya da ödeme nesnesinin bir üyesiyle çakışan üye `ConfigurationError` fırlatır.
+
+## Endpoint'ler [#endpoints]
+
+`endpoints`, [HTTP handler'a](/docs/api/handler) adres ekler. Handler, endpoint'in döndürdüğünü `200` durum koduyla JSON olarak ya da `ctx.json(body, status)` ile oluşturulan yanıtı döner:
+
+```typescript
+endpoints: {
+  quote: {
+    method: 'POST',
+    path: '/rates/quote', // served at basePath + path: POST /api/pay/rates/quote
+    handler: (ctx) => {
+      const installment = Number(ctx.body?.installment ?? 1);
+      if (!Number.isInteger(installment)) {
+        return ctx.json({ error: true, message: 'installment must be an integer' }, 400);
+      }
+      return { rate: cheapest(installment) }; // JSON, status 200
+    },
+  },
+},
+```
+
+- `ctx`, plugin bağlamına ek olarak `request`, ayrıştırılmış `body` ve `query` içerir.
+- Handler'ın `authorize` hook'u endpoint'ler için de çalışır; `provider: undefined` ve `action: 'plugin:<plugin id>/<endpoint adı>'` olur (burada `plugin:rates/quote`).
+- Ödemeleri değiştiren ya da gösteren endpoint'leri `privileged: true` ile işaretleyin: handler, iadelerde olduğu gibi `authorize` hook'u olmadan başlamayı reddeder.
+- Bir adres bir sağlayıcı kimliğiyle ya da `health` ile başlayamaz.
+
+## Hata kodları [#error-codes]
+
+Plugin'in kendi hata kodlarını varsayılan (İngilizce) mesajlarıyla `$ERROR_CODES` içinde tanımlayın; yukarıdaki `BLOCKED_BIN` gibi. Bunlar `payment.$ERROR_CODES` içinde birleşir ve orada tiplidir; böylece uygulamalar ve çeviri plugin'leri bunları kullanabilir. Kodu sonucun `errorCode` alanına yazın; `code` alanı [normalize hata kodlarından](/docs/api/error-codes) biri olarak kalsın.
+
+## Test etmek [#testing]
+
+Plugin'leri bellek içi [MockProvider](/docs/guides/testing) ile test edin: ağ yok, kimlik bilgisi yok.
+
+```typescript
+import { it, expect } from 'vitest';
+import { betterPayment } from 'better-payment';
+import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
+import { blockList } from './block-list';
+
+it('rejects blocked cards without calling the provider', async () => {
+  const mock = new MockProvider();
+  const payment = betterPayment({
+    providers: { mock },
+    plugins: [blockList({ bins: ['400000'] })],
+  });
+
+  const result = await payment.createPayment({
+    ...order,
+    paymentCard: { ...card, cardNumber: MOCK_CARDS.CARD_DECLINED }, // 4000000000000002
+  });
+
+  expect(result.errorCode).toBe('BLOCKED_BIN');
+  expect(mock.payments).toHaveLength(0);
+});
+```
+
+## Yayınlamak [#publishing]
+
+- Plugin'i döndüren bir fonksiyon ve bir seçenekler arayüzü export edin.
+- npm paketine `better-payment-plugin-<ad>` adını verin ve `better-payment`'ı peer dependency olarak ekleyin.
+- `id`'yi değiştirmeyin: uygulamalar onu `authorize` hook'larında kullanabilir (`plugin:<id>/...`).
+- Kart verisini asla loglamayın ve saklamayın. Hook'lara gelen isteklerde kart numarası bulunur.
+- Plugin'inizin bu dokümanlarda listelenmesi için bir issue açın.
+
+## Başvuru [#reference]
+
+```typescript
+interface BetterPaymentPlugin {
+  id: string;
+  version?: string;
+  options?: unknown;
+  init?: (ctx: PluginContext) => void | Promise<void>;
+  hooks?: {
+    before?: { matcher?: (ctx: OperationContext) => boolean; handler: (ctx: OperationContext) => BeforeHookResult | void | Promise<BeforeHookResult | void> }[];
+    after?: { matcher?: (ctx: OperationResultContext) => boolean; handler: (ctx: OperationResultContext) => { result: unknown } | void | Promise<{ result: unknown } | void> }[];
+  };
+  events?: { [type in PaymentEventType | '*']?: (event: PaymentEvent) => void | Promise<void> };
+  methods?: (ctx: PluginContext) => Record<string, unknown>;
+  endpoints?: Record<string, PaymentEndpoint>;
+  $ERROR_CODES?: Record<string, string>;
+}
+
+interface OperationContext {
+  operation: PaymentOperation;  // narrows request: ctx.operation === 'refund' makes it a RefundRequest
+  request: PaymentOperations[operation]['request']; // e.g. PaymentRequest for createPayment
+  provider: string | undefined; // undefined when no default provider is set and no hook chose one
+  routable: boolean;            // true for calls made on the payment object
+}
+
+interface BeforeHookResult {
+  provider?: string; // run on this provider (routable calls only)
+  request?: unknown; // replace the request
+  result?: unknown;  // skip the provider and return this result
+}
+
+interface PluginContext {
+  providerIds: readonly string[];
+  defaultProvider: string | undefined;
+  mode: 'sandbox' | 'production';
+  logger: BetterPaymentLogger | undefined;
+  use(providerId: string): PaymentProvider; // operations run with hooks and events
+}
+```

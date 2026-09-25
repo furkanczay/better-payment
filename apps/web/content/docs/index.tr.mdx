@@ -18,6 +18,7 @@ Her ödeme sağlayıcısının kendi SDK'sı, istek formatı, imza yöntemi ve h
   <Card title="Doğrulanmış callback'ler" description="3D Secure callback'leri, hiçbir sonuca güvenilmeden önce sizin kimlik bilgilerinizle kontrol edilir." />
   <Card title="Güvenli HTTP handler" description="Framework'ten bağımsız handler yalnızca sizin açtığınız işlemleri sunar; authorize ve tutarı sunucuda belirleme hook'ları vardır." />
   <Card title="Çoklu sağlayıcı" description="Birden fazla sağlayıcıyı aynı anda etkinleştirin, her istekte birini seçin." />
+  <Card title="Plugin'ler" description="Ödeme olayları, sağlayıcı yönlendirme ve daha fazlası plugin olarak gelir. Kendi plugin'inizi birkaç satırda yazın." href="/docs/plugins" />
 </Cards>
 
 ## Desteklenen sağlayıcılar [#supported-providers]
@@ -35,19 +36,15 @@ Her ödeme sağlayıcısının kendi SDK'sı, istek formatı, imza yöntemi ve h
 ## Kısa örnek [#quick-example]
 
 ```typescript
-import { BetterPayment, ProviderType } from 'better-payment';
+import { betterPayment, iyzico } from 'better-payment';
 
-const payment = new BetterPayment({
+const payment = betterPayment({
   mode: 'sandbox',
-  defaultProvider: ProviderType.IYZICO,
   providers: {
-    iyzico: {
-      enabled: true,
-      config: {
-        apiKey: process.env.IYZICO_API_KEY!,
-        secretKey: process.env.IYZICO_SECRET_KEY!,
-      },
-    },
+    iyzico: iyzico({
+      apiKey: process.env.IYZICO_API_KEY!,
+      secretKey: process.env.IYZICO_SECRET_KEY!,
+    }),
   },
 });
 

@@ -15,14 +15,14 @@ const iyzico = new Iyzipay({ apiKey, secretKey, uri });
 // Four request shapes, four response formats,
 // four ways to verify a callback.`;
 
-const after = `import { BetterPayment } from "better-payment";
+const after = `import { betterPayment, iyzico, paytr, parampos, akbank } from "better-payment";
 
-const payment = new BetterPayment({
+const payment = betterPayment({
   providers: {
-    iyzico:   { enabled: true, config: { ... } },
-    paytr:    { enabled: true, config: { ... } },
-    parampos: { enabled: true, config: { ... } },
-    akbank:   { enabled: true, config: { ... } },
+    iyzico:   iyzico({ ... }),
+    paytr:    paytr({ ... }),
+    parampos: parampos({ ... }),
+    akbank:   akbank({ ... }),
   },
 });
 

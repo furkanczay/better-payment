@@ -1,0 +1,58 @@
+---
+title: Plugins
+description: Add features to better-payment with plugins — payment events, provider routing and your own logic.
+---
+
+A plugin adds behaviour to the payment object without changing the library. It can react to payment events, run code before and after provider operations, add methods to the payment object and routes to the HTTP handler. Plugins are plain objects, so a plugin often fits in a few lines, and you can [write your own](/docs/plugins/writing-plugins).
+
+## Using plugins
+
+```typescript
+import { betterPayment, iyzico, paytr } from 'better-payment';
+import { auditLog } from './plugins/audit-log';
+
+export const payment = betterPayment({
+  providers: {
+    iyzico: iyzico({ /* ... */ }),
+    paytr: paytr({ /* ... */ }),
+  },
+  plugins: [auditLog()],
+});
+```
+
+Plugins run in the order of the `plugins` array. Their hooks, event listeners and endpoints are registered when the payment object is created. Their `init` runs once, before the first operation.
+
+## What a plugin can do
+
+| Part | What it does | Example |
+| ---- | ------------ | ------- |
+| `events` | Listens to [payment events](/docs/plugins/events) | Update orders, send e-mails, keep an audit log |
+| `hooks.before` | Runs before an operation. It can choose the provider, change the request, or return a result without calling the provider | Send payments to the cheapest provider, block a card, add an order id |
+| `hooks.after` | Runs after an operation and can replace its result | Translate error messages |
+| `init` | Runs once, before the first operation | Load rate tables, warm up a cache |
+| `methods` | Adds members to the payment object | `payment.router.quote()` |
+| `endpoints` | Adds routes to the HTTP handler | `POST /api/pay/router/quote` |
+| `$ERROR_CODES` | Declares the plugin's error codes | `NO_ELIGIBLE_PROVIDER` |
+
+Everything a plugin adds is typed: `payment.router.quote()` autocompletes, and a typo is a type error.
+
+## Operations
+
+Hooks run for these operations, whether they are called on the payment object (`payment.createPayment()`), on a provider (`payment.iyzico.createPayment()`) or through the HTTP handler:
+
+`createPayment`, `initThreeDSPayment`, `completeThreeDSPayment`, `authorize`, `initThreeDSAuthorize`, `capture`, `voidAuthorization`, `refund`, `cancel`, `getPayment`, `saveCard`, `listCards`, `deleteCard`, `binCheck`, `installmentInfo`
+
+Provider-specific methods (the iyzico checkout form, PWI and subscriptions, PayTR token payments) run without hooks.
+
+<Callout type="info">
+  A hook can move only calls made on the payment object to another provider. A call made on a provider (`payment.iyzico.refund()`), or through a provider route of the handler, always runs on that provider: refunds, cancels and status queries must reach the provider that took the payment.
+</Callout>
+
+## Official plugins
+
+Official plugins will ship in the package, under `better-payment/plugins`. Planned:
+
+- Localized error messages, in English and Turkish ([#76](https://github.com/furkanczay/better-payment/issues/76))
+- Commission router: send each payment to the cheapest provider ([#51](https://github.com/furkanczay/better-payment/issues/51))
+
+Until then, [write your own](/docs/plugins/writing-plugins). It takes a few lines.

@@ -1,0 +1,84 @@
+---
+title: 0.5'e geçiş
+description: new BetterPayment() yerine betterPayment() geldi; sağlayıcılar fabrika fonksiyonlarıyla oluşturuluyor.
+---
+
+0.5, [plugin'leri](/docs/plugins) ve [ödeme olaylarını](/docs/plugins/events) ekler. Plugin'lerin eklediklerinin tipli olması için ödeme nesnesi artık `BetterPayment` sınıfı yerine `betterPayment()` ile, her sağlayıcı da bir fabrika fonksiyonuyla oluşturuluyor. Sağlayıcı metotları, sonuçlar, handler seçenekleri, adapter'lar ve tarayıcı client'ı değişmedi.
+
+## Önce ve sonra [#before-and-after]
+
+```typescript
+// 0.4
+import { BetterPayment, ProviderType } from 'better-payment';
+import { MockProvider } from 'better-payment/testing';
+
+const payment = new BetterPayment({
+  mode: 'sandbox',
+  defaultProvider: ProviderType.IYZICO,
+  providers: {
+    iyzico: { enabled: true, config: { apiKey, secretKey } },
+    paytr: { enabled: true, config: { merchantId, merchantKey, merchantSalt } },
+    mock: { enabled: process.env.NODE_ENV === 'test', provider: new MockProvider() },
+  },
+});
+```
+
+```typescript
+// 0.5
+import { betterPayment, iyzico, paytr } from 'better-payment';
+import { MockProvider } from 'better-payment/testing';
+
+const payment = betterPayment({
+  mode: 'sandbox',
+  defaultProvider: 'iyzico',
+  providers: {
+    iyzico: iyzico({ apiKey, secretKey }),
+    paytr: paytr({ merchantId, merchantKey, merchantSalt }),
+    ...(process.env.NODE_ENV === 'test' ? { mock: new MockProvider() } : {}),
+  },
+});
+```
+
+## Değişiklikler [#changes]
+
+| 0.4 | 0.5 |
+| --- | --- |
+| `new BetterPayment(config)` | `betterPayment(options)` |
+| `iyzico: { enabled: true, config: {...} }` | `iyzico: iyzico({...})`; ayrıca `paytr()`, `akbank()`, `parampos()` |
+| `enabled: false` | Sağlayıcıyı eklemeyin |
+| `mock: { enabled: true, provider: new MockProvider() }` | `mock: new MockProvider()` |
+| PayTR yapılandırılmamışken `payment.paytr` hata fırlatır | `payment.paytr` yalnızca PayTR yapılandırıldığında vardır (yoksa tip hatası); `payment.use('paytr')` `ProviderNotEnabledError` fırlatır |
+| `defaultProvider: ProviderType.IYZICO` | `defaultProvider: 'iyzico'` (enum hâlâ çalışır) |
+| `BetterPaymentConfig` tipi | `BetterPaymentOptions` |
+| `getEnabledProviders()` `ProviderType[]` döner | `string[]` döner: `providers` içindeki anahtarlar |
+| `HandlerContext.provider` bir `ProviderType` | `string`, plugin endpoint'lerinde `undefined` |
+
+`providers` içinde artık her anahtar kullanılabilir: anahtar, `payment.use(id)`'de ve handler adreslerinde sağlayıcının kimliğidir.
+
+## Ödeme nesnesinin tipi [#typing-the-payment-object]
+
+Ödeme nesnesinin tipi sağlayıcılarına ve plugin'lerine bağlıdır; bu yüzden tipi TypeScript'in çıkarmasına bırakın. Tembel (lazy) oluşturulan bir örnek için:
+
+```typescript
+const createPayment = () => betterPayment({ /* ... */ });
+
+let instance: ReturnType<typeof createPayment> | undefined;
+export const getPayment = () => (instance ??= createPayment());
+```
+
+`BetterPayment` (tip argümanı olmadan) hâlâ bir tip olarak export edilir; yalnızca işlemleri kullanan kod için: `function charge(payment: BetterPayment) { ... }`.
+
+## onCallback'ten olaylara [#from-oncallback-to-events]
+
+`onCallback` hâlâ çalışır. Olaylar daha fazlasını kapsar: her sağlayıcıyı; callback'lerin yanı sıra kodunuzdan yapılan ödeme, iade ve iptalleri.
+
+```typescript
+// 0.4: provider callbacks only, through the handler
+handler: {
+  onCallback: async (result) => orders.update(result.conversationId, result.status),
+},
+
+// 0.5: every flow and every provider
+payment.on('payment.succeeded', (event) => orders.markPaid(event.conversationId, event.paymentId));
+payment.on('payment.failed', (event) => orders.markFailed(event.conversationId, event.code));
+```

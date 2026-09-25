@@ -20,7 +20,7 @@ lookup and subscription management also need an `authorize` hook; without
 one, creating the handler throws.
 
 ```typescript
-const payment = new BetterPayment({
+const payment = betterPayment({
   providers: { /* ... */ },
   handler: {
     basePath: '/api/pay', // default
@@ -151,7 +151,7 @@ const redisStore: IdempotencyStore = {
   delete: async (key) => void (await redis.del(key)),
 };
 
-new BetterPayment({
+betterPayment({
   providers: { ... },
   handler: {
     idempotency: { store: redisStore, ttlSeconds: 7 * 24 * 3600 }, // or `false` to turn it off
@@ -180,8 +180,8 @@ interface BetterPaymentResponse {
 }
 
 interface HandlerContext {
-  provider: ProviderType;
-  action: HandlerAction;
+  provider: string | undefined; // the provider id; undefined for plugin endpoints
+  action: HandlerAction;        // 'payment/init-3ds', ... or 'plugin:<plugin id>/<endpoint name>'
   params: Record<string, string>; // { paymentId } for payment/get
   request: BetterPaymentRequest;
   body: Record<string, unknown> | undefined; // undefined when there is no object body
@@ -191,6 +191,8 @@ interface HandlerContext {
 `ctx.body` comes from the client, so its fields are typed `unknown`: validate them
 (or cast after validating) before you use them. `onCallback` and `callbackRedirect`
 receive a `PaymentResponse`.
+
+Plugins can add routes to the handler ([plugin endpoints](/docs/plugins/writing-plugins#endpoints)). The `authorize` hook runs for them too, with `provider: undefined` and `action: 'plugin:<plugin id>/<endpoint name>'`. For callbacks, [payment events](/docs/plugins/events) are emitted right before `onCallback`, and are retried with it when a listener fails.
 
 ## Frameworks
 

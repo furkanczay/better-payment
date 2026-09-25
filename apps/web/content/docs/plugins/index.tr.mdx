@@ -1,0 +1,58 @@
+---
+title: Plugin'ler
+description: better-payment'e plugin'lerle özellik ekleyin — ödeme olayları, sağlayıcı yönlendirme ve kendi mantığınız.
+---
+
+Plugin, kütüphaneyi değiştirmeden ödeme nesnesine davranış ekler. Ödeme olaylarına tepki verebilir, sağlayıcı işlemlerinden önce ve sonra kod çalıştırabilir, ödeme nesnesine metot ve HTTP handler'a adres ekleyebilir. Plugin'ler düz nesnelerdir; bu yüzden bir plugin çoğu zaman birkaç satıra sığar ve [kendi plugin'inizi yazabilirsiniz](/docs/plugins/writing-plugins).
+
+## Plugin kullanmak [#using-plugins]
+
+```typescript
+import { betterPayment, iyzico, paytr } from 'better-payment';
+import { auditLog } from './plugins/audit-log';
+
+export const payment = betterPayment({
+  providers: {
+    iyzico: iyzico({ /* ... */ }),
+    paytr: paytr({ /* ... */ }),
+  },
+  plugins: [auditLog()],
+});
+```
+
+Plugin'ler `plugins` dizisindeki sırayla çalışır. Hook'ları, olay dinleyicileri ve endpoint'leri ödeme nesnesi oluşturulurken kaydedilir. `init` fonksiyonları ilk işlemden önce bir kez çalışır.
+
+## Bir plugin neler yapabilir? [#what-a-plugin-can-do]
+
+| Parça | Ne yapar | Örnek |
+| ----- | -------- | ----- |
+| `events` | [Ödeme olaylarını](/docs/plugins/events) dinler | Siparişleri güncellemek, e-posta göndermek, denetim kaydı tutmak |
+| `hooks.before` | İşlemden önce çalışır. Sağlayıcıyı seçebilir, isteği değiştirebilir ya da sağlayıcıyı çağırmadan bir sonuç döndürebilir | Ödemeleri en ucuz sağlayıcıya göndermek, bir kartı engellemek, sipariş numarası eklemek |
+| `hooks.after` | İşlemden sonra çalışır ve sonucu değiştirebilir | Hata mesajlarını çevirmek |
+| `init` | İlk işlemden önce bir kez çalışır | Komisyon tablolarını yüklemek, önbelleği ısıtmak |
+| `methods` | Ödeme nesnesine üye ekler | `payment.router.quote()` |
+| `endpoints` | HTTP handler'a adres ekler | `POST /api/pay/router/quote` |
+| `$ERROR_CODES` | Plugin'in hata kodlarını tanımlar | `NO_ELIGIBLE_PROVIDER` |
+
+Plugin'in eklediği her şey tiplidir: `payment.router.quote()` otomatik tamamlanır, bir yazım hatası tip hatası olur.
+
+## İşlemler [#operations]
+
+Hook'lar şu işlemlerde çalışır; işlem ödeme nesnesinde (`payment.createPayment()`), bir sağlayıcıda (`payment.iyzico.createPayment()`) ya da HTTP handler üzerinden çağrılmış olabilir:
+
+`createPayment`, `initThreeDSPayment`, `completeThreeDSPayment`, `authorize`, `initThreeDSAuthorize`, `capture`, `voidAuthorization`, `refund`, `cancel`, `getPayment`, `saveCard`, `listCards`, `deleteCard`, `binCheck`, `installmentInfo`
+
+Sağlayıcıya özel metotlar (iyzico ödeme formu, PWI ve abonelikler, PayTR token ödemeleri) hook'suz çalışır.
+
+<Callout type="info">
+  Bir hook yalnızca ödeme nesnesinde yapılan çağrıları başka bir sağlayıcıya taşıyabilir. Bir sağlayıcıda (`payment.iyzico.refund()`) ya da handler'ın bir sağlayıcı adresi üzerinden yapılan çağrı her zaman o sağlayıcıda çalışır: iade, iptal ve durum sorguları ödemeyi alan sağlayıcıya gitmelidir.
+</Callout>
+
+## Resmi plugin'ler [#official-plugins]
+
+Resmi plugin'ler paketle birlikte, `better-payment/plugins` altında gelecek. Planlananlar:
+
+- Hata mesajları için dil desteği, İngilizce ve Türkçe ([#76](https://github.com/furkanczay/better-payment/issues/76))
+- Komisyon yönlendirici: her ödemeyi en ucuz sağlayıcıya göndermek ([#51](https://github.com/furkanczay/better-payment/issues/51))
+
+O zamana kadar [kendi plugin'inizi yazın](/docs/plugins/writing-plugins). Birkaç satır yeterli.

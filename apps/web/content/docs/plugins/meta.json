@@ -1,0 +1,9 @@
+{
+  "title": "Plugins",
+  "pages": [
+    "index",
+    "events",
+    "writing-plugins",
+    "custom-providers"
+  ]
+}

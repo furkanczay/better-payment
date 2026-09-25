@@ -7,18 +7,15 @@ import { localePath, type Locale } from "@/lib/i18n/config";
 
 const highlightIcons = [Lock, CreditCard, Shield, Zap];
 
-const codeSnippet = `import { BetterPayment } from "better-payment";
+const codeSnippet = `import { betterPayment, akbank } from "better-payment";
 
-const payment = new BetterPayment({
+const payment = betterPayment({
   providers: {
-    akbank: {
-      enabled: true,
-      config: {
-        merchantSafeId: process.env.AKBANK_MERCHANT_SAFE_ID!,
-        terminalSafeId: process.env.AKBANK_TERMINAL_SAFE_ID!,
-        secretKey:      process.env.AKBANK_SECRET_KEY!,
-      },
-    },
+    akbank: akbank({
+      merchantSafeId: process.env.AKBANK_MERCHANT_SAFE_ID!,
+      terminalSafeId: process.env.AKBANK_TERMINAL_SAFE_ID!,
+      secretKey:      process.env.AKBANK_SECRET_KEY!,
+    }),
   },
 });
 
