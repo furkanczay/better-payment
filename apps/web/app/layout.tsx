@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "better-payment — Unified Payment Gateway for Node.js",
   description:
-    "A unified, type-safe payment gateway library for Node.js. Integrate İyzico, PayTR, and Parampos with a single consistent API.",
-  keywords: ["payment gateway", "iyzico", "paytr", "parampos", "nodejs", "typescript", "npm"],
+    "A unified, type-safe payment gateway library for Node.js. Integrate iyzico, PayTR, Parampos and Akbank with a single consistent API and verified callbacks.",
+  keywords: ["payment gateway", "iyzico", "paytr", "parampos", "akbank", "sanal pos", "nodejs", "typescript", "npm"],
 };
 
 export default function RootLayout({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useTheme } from "next-themes";
@@ -19,8 +19,12 @@ const navLinks = [
 
 function ThemeToggle() {
   const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // false during SSR and hydration, true afterwards (the theme is only known on the client)
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   if (!mounted) return <div className="w-8 h-8" />;
   return (
     <button
@@ -39,7 +43,7 @@ function ThemeToggle() {
   );
 }
 
-export default function Navbar() {
+export default function Navbar({ version }: { version: string }) {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -66,13 +70,13 @@ export default function Navbar() {
             width={304}
             height={64}
             alt="better-payment logo"
-            className="h-16 w-auto"
+            className="h-16 w-auto brightness-0 dark:invert"
           />
           <Badge
             variant="secondary"
             className="text-[10px] px-1.5 py-0 hidden sm:flex font-mono tracking-tight"
           >
-            v2
+            v{version}
           </Badge>
         </Link>
 

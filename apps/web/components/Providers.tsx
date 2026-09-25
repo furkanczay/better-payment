@@ -3,254 +3,156 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import Image from "next/image";
+import Code from "@/components/Code";
 
 const providers = [
   {
     id: "iyzico",
-    name: "İyzico",
+    name: "iyzico",
     logo: "/iyzico.svg",
-    tagline: "Turkey's leading gateway",
+    tagline: "Payment gateway",
     description:
-      "Full-featured integration covering V2 auth, hosted checkout, PWI (IBAN payments), subscriptions, BIN check, and installment inquiry.",
-    gradient: "from-orange-500 to-rose-500",
-    activeColor: "border-orange-500/40 bg-orange-500/5",
-    tabActive: "text-orange-500 border-orange-500",
+      "IYZWSv2-signed JSON API with non-3D and 3D Secure payments, a hosted checkout form, pay with IBAN (PWI), subscriptions, and BIN and installment queries.",
     features: [
-      "V2 Auth & 3D Secure",
-      "Hosted Checkout Form",
-      "PWI (IBAN/EFT Payments)",
-      "Subscription & Recurring",
-      "BIN Check & Installments",
-      "Card Tokenization",
+      "Non-3D & 3D Secure",
+      "Hosted checkout form",
+      "Pay with IBAN (PWI)",
+      "Subscriptions",
+      "BIN & installment queries",
+      "Refund, cancel, status",
     ],
-    snippet: [
-      { c: "muted", v: "// Checkout form (hosted payment page)" },
-      { c: "", v: "\n" },
-      { c: "dim", v: "const" },
-      { c: "", v: " result = " },
-      { c: "dim", v: "await" },
-      { c: "", v: " payment." },
-      { c: "sky", v: "use" },
-      { c: "dim", v: "(" },
-      { c: "green", v: '"iyzico"' },
-      { c: "dim", v: ")" },
-      { c: "", v: "\n  ." },
-      { c: "yellow", v: "initCheckoutForm" },
-      { c: "dim", v: "({" },
-      { c: "", v: "\n    price: " },
-      { c: "green", v: '"100.00"' },
-      { c: "dim", v: ", currency: " },
-      { c: "green", v: '"TRY"' },
-      { c: "dim", v: "," },
-      { c: "", v: "\n    callbackUrl: " },
-      { c: "green", v: '"https://yoursite.com/callback"' },
-      { c: "dim", v: "," },
-      { c: "", v: "\n    buyer: " },
-      { c: "dim", v: "{ ... }" },
-      { c: "dim", v: "," },
-      { c: "", v: "\n    basketItems: " },
-      { c: "dim", v: "[ ... ]" },
-      { c: "", v: "\n  " },
-      { c: "dim", v: "});" },
-    ],
+    file: "checkout.ts",
+    code: `// Hosted checkout form
+const result = await payment.iyzico.initCheckoutForm({
+  price: "100.00",
+  paidPrice: "100.00",
+  currency: "TRY",
+  basketId: "B1",
+  callbackUrl: "https://yoursite.com/checkout/callback",
+  buyer: { ... },
+  basketItems: [ ... ],
+  ...
+});
+
+// Render result.checkoutFormContent on your page`,
   },
   {
     id: "paytr",
     name: "PayTR",
     logo: "/paytr.svg",
-    tagline: "Competitive rates, fast payouts",
+    tagline: "Payment gateway",
     description:
-      "iframe-based 3D Secure with HMAC-SHA256 signed requests. Supports BIN detail, installment queries, partial refunds, and callback verification.",
-    gradient: "from-blue-500 to-indigo-600",
-    activeColor: "border-blue-500/40 bg-blue-500/5",
-    tabActive: "text-blue-500 border-blue-500",
+      "iFrame payment page with HMAC-signed requests. Results arrive as server notifications, which the handler verifies and answers with OK.",
     features: [
-      "iframe 3D Secure Flow",
-      "BIN Detail & Installments",
-      "Partial & Full Refunds",
-      "HMAC Callback Verification",
-      "Test Mode Support",
-      "Multi-currency",
+      "iFrame payment page",
+      "Verified notifications",
+      "BIN & installment rates",
+      "Partial & full refunds",
+      "Status queries",
+      "Test mode",
     ],
-    snippet: [
-      { c: "muted", v: "// iframe 3D Secure" },
-      { c: "", v: "\n" },
-      { c: "dim", v: "const" },
-      { c: "", v: " result = " },
-      { c: "dim", v: "await" },
-      { c: "", v: " payment." },
-      { c: "sky", v: "use" },
-      { c: "dim", v: "(" },
-      { c: "green", v: '"paytr"' },
-      { c: "dim", v: ")" },
-      { c: "", v: "\n  ." },
-      { c: "yellow", v: "initThreeDSPayment" },
-      { c: "dim", v: "({" },
-      { c: "", v: "\n    price: " },
-      { c: "green", v: '"250.00"' },
-      { c: "dim", v: ", currency: " },
-      { c: "green", v: '"TL"' },
-      { c: "dim", v: "," },
-      { c: "", v: "\n    callbackUrl: " },
-      { c: "green", v: '"https://yoursite.com/paytr-cb"' },
-      { c: "dim", v: "," },
-      { c: "", v: "\n    buyer: " },
-      { c: "dim", v: "{ ... }" },
-      { c: "dim", v: "," },
-      { c: "", v: "\n    basketItems: " },
-      { c: "dim", v: "[ ... ]" },
-      { c: "", v: "\n  " },
-      { c: "dim", v: "});" },
-      { c: "", v: "\n\n" },
-      { c: "muted", v: "// Returns HTML iframe content" },
-    ],
+    file: "paytr.ts",
+    code: `// iFrame payment page
+const result = await payment.paytr.initThreeDSPayment({
+  price: "250.00",
+  paidPrice: "250.00",
+  currency: "TRY",
+  conversationId: "ORDER123", // becomes merchant_oid
+  callbackUrl: "https://yoursite.com/orders/ORDER123",
+  buyer: { ... },
+  basketItems: [ ... ],
+  ...
+});
+
+// Render result.threeDSHtmlContent (the iFrame).
+// The result is POSTed to your notification URL:
+// /api/pay/paytr/callback verifies it and replies "OK".`,
   },
   {
     id: "parampos",
     name: "Parampos",
     logo: "/param.svg",
-    tagline: "Enterprise-grade SOAP integration",
+    tagline: "Virtual POS (SOAP)",
     description:
-      "Full SOAP API integration with direct card charge, 3D Secure, installment support, and complete refund & cancellation flows.",
-    gradient: "from-emerald-500 to-teal-600",
-    activeColor: "border-emerald-500/40 bg-emerald-500/5",
-    tabActive: "text-emerald-500 border-emerald-500",
+      "The SOAP API behind the same interface: 3D payments finalized with TP_WMD_Pay, non-3D payments, refunds, cancels, and status and BIN queries. TRY only.",
     features: [
-      "SOAP API (abstracted)",
-      "Direct Card Charge",
-      "3D Secure",
-      "Installments",
-      "Refund & Cancellation",
-      "Test Environment",
+      "3D Secure (TP_WMD_UCD / Pay)",
+      "Non-3D payments",
+      "Installment count per payment",
+      "Refund & cancel",
+      "Status queries",
+      "BIN lookup",
     ],
-    snippet: [
-      { c: "muted", v: "// Direct payment (SOAP abstracted)" },
-      { c: "", v: "\n" },
-      { c: "dim", v: "const" },
-      { c: "", v: " result = " },
-      { c: "dim", v: "await" },
-      { c: "", v: " payment." },
-      { c: "sky", v: "use" },
-      { c: "dim", v: "(" },
-      { c: "green", v: '"parampos"' },
-      { c: "dim", v: ")" },
-      { c: "", v: "\n  ." },
-      { c: "yellow", v: "createPayment" },
-      { c: "dim", v: "({" },
-      { c: "", v: "\n    price: " },
-      { c: "green", v: '"500.00"' },
-      { c: "dim", v: ", currency: " },
-      { c: "green", v: '"TRY"' },
-      { c: "dim", v: "," },
-      { c: "", v: "\n    paymentCard: " },
-      { c: "dim", v: "{ ... }" },
-      { c: "dim", v: "," },
-      { c: "", v: "\n    buyer: " },
-      { c: "dim", v: "{ ... }" },
-      { c: "dim", v: "," },
-      { c: "", v: "\n    basketItems: " },
-      { c: "dim", v: "[ ... ]" },
-      { c: "", v: "\n  " },
-      { c: "dim", v: "});" },
-      { c: "", v: "\n\n" },
-      { c: "muted", v: "// Same interface as iyzico & paytr" },
-    ],
+    file: "parampos.ts",
+    code: `// Non-3D payment, SOAP handled for you
+const result = await payment.parampos.createPayment({
+  price: "500.00",
+  paidPrice: "500.00",
+  currency: "TRY",
+  conversationId: "ORDER123", // becomes Siparis_ID
+  paymentCard: { ... },
+  buyer: { ... },
+  basketItems: [ ... ],
+  ...
+});
+
+// result.paymentId === "ORDER123"`,
   },
 ];
-
-const colorMap: Record<string, string> = {
-  dim: "text-muted-foreground/60",
-  sky: "text-sky-400",
-  green: "text-emerald-400",
-  yellow: "text-amber-400",
-  muted: "text-muted-foreground/40 italic",
-  "": "text-foreground/85",
-};
-
-type Token = { c: string; v: string };
-
-function CodeSnippet({ tokens }: { tokens: Token[] }) {
-  return (
-    <div className="bg-background/60 rounded-xl border border-border/50 overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-2.5 bg-muted/20 border-b border-border/40">
-        <div className="flex gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-border/60" />
-          <span className="w-2 h-2 rounded-full bg-border/60" />
-          <span className="w-2 h-2 rounded-full bg-green-500/50" />
-        </div>
-        <span className="ml-2 text-[10.5px] font-mono text-muted-foreground/50">checkout.ts</span>
-      </div>
-      <pre className="p-5 font-mono text-[11.5px] leading-[1.85] overflow-x-auto">
-        <code>
-          {tokens.map((tok, i) => (
-            <span key={i} className={colorMap[tok.c] ?? "text-foreground/85"}>
-              {tok.v}
-            </span>
-          ))}
-        </code>
-      </pre>
-    </div>
-  );
-}
 
 export default function Providers() {
   const [active, setActive] = useState(0);
   const p = providers[active];
 
   return (
-    <section id="providers" className="py-28 px-5 sm:px-8">
+    <section id="providers" className="py-24 px-5 sm:px-8">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-12 max-w-2xl">
-          <p className="text-xs font-mono uppercase tracking-[0.2em] text-primary mb-3">
-            Supported Providers
+        <div className="mb-10 max-w-2xl">
+          <p className="text-xs font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
+            Payment gateways
           </p>
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground tracking-tight leading-tight">
+          <h2 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-tight">
             Three gateways,
             <br />
-            <span className="text-muted-foreground font-medium">one integration.</span>
+            <span className="text-muted-foreground font-medium">one set of types.</span>
           </h2>
         </div>
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 border border-border/60 rounded-xl bg-muted/20 p-1 w-fit mb-8">
+        <div
+          role="tablist"
+          className="flex items-center gap-1 border border-border rounded-lg bg-muted/40 p-1 w-fit mb-6"
+        >
           {providers.map((pr, i) => (
             <button
               key={pr.id}
+              role="tab"
+              aria-selected={active === i}
               onClick={() => setActive(i)}
               className={[
-                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                "flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
                 active === i
-                  ? "bg-card shadow-sm text-foreground border border-border/60"
-                  : "text-muted-foreground hover:text-foreground",
+                  ? "bg-card text-foreground shadow-sm border border-border"
+                  : "text-muted-foreground hover:text-foreground border border-transparent",
               ].join(" ")}
             >
               <span className="w-5 h-5 rounded bg-white flex items-center justify-center overflow-hidden shrink-0 p-0.5">
-                <Image src={pr.logo} alt={pr.name} width={20} height={20} className="w-full h-full object-contain" />
+                <Image src={pr.logo} alt="" width={20} height={20} className="w-full h-full object-contain" />
               </span>
               {pr.name}
             </button>
           ))}
         </div>
 
-        {/* Content */}
-        <div
-          key={p.id}
-          className={`rounded-2xl border ${p.activeColor} overflow-hidden transition-all duration-300`}
-        >
-          {/* Top gradient bar */}
-          <div className={`h-0.5 bg-gradient-to-r ${p.gradient}`} />
-
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.3fr] gap-0 lg:divide-x divide-border/40">
-            {/* Left: info */}
+        <div key={p.id} className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.3fr] lg:divide-x divide-border">
             <div className="p-8 flex flex-col gap-6">
               <div>
                 <div className="flex items-center gap-3 mb-3">
-                  <div className={`w-11 h-11 rounded-xl bg-white flex items-center justify-center shadow-sm overflow-hidden p-1.5`}>
+                  <div className="w-11 h-11 rounded-lg bg-white border border-border flex items-center justify-center overflow-hidden p-1.5">
                     <Image src={p.logo} alt={p.name} width={40} height={40} className="w-full h-full object-contain" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-foreground text-lg leading-tight">{p.name}</h3>
+                    <h3 className="font-semibold text-foreground text-lg leading-tight">{p.name}</h3>
                     <p className="text-sm text-muted-foreground">{p.tagline}</p>
                   </div>
                 </div>
@@ -258,13 +160,13 @@ export default function Providers() {
               </div>
 
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/50 mb-3">
+                <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground mb-3">
                   Capabilities
                 </p>
                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {p.features.map((feat) => (
                     <li key={feat} className="flex items-center gap-2 text-sm text-foreground/80">
-                      <Check className="w-3.5 h-3.5 shrink-0 text-emerald-500 dark:text-emerald-400" />
+                      <Check className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
                       {feat}
                     </li>
                   ))}
@@ -272,12 +174,11 @@ export default function Providers() {
               </div>
             </div>
 
-            {/* Right: code */}
-            <div className="p-8 bg-muted/10">
-              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/50 mb-4">
-                Example usage
+            <div className="p-8 bg-muted/30">
+              <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground mb-4">
+                Example
               </p>
-              <CodeSnippet tokens={p.snippet} />
+              <Code code={p.code} file={p.file} />
             </div>
           </div>
         </div>
