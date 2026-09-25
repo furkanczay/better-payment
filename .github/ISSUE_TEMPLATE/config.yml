@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/furkanczay/better-payment/security/advisories/new
+    about: Report vulnerabilities privately. Never open a public issue for a security problem.
+  - name: Question or idea
+    url: https://github.com/furkanczay/better-payment/discussions
+    about: Ask questions and discuss ideas before opening an issue.
+  - name: Documentation
+    url: https://better-payment.czaylabs.com/docs
+    about: Guides and API reference, in English and Turkish.

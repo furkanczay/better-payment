@@ -21,7 +21,7 @@ tests/
 │       └── paytr.test.ts    # PayTR hash, basket encoding, vb.
 │
 ├── sandbox/                  # Gerçek sağlayıcı test ortamları (pnpm test:sandbox,
-│                             # kimlik bilgisi yoksa atlanır; bkz. CONTRIBUTING.md)
+│                             # kimlik bilgisi yoksa atlanır; bkz. CONTRIBUTING.tr.md)
 │
 ├── e2e/                      # End-to-end testler
 │   └── payment-flows.test.ts # Tam ödeme akışları

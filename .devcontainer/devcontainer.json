@@ -1,0 +1,15 @@
+{
+  "name": "better-payment",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm",
+  "features": {},
+  "postCreateCommand": "corepack enable && pnpm install",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "Docs site (pnpm dev)", "onAutoForward": "notify" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "vitest.explorer", "unifiedjs.vscode-mdx"]
+    }
+  }
+}

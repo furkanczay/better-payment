@@ -1,5 +1,7 @@
 # better-payment Katkı Rehberi
 
+> English: [CONTRIBUTING.md](CONTRIBUTING.md)
+
 better-payment projesine katkıda bulunmayı düşündüğünüz için teşekkür ederiz! Bu doküman, projeye nasıl katkıda bulunabileceğinizi açıklar.
 
 ## İçindekiler
@@ -17,7 +19,9 @@ better-payment projesine katkıda bulunmayı düşündüğünüz için teşekkü
 
 ## Davranış Kuralları
 
-Bu proje ve topluluğu herkes için açık ve misafirperver bir deneyim sağlamayı taahhüt eder. Lütfen saygılı ve yapıcı olun.
+Bu proje ve topluluğu herkes için açık ve misafirperver bir deneyim sağlamayı taahhüt eder. Lütfen saygılı ve yapıcı olun. Tüm katılımcılar [Davranış Kuralları](CODE_OF_CONDUCT.md)'na uyar.
+
+Güvenlik açıklarını asla herkese açık bir issue olarak bildirmeyin; [SECURITY.md](SECURITY.md)'deki gibi [gizli bildirim](https://github.com/furkanczay/better-payment/security/advisories/new) kullanın.
 
 ## Nasıl Katkıda Bulunabilirim?
 
@@ -246,9 +250,6 @@ git commit -m "feat(core)!: Change API response structure
 BREAKING CHANGE: Response structure changed from {data} to {result}"
 ```
 
-### Husky ve Commitlint
-
-Commit mesajları otomatik olarak doğrulanır. Hatalı commit mesajları reddedilir.
 
 ## Yeni Provider Ekleme
 
@@ -433,7 +434,7 @@ Web sitesi ve dokümantasyon İngilizce (varsayılan, `/docs/...`) ve Türkçe (
 - Bir İngilizce sayfayı değiştirdiğinizde Türkçesini aynı PR'da güncelleyin.
 - Terimler için sözlüğe uyun (ön provizyon, taksit, sanal POS, …).
 
-Kurallar ve terim sözlüğü: [apps/web/TRANSLATIONS.md](../../apps/web/TRANSLATIONS.md). CI şu kontrolü çalıştırır:
+Kurallar ve terim sözlüğü: [apps/web/TRANSLATIONS.md](apps/web/TRANSLATIONS.md). CI şu kontrolü çalıştırır:
 
 ```bash
 cd apps/web

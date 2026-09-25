@@ -1,0 +1,39 @@
+name: Plugin proposal
+description: Propose an official plugin, or share a community plugin.
+labels: ["enhancement", "area: plugin"]
+body:
+  - type: markdown
+    attributes:
+      value: See [Write a plugin](https://better-payment.czaylabs.com/docs/plugins/writing-plugins) for what plugins can do.
+  - type: textarea
+    id: purpose
+    attributes:
+      label: What does the plugin do?
+    validations:
+      required: true
+  - type: checkboxes
+    id: parts
+    attributes:
+      label: Plugin parts it needs
+      options:
+        - label: Before/after hooks
+        - label: Payment events
+        - label: Methods on the payment object
+        - label: Handler endpoints
+        - label: onResponse
+        - label: Error codes
+  - type: textarea
+    id: api
+    attributes:
+      label: Usage example
+      render: typescript
+  - type: input
+    id: link
+    attributes:
+      label: Repository or npm package (for community plugins)
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to work on this.
