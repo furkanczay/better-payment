@@ -1,0 +1,192 @@
+---
+title: Tip referansı
+description: better-payment'in dışa açtığı TypeScript tipleri.
+---
+
+## İstekler [#requests]
+
+### PaymentRequest
+
+```typescript
+interface PaymentRequest {
+  price: string;            // basket total
+  paidPrice: string;        // amount charged (incl. installment commission)
+  currency: Currency | string;
+  basketId: string;
+  paymentCard: PaymentCard;
+  buyer: Buyer;
+  shippingAddress: Address;
+  billingAddress: Address;
+  basketItems: BasketItem[];
+  callbackUrl?: string;
+  conversationId?: string;  // your order id (generated for PayTR/Akbank/Parampos when omitted)
+  installment?: number;     // 1 = single payment
+}
+
+interface ThreeDSPaymentRequest extends PaymentRequest {
+  callbackUrl: string;
+}
+```
+
+### PaymentCard / Buyer / Address / BasketItem
+
+```typescript
+interface PaymentCard {
+  cardHolderName: string;
+  cardNumber: string;
+  expireMonth: string;
+  expireYear: string;       // 'YY' or 'YYYY'
+  cvc: string;
+  registerCard?: boolean;
+}
+
+interface Buyer {
+  id: string;
+  name: string;
+  surname: string;
+  email: string;
+  gsmNumber: string;
+  identityNumber: string;
+  registrationAddress: string;
+  city: string;
+  country: string;
+  ip: string;
+  zipCode?: string;
+}
+
+interface Address {
+  contactName: string;
+  city: string;
+  country: string;
+  address: string;
+  zipCode?: string;
+}
+
+interface BasketItem {
+  id: string;
+  name: string;
+  category1: string;
+  category2?: string;
+  itemType: BasketItemType | string;
+  price: string;
+}
+```
+
+### RefundRequest / CancelRequest
+
+```typescript
+interface RefundRequest {
+  paymentId: string;  // iyzico: paymentTransactionId; others: order id
+  price: string;
+  currency: Currency | string;
+  ip: string;
+  conversationId?: string;
+}
+
+interface CancelRequest {
+  paymentId: string;  // iyzico: paymentId; others: order id
+  ip: string;
+  conversationId?: string;
+  price?: string;     // full amount (PayTR/Parampos look it up when omitted)
+  currency?: Currency | string;
+}
+```
+
+## Yanıtlar [#responses]
+
+### PaymentStatus
+
+```typescript
+enum PaymentStatus {
+  SUCCESS = 'success',
+  FAILURE = 'failure',
+  PENDING = 'pending',     // waiting for the customer, or outcome unknown (NETWORK_ERROR)
+  CANCELLED = 'cancelled', // voided / fully refunded (status queries)
+}
+```
+
+### PaymentResponse
+
+```typescript
+interface PaymentResponse {
+  status: PaymentStatus;
+  paymentId?: string;
+  conversationId?: string;
+  code?: PaymentErrorCode;  // normalized, set on every failure (see Error Codes)
+  errorCode?: string;       // raw provider code, or 'NETWORK_ERROR', 'INVALID_HASH', 'MD_STATUS_x', ...
+  errorMessage?: string;
+  errorGroup?: string;
+  rawResponse?: unknown;
+}
+```
+
+### ThreeDSInitResponse
+
+```typescript
+interface ThreeDSInitResponse {
+  status: PaymentStatus;        // 'pending' when the customer must continue
+  threeDSHtmlContent?: string;  // HTML to render (3D form, PayTR iframe page, auto-submit form)
+  redirectUrl?: string;         // PayTR iframe URL
+  paymentId?: string;
+  conversationId?: string;
+  code?: PaymentErrorCode;
+  errorCode?: string;
+  errorMessage?: string;
+  rawResponse?: unknown;
+}
+```
+
+### RefundResponse / CancelResponse
+
+```typescript
+interface RefundResponse {
+  status: PaymentStatus;
+  refundId?: string;
+  conversationId?: string;
+  code?: PaymentErrorCode;
+  errorCode?: string;
+  errorMessage?: string;
+  rawResponse?: unknown;
+}
+
+interface CancelResponse {
+  status: PaymentStatus;
+  transactionId?: string;
+  conversationId?: string;
+  code?: PaymentErrorCode;
+  errorCode?: string;
+  errorMessage?: string;
+  rawResponse?: unknown;
+}
+```
+
+## Enum'lar [#enums]
+
+```typescript
+enum Currency { TRY = 'TRY', USD = 'USD', EUR = 'EUR', GBP = 'GBP' }
+enum BasketItemType { PHYSICAL = 'PHYSICAL', VIRTUAL = 'VIRTUAL' }
+enum ProviderType { IYZICO = 'iyzico', PAYTR = 'paytr', AKBANK = 'akbank', PARAMPOS = 'parampos' }
+```
+
+## Sağlayıcı config'leri [#provider-configs]
+
+```typescript
+interface IyzicoConfig   { apiKey: string; secretKey: string; baseUrl?: string; locale?: string }
+interface PayTRConfig    { merchantId: string; merchantKey: string; merchantSalt: string; testMode?: boolean; timeoutLimit?: number }
+interface AkbankConfig   { merchantSafeId: string; terminalSafeId: string; secretKey: string; subMerchantId?: string; testMode?: boolean; gateway3dUrl?: string }
+interface ParamposConfig { clientCode: string; clientUsername: string; clientPassword: string; guid: string }
+```
+
+Tüm sağlayıcı config'leri ayrıca `baseUrl`, `locale`, `logger` ve `retry` kabul eder.
+
+## Hatalar [#errors]
+
+```typescript
+class BetterPaymentError extends Error { code: string; provider?: string }
+class ConfigurationError extends BetterPaymentError {}   // missing/invalid config
+class ProviderNotEnabledError extends BetterPaymentError {}
+class ValidationError extends BetterPaymentError {}
+class PaymentFailedError extends BetterPaymentError {}
+```
+
+Ödeme işlemleri sağlayıcı reddettiğinde hata fırlatmaz; `status: 'failure'` ile döner. `binCheck()`, sorgu başarısız olduğunda ya da desteklenmediğinde hata fırlatır.

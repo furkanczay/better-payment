@@ -1,4 +1,5 @@
 import Code from "@/components/Code";
+import type { Dictionary } from "@/lib/i18n/dictionary";
 
 const before = `// iyzico: JSON + IYZWSv2 signatures
 const iyzico = new Iyzipay({ apiKey, secretKey, uri });
@@ -30,46 +31,37 @@ const result = await payment.use("parampos").createPayment(order);
 
 result.status; // "success" | "failure" | "pending" | "cancelled"`;
 
-const points = [
-  "One interface, four providers",
-  "Shared result statuses",
-  "Callbacks verified for you",
-  "TypeScript-first",
-];
-
-export default function Compare() {
+export default function Compare({ t }: { t: Dictionary["compare"] }) {
   return (
     <section className="py-24 px-5 sm:px-8">
       <div className="max-w-6xl mx-auto">
         <div className="max-w-2xl mb-12">
           <p className="text-xs font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
-            The problem
+            {t.eyebrow}
           </p>
           <h2 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-tight">
-            Every gateway has a
+            {t.titleLine1}
             <br />
-            <span className="text-muted-foreground font-medium">completely different API.</span>
+            <span className="text-muted-foreground font-medium">{t.titleLine2}</span>
           </h2>
           <p className="mt-4 text-base text-muted-foreground leading-relaxed max-w-xl">
-            Different request shapes, signatures, error formats and callback rules.
-            better-payment implements each one against the provider&apos;s specification and
-            gives you one set of types to work with.
+            {t.lead}
           </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
           <div className="flex flex-col gap-2 min-w-0">
-            <span className="text-xs font-medium text-muted-foreground">Without</span>
+            <span className="text-xs font-medium text-muted-foreground">{t.without}</span>
             <Code code={before} file="integration/payments.ts" className="flex-1" />
           </div>
           <div className="flex flex-col gap-2 min-w-0">
-            <span className="text-xs font-medium text-foreground">With better-payment</span>
+            <span className="text-xs font-medium text-foreground">{t.with}</span>
             <Code code={after} file="lib/payment.ts" className="flex-1" />
           </div>
         </div>
 
         <ul className="flex flex-wrap gap-2 mt-8">
-          {points.map((point) => (
+          {t.points.map((point) => (
             <li
               key={point}
               className="text-xs font-medium text-muted-foreground border border-border rounded-full px-3 py-1.5"

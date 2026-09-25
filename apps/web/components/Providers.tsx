@@ -4,23 +4,13 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 import Image from "next/image";
 import Code from "@/components/Code";
+import type { Dictionary } from "@/lib/i18n/dictionary";
 
 const providers = [
   {
     id: "iyzico",
     name: "iyzico",
     logo: "/iyzico.svg",
-    tagline: "Payment gateway",
-    description:
-      "IYZWSv2-signed JSON API with non-3D and 3D Secure payments, a hosted checkout form, pay with IBAN (PWI), subscriptions, and BIN and installment queries.",
-    features: [
-      "Non-3D & 3D Secure",
-      "Hosted checkout form",
-      "Pay with IBAN (PWI)",
-      "Subscriptions",
-      "BIN & installment queries",
-      "Refund, cancel, status",
-    ],
     file: "checkout.ts",
     code: `// Hosted checkout form
 const result = await payment.iyzico.initCheckoutForm({
@@ -40,17 +30,6 @@ const result = await payment.iyzico.initCheckoutForm({
     id: "paytr",
     name: "PayTR",
     logo: "/paytr.svg",
-    tagline: "Payment gateway",
-    description:
-      "iFrame payment page with HMAC-signed requests. Results arrive as server notifications, which the handler verifies and answers with OK.",
-    features: [
-      "iFrame payment page",
-      "Verified notifications",
-      "BIN & installment rates",
-      "Partial & full refunds",
-      "Status queries",
-      "Test mode",
-    ],
     file: "paytr.ts",
     code: `// iFrame payment page
 const result = await payment.paytr.initThreeDSPayment({
@@ -72,17 +51,6 @@ const result = await payment.paytr.initThreeDSPayment({
     id: "parampos",
     name: "Parampos",
     logo: "/param.svg",
-    tagline: "Virtual POS (SOAP)",
-    description:
-      "The SOAP API behind the same interface: 3D payments finalized with TP_WMD_Pay, non-3D payments, refunds, cancels, and status and BIN queries. TRY only.",
-    features: [
-      "3D Secure (TP_WMD_UCD / Pay)",
-      "Non-3D payments",
-      "Installment count per payment",
-      "Refund & cancel",
-      "Status queries",
-      "BIN lookup",
-    ],
     file: "parampos.ts",
     code: `// Non-3D payment, SOAP handled for you
 const result = await payment.parampos.createPayment({
@@ -100,21 +68,26 @@ const result = await payment.parampos.createPayment({
   },
 ];
 
-export default function Providers() {
+export default function Providers({ t }: { t: Dictionary["providers"] }) {
   const [active, setActive] = useState(0);
-  const p = providers[active];
+  const base = providers[active];
+  const p = {
+    ...base,
+    ...t[base.id as "iyzico" | "paytr" | "parampos"],
+    tagline: base.id === "parampos" ? t.virtualPos : t.gateway,
+  };
 
   return (
     <section id="providers" className="py-24 px-5 sm:px-8">
       <div className="max-w-6xl mx-auto">
         <div className="mb-10 max-w-2xl">
           <p className="text-xs font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
-            Payment gateways
+            {t.eyebrow}
           </p>
           <h2 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-tight">
-            Three gateways,
+            {t.titleLine1}
             <br />
-            <span className="text-muted-foreground font-medium">one set of types.</span>
+            <span className="text-muted-foreground font-medium">{t.titleLine2}</span>
           </h2>
         </div>
 
@@ -161,7 +134,7 @@ export default function Providers() {
 
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground mb-3">
-                  Capabilities
+                  {t.capabilities}
                 </p>
                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {p.features.map((feat) => (
@@ -176,7 +149,7 @@ export default function Providers() {
 
             <div className="p-8 bg-muted/30">
               <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground mb-4">
-                Example
+                {t.example}
               </p>
               <Code code={p.code} file={p.file} />
             </div>

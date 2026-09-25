@@ -1,0 +1,114 @@
+---
+title: PayTR
+description: PayTR entegrasyon referansı — iFrame ödemeler, bildirimler, iadeler, durum sorgusu, BIN ve taksit.
+---
+
+PayTR form-urlencoded istekler kullanır. Her token `base64(HMAC-SHA256(data + merchant_salt, merchant_key))` olarak imzalanır.
+
+## Yapılandırma [#configuration]
+
+```typescript
+paytr: {
+  enabled: true,
+  config: {
+    merchantId: process.env.PAYTR_MERCHANT_ID!,
+    merchantKey: process.env.PAYTR_MERCHANT_KEY!,
+    merchantSalt: process.env.PAYTR_MERCHANT_SALT!,
+    // testMode: defaults to mode === 'sandbox' (sends test_mode=1)
+    // timeoutLimit: 30 (minutes)
+  },
+}
+```
+
+## Sipariş numaraları [#order-ids]
+
+PayTR'nin `merchant_oid` alanı **yalnızca harf ve rakam** içerebilir. Sipariş numaranızı `conversationId` olarak verin. Vermezseniz `BP1727180000000A1B2C3D4` gibi bir numara üretilir ve `paymentId` / `conversationId` olarak döner. Bunu saklayın; `refund`, `cancel` ve `getPayment` bunu kullanır.
+
+## iFrame ödeme (3D Secure) [#iframe-payment-3d-secure]
+
+```typescript
+const init = await payment.paytr.initThreeDSPayment({
+  ...paymentRequest,            // buyer.gsmNumber and billingAddress.address are sent to PayTR
+  conversationId: 'ORDER123',
+  callbackUrl: 'https://yoursite.com/orders/ORDER123', // where the customer returns
+  installment: undefined,       // undefined: any; 1: single payment only; n: up to n
+});
+
+// init.threeDSHtmlContent — a page with the PayTR iframe
+// init.redirectUrl        — https://www.paytr.com/odeme/guvenli/<token>
+```
+
+`payment_amount`, `paidPrice`'tır (kuruş cinsinden). Sepet kalemleri TL fiyatlarıyla gönderilir.
+
+## Bildirim (Bildirim URL) [#notification-bildirim-url]
+
+`callbackUrl` ödeme sonucunu **taşımaz**. PayTR sonucu, PayTR mağaza panelinde tanımlı **bildirim URL'sine** sunucudan sunucuya gönderir.
+
+1. Bildirim URL'sini `https://yoursite.com/api/pay/paytr/callback` olarak ayarlayın.
+2. [HTTP handler](/docs/api/handler) ile bildirim doğrulanır, `onCallback`'e iletilir ve düz metin `OK` ile yanıtlanır:
+
+```typescript
+handler: {
+  onCallback: async (result) => {
+    // result.paymentId === merchant_oid
+    // result.status is 'success' or 'failure'
+    await db.orders.updatePayment(result.paymentId, result.status);
+  },
+}
+```
+
+Handler olmadan:
+
+```typescript
+const result = await payment.paytr.completeThreeDSPayment(req.body);
+if (result.errorCode === 'INVALID_HASH') return res.status(400).send('bad hash');
+await db.orders.updatePayment(result.paymentId, result.status); // make this idempotent
+res.type('text/plain').send('OK');
+```
+
+<Callout type="warn">
+  PayTR aynı bildirimi birden fazla kez gönderebilir. Sipariş güncellemenizi idempotent yapın.
+</Callout>
+
+## Doğrudan ödeme (3D'siz) [#direct-payment-non-3d]
+
+```typescript
+const result = await payment.paytr.createPayment(paymentRequest);
+```
+
+Bu, `non_3d=1` ve `sync_mode=1` ile Direct API'yi kullanır. PayTR hesabınızın 3D'siz ödemeler için onaylanmış olması gerekir.
+
+## Kayıtlı kartlar (utoken / ctoken) [#stored-cards-utoken--ctoken]
+
+```typescript
+const init = await payment.paytr.createPaymentWithToken({
+  utoken, ctoken, cvv, price: '100.00',
+  callbackUrl: 'https://yoursite.com/orders/ORDER123',
+  conversationId: 'ORDER123',
+  buyer: { email, name, surname, ip, gsmNumber },
+  basketItems: [{ name: 'Item', price: '100.00', quantity: 1 }],
+});
+// init.threeDSHtmlContent auto-submits a Direct API form from the browser
+```
+
+## İade, iptal ve durum sorgusu [#refund-cancel--status]
+
+```typescript
+await payment.paytr.refund({ paymentId: 'ORDER123', price: '50.00', currency: 'TRY', ip: '1.2.3.4' });
+
+// PayTR has no void; cancel() is a full refund. Without price, the paid amount is looked up.
+await payment.paytr.cancel({ paymentId: 'ORDER123', ip: '1.2.3.4' });
+
+const status = await payment.paytr.getPayment('ORDER123'); // /odeme/durum-sorgu
+// 'success', or 'cancelled' when fully refunded
+```
+
+## BIN ve taksit [#bin--installments]
+
+```typescript
+const bin = await payment.paytr.binCheck('552879');
+// bin.bankName, bin.cardFamily (brand), bin.cardAssociation (schema), bin.cardType
+
+const info = await payment.paytr.installmentInfo({ binNumber: '552879', price: '100.00' });
+// Totals use the commission rates defined on your PayTR account (/odeme/taksit-oranlari)
+```

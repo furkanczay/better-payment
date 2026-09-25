@@ -1,3 +1,6 @@
 node_modules
 .turbo
 plan.md
+
+# Local Claude Code settings
+.claude/

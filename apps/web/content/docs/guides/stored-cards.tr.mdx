@@ -1,0 +1,104 @@
+---
+title: Kayıtlı kartlar
+description: Müşterinin kartını sağlayıcıda saklayın ve sonra token ile tahsilat yapın.
+---
+
+Kayıtlı kartlar, geri dönen bir müşterinin kart numarasını yeniden yazmadan ödeme yapmasını sağlar. Kartı sağlayıcı saklar; siz yalnızca iki **token** saklarsınız:
+
+- `customerToken`: müşteriyi sağlayıcıda tanımlar (iyzico `cardUserKey`, PayTR `utoken`). Bir müşterinin birden çok kartı olabilir.
+- `cardToken`: tek bir kayıtlı kartı tanımlar (iyzico `cardToken`, PayTR `ctoken`).
+
+<Callout type="warn">
+  Kart numaralarını ya da CVC'leri asla kendiniz saklamayın; bu, tüm sisteminizi PCI DSS kapsamına sokar. Yalnızca token'ları kendi kullanıcı numaranızın yanında saklayın. Kartı yalnızca müşteri **açıkça onay verdiğinde** kaydedin (örneğin "Bu kartı hatırla" kutusu) ve kartı silebilmesine izin verin.
+</Callout>
+
+## Ödeme sırasında kartı kaydetmek [#save-a-card-during-a-payment]
+
+Normal bir kartlı ödemeyle birlikte `saveCard` gönderin. Ödeme başarılı olduğunda sonuç token'ları taşır:
+
+```typescript
+const result = await payment.use('iyzico').createPayment({
+  ...order,
+  paymentCard: { cardHolderName, cardNumber, expireMonth, expireYear, cvc },
+  saveCard: true, // or { customerToken: user.cardUserKey, alias: 'My card' } to add it to an existing customer
+});
+
+if (result.status === 'success' && result.storedCard) {
+  await db.users.update(user.id, { customerToken: result.storedCard.customerToken });
+  // result.storedCard.cardToken is set when the provider returns it (iyzico)
+}
+```
+
+`saveCard`, `initThreeDSPayment()` ile de çalışır; bu durumda token'lar `completeThreeDSPayment()` sonucunda gelir.
+
+## Kayıtlı kartla ödeme [#pay-with-a-saved-card]
+
+`paymentCard` yerine `storedCard` gönderin:
+
+```typescript
+await payment.use('iyzico').createPayment({
+  ...order,
+  storedCard: { customerToken: user.customerToken, cardToken: selectedCard.cardToken },
+});
+```
+
+PayTR'de listelenen kartta `requiresCvc: true` varsa `cvc` ekleyin.
+
+## Listeleme ve silme [#list-and-delete]
+
+```typescript
+const { cards } = await payment.use('iyzico').listCards({ customerToken: user.customerToken });
+// cards: [{ cardToken, alias, binNumber, lastFourDigits, cardAssociation, bankName, ... }]
+
+await payment.use('iyzico').deleteCard({ customerToken: user.customerToken, cardToken });
+```
+
+Müşterinin kart seçmesi için `lastFourDigits`, `bankName` ve `alias` gösterin; token'ın kendisini asla göstermeyin.
+
+iyzico bir kartı ödeme olmadan da kaydedebilir:
+
+```typescript
+const saved = await payment.use('iyzico').saveCard({
+  customerToken: user.customerToken, // omit for a new customer; use email/externalId instead
+  email: user.email,
+  alias: 'Work card',
+  card: { cardHolderName, cardNumber, expireMonth, expireYear },
+});
+// saved.customerToken, saved.card?.cardToken
+```
+
+## Sağlayıcılar [#providers]
+
+| Sağlayıcı | Ödeme sırasında kaydetme | `saveCard()` | `listCards()` | `deleteCard()` | Token ile ödeme |
+| -------- | ------------------- | ------------ | ------------- | -------------- | ------------ |
+| iyzico | `registerCard` | `/cardstorage/card` | `/cardstorage/cards` | `/cardstorage/card` | `cardUserKey` + `cardToken` |
+| PayTR | Direct API `store_card=1` | desteklenmiyor | `/odeme/capi/list` | `/odeme/capi/delete` | `utoken` + `ctoken` |
+| Parampos | henüz yok ([#65](https://github.com/furkanczay/better-payment/issues/65)) | — | — | — | — |
+| Akbank | henüz yok ([#65](https://github.com/furkanczay/better-payment/issues/65)) | — | — | — | — |
+
+- **PayTR** kartları yalnızca Direct API ödemesi sırasında kaydeder ve bu özelliğin (Kart Saklama) PayTR hesabınızda açık olması gerekir. `utoken` ödeme sonucunda ya da bildirimde (`onCallback`) gelir; `ctoken`'ı `listCards()` ile alın. iFrame API kart kaydedemez.
+- Desteklemeyen sağlayıcılar `NOT_SUPPORTED` fırlatır (ödeme isteğindeki `storedCard`/`saveCard` için: `INVALID_REQUEST`); HTTP handler `400` döner.
+
+## HTTP handler
+
+| Route | İşlem | `authorize` gerekir mi |
+| ----- | ------ | ----------------- |
+| `POST /:provider/cards/save` | `cards/save` | 🔒 |
+| `POST /:provider/cards/list` | `cards/list` | 🔒 |
+| `POST /:provider/cards/delete` | `cards/delete` | 🔒 |
+
+Kart route'ları tek bir müşterinin kartlarıyla ilgilidir, bu yüzden yalnızca bir `authorize` hook'uyla açılabilir. `transformRequest` içinde `customerToken`'ı istek gövdesinden değil **kendi oturumunuzdan** alın; böylece bir müşteri başka bir müşterinin kartlarını listeleyemez ya da silemez:
+
+```typescript
+transformRequest: async (ctx) => {
+  if (!ctx.action.startsWith('cards/')) return ctx.body;
+  const user = await getUser(ctx.request.headers.cookie);
+  return { ...ctx.body, customerToken: user.customerToken };
+},
+```
+
+`cards/save` ve `cards/delete`, `Idempotency-Key` başlığını kabul eder. Tarayıcı client'ında `client.iyzico.saveCard(...)`, `listCards(...)` ve `deleteCard(...)` var.
+
+## Doğrulama [#verification]
+
+iyzico akışı (ödeme sırasında kaydetme, listeleme, token ile ödeme, silme) her gece gerçek iyzico sandbox'ına karşı çalıştırılır. PayTR token formülleri PayTR'nin resmi Postman koleksiyonunu izler; henüz bir PayTR hesabına karşı çalıştırılmadı ([yardım aranıyor](https://github.com/furkanczay/better-payment/issues/62)).

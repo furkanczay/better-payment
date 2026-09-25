@@ -1,0 +1,80 @@
+---
+title: Edge ortamları
+description: better-payment'i Vercel Edge, Cloudflare Workers, Deno ve Bun'da çalıştırın.
+---
+
+`better-payment`'in hiç runtime bağımlılığı yoktur ve yalnızca web standardı API'leri kullanır: `fetch`, WebCrypto (`crypto.subtle`), `TextEncoder` ve `atob`/`btoa`. Aynı paket şu ortamlarda çalışır:
+
+- Node.js 20+
+- Vercel Edge Functions ve `runtime = 'edge'` kullanan Next.js route'ları
+- Cloudflare Workers
+- Deno ve Deno Deploy
+- Bun
+
+Her sürüm Vercel Edge Runtime VM'inde test edilir. Bu VM'de `Buffer`, `process` ya da `require` yoktur. Test, dört sağlayıcının hepsi için orada istekleri imzalar ve callback'leri doğrular; sonuçları Node.js'te hesaplanan değerlerle karşılaştırır.
+
+## Next.js (edge)
+
+[Next.js route handler'ı](/docs/integrations/nextjs) değişmeden çalışır. Yalnızca runtime'ı değiştirin:
+
+```typescript
+// app/api/pay/[...path]/route.ts
+export const runtime = 'edge'; // or 'nodejs'
+```
+
+## Cloudflare Workers
+
+```typescript
+import { BetterPayment, ProviderType, toFetchHandler } from 'better-payment';
+
+interface Env {
+  IYZICO_API_KEY: string;
+  IYZICO_SECRET_KEY: string;
+}
+
+export default {
+  fetch(request: Request, env: Env): Promise<Response> {
+    const payment = new BetterPayment({
+      mode: 'sandbox',
+      providers: {
+        [ProviderType.IYZICO]: {
+          enabled: true,
+          config: { apiKey: env.IYZICO_API_KEY, secretKey: env.IYZICO_SECRET_KEY },
+        },
+      },
+    });
+    return toFetchHandler(payment)(request);
+  },
+};
+```
+
+## Deno ve Bun [#deno-and-bun]
+
+```typescript
+import { BetterPayment, toFetchHandler } from 'npm:better-payment';
+
+const payment = new BetterPayment({ /* ... */ });
+
+Deno.serve(toFetchHandler(payment));          // Deno
+// Bun.serve({ fetch: toFetchHandler(payment) }); // Bun
+```
+
+`toFetchHandler`, handler'ı bir `(request: Request) => Promise<Response>` fonksiyonuna çevirir. [Hono](/docs/integrations/frameworks#hono) için ayrı bir adapter var.
+
+## Edge ve serverless ortamlarda idempotency [#idempotency-on-edge-and-serverless]
+
+Varsayılan idempotency deposu, tekrar eden callback ve `Idempotency-Key` kayıtlarını **bellekte** tutar. Edge ve serverless platformlarda her isolate'in ya da örneğin kendi belleği vardır; bu yüzden yalnızca aynı isolate'e gelen istekleri tekilleştirir. Canlı ortamda [paylaşımlı bir depo](/docs/api/handler#duplicate-callbacks-and-idempotency-key) verin:
+
+- **Upstash Redis** (HTTP tabanlı, her edge ortamında çalışır): `setIfAbsent` için `SET key value EX ttl NX`.
+- **Cloudflare:** Durable Objects ya da D1 (`INSERT ... ON CONFLICT DO NOTHING`). Workers KV nihai tutarlıdır (eventually consistent) ve atomik `setIfAbsent`'i sağlayamaz.
+
+## Özel fetch [#custom-fetch]
+
+Sağlayıcı API çağrıları `globalThis.fetch` kullanır. Kendi uygulamanızı verin; örneğin istekleri bir proxy üzerinden geçirmek ya da testlerde taklit etmek için:
+
+```typescript
+new BetterPayment({
+  fetch: (input, init) => fetch(input, { ...init, keepalive: true }),
+  providers: { /* ... */ },
+});
+```

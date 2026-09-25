@@ -1,0 +1,93 @@
+---
+title: Next.js entegrasyonu
+description: better-payment'i Next.js App Router ile entegre etme.
+---
+
+## 1. Tekil örneği oluşturun [#1-create-the-singleton]
+
+```typescript
+// lib/payment.ts
+import { BetterPayment, ProviderType } from 'better-payment';
+
+let _instance: BetterPayment | null = null;
+
+export function getBetterPayment(): BetterPayment {
+  if (!_instance) {
+    _instance = new BetterPayment({
+      mode: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox',
+      defaultProvider: ProviderType.IYZICO,
+      providers: {
+        iyzico: {
+          enabled: true,
+          config: {
+            apiKey: process.env.IYZICO_API_KEY!,
+            secretKey: process.env.IYZICO_SECRET_KEY!,
+          },
+        },
+      },
+      handler: {
+        allowedActions: ['payment/init-3ds', 'payment/complete-3ds', 'callback'],
+        transformRequest: async (ctx) => buildPaymentRequestFromOrder(ctx.body?.orderId, ctx.body?.paymentCard),
+        onCallback: async (result) => markOrder(result.paymentId, result.status),
+        callbackRedirect: (result) => `/orders/${result.paymentId}?payment=${result.status}`,
+      },
+    });
+  }
+  return _instance;
+}
+```
+
+<Callout type="warn">
+  Örneği tembel (lazy) oluşturun: modül seviyesinde bir `new BetterPayment(...)` yerine bir fonksiyon içinde. Aksi hâlde ortam değişkenleri yokken Next.js'in statik üretimi hata verebilir.
+</Callout>
+
+## 2. Catch-all route handler'ı oluşturun [#2-create-the-catch-all-route-handler]
+
+```typescript
+// app/api/pay/[...path]/route.ts
+import { toNextJsHandler } from 'better-payment/next';
+import { getBetterPayment } from '@/lib/payment';
+
+export const { GET, POST } = toNextJsHandler(getBetterPayment);
+```
+
+`getBetterPayment` fonksiyonunu (sonucunu değil) vermek başlatmayı tembel tutar: örnek ilk istekte oluşturulur, böylece `next build` ortam değişkenleri olmadan da çalışır.
+
+Adapter, JSON ve form-urlencoded gövdeleri (iyzico, Param, Akbank ve PayTR callback'leri) handler'a ham metin olarak geçirir ve handler'ın yanıtını değiştirmeden yazar:
+- PayTR'nin düz metin `OK` yanıtı JSON'a çevrilmez.
+- Yönlendirmeler (`callbackRedirect`) `Location` başlığını korur ve gövde taşımaz.
+
+Route iki runtime'da da çalışır. [Edge runtime'da](/docs/integrations/edge) çalıştırmak için `export const runtime = 'edge'` ekleyin.
+
+## 3. Ödemeyi frontend'den başlatın [#3-start-a-payment-from-the-frontend]
+
+```typescript
+const res = await fetch('/api/pay/iyzico/payment/init-3ds', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ orderId, paymentCard }), // amounts come from transformRequest
+});
+
+const result = await res.json();
+if (result.status === 'pending' && result.threeDSHtmlContent) {
+  document.open();
+  document.write(result.threeDSHtmlContent);
+  document.close();
+}
+```
+
+Ya da tipli client'ı kullanın:
+
+```typescript
+import { createBetterPaymentClient } from 'better-payment/client';
+
+const client = createBetterPaymentClient({ baseUrl: '/api/pay' });
+const result = await client.iyzico.initThreeDSPayment(requestBuiltByTransformRequest);
+// 422 (provider failure) resolves with status 'failure' instead of throwing
+```
+
+## 4. Callback
+
+`callbackUrl`'i `https://yoursite.com/api/pay/<provider>/payment/complete-3ds` olarak ayarlayın. Handler callback'i doğrular, `onCallback`'i çağırır ve müşteriyi `callbackRedirect` ile yönlendirir.
+
+PayTR için PayTR panelindeki **bildirim URL'sini** `https://yoursite.com/api/pay/paytr/callback` olarak ayarlayın.

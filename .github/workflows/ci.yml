@@ -6,6 +6,21 @@ on:
   pull_request:
 
 jobs:
+  docs-translations:
+    name: Docs translations (en/tr)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Every docs page exists in English and Turkish, with the same code and headings
+        run: node apps/web/scripts/check-translations.mjs
+
   package:
     name: better-payment (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest

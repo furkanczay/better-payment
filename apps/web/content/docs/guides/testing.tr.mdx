@@ -1,0 +1,140 @@
+---
+title: Entegrasyonunuzu test etme
+description: Ödeme, 3D Secure ve iade akışlarını sandbox ya da ağ erişimi olmadan, bellek içi MockProvider ile test edin.
+---
+
+`better-payment/testing`, gerçek bir sağlayıcı gibi davranan bellek içi bir sağlayıcı olan `MockProvider`'ı sunar:
+- istekleri doğrular
+- ödemeleri bellekte tutar; böylece `getPayment`, `refund` ve `cancel` önceki çağrıları görür
+- 3D Secure HTML'i döner ve callback'lerini imzalar; böylece callback'ler gerçek handler kodundan geçer: imza kontrolü, tekrar eden callback'lerin işlenmesi, `onCallback`
+
+Hiç ağ çağrısı yapmaz ve kimlik bilgisi gerektirmez.
+
+<Callout type="warn">
+  `MockProvider`'ı yalnızca testlerde ve yerel geliştirmede kullanın. Canlı ortamda asla etkinleştirmeyin: herkes sihirli bir kart numarasıyla "ödeme yapabilir".
+</Callout>
+
+## Kurulum [#setup]
+
+```typescript
+import { BetterPayment } from 'better-payment';
+import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
+
+const mock = new MockProvider();
+
+const payment = new BetterPayment({
+  providers: {
+    mock: { enabled: true, provider: mock },
+  },
+  handler: { /* the same options as in production */ },
+});
+
+const result = await payment.use('mock').createPayment({
+  ...order,
+  paymentCard: { cardHolderName: 'Test User', cardNumber: MOCK_CARDS.SUCCESS, expireMonth: '12', expireYear: '2030', cvc: '123' },
+});
+```
+
+Yaygın bir yöntem, `BetterPayment` config'ini ortamdan oluşturmak ve testlerde `mock`'u vermektir. Handler route'ları `/api/pay/mock/...` altındadır; tarayıcı client'ında da `client.mock` vardır.
+
+## Sihirli kart numaraları [#magic-card-numbers]
+
+İleri tarihli herhangi bir son kullanma tarihi ve herhangi bir CVC kullanın. Diğer tüm geçerli kart numaraları başarılı olur.
+
+| Kart | Sonuç |
+| ---- | ------ |
+| `4242424242424242`, `5555555555554444` | Başarılı |
+| `4000000000000002` | `CARD_DECLINED` |
+| `4000000000009995` | `INSUFFICIENT_FUNDS` |
+| `4000000000000069` | `EXPIRED_CARD` |
+| `4000000000000127` | `INVALID_CVC` |
+| `4100000000000019` | `FRAUD_SUSPECTED` |
+| `4000000000009987` | `LIMIT_EXCEEDED` |
+| `4000000000000119` | `PROVIDER_ERROR` |
+| `4000002760003184` | 3D Secure olmadan reddedilir (`CARD_DECLINED`, ham kod `THREEDS_REQUIRED`); 3D Secure ile başarılı olur |
+| `4000008400001629` | 3D Secure doğrulaması başarısız olur (`THREEDS_FAILED`) |
+| `4000000000000341` | Ödeme gerçekleşir ama yanıt kaybolur: `NETWORK_ERROR` ile `pending`. Ardından `getPayment()` `success` döner. |
+| `4000000000005126` | Ödeme başarılı olur; iadeler ve iptaller başarısız olur (`PROVIDER_ERROR`) |
+
+Numaralar `MOCK_CARDS` olarak dışa açılır (`MOCK_CARDS.INSUFFICIENT_FUNDS`, …). `saveCard` ile kaydedilen bir kart, token'ıyla ödeme yapıldığında da aynı davranışı korur.
+
+## Sonraki işlemi kontrol etmek [#controlling-the-next-operation]
+
+```typescript
+mock.failNext('refund', PaymentErrorCode.PROVIDER_ERROR); // the next refund fails
+mock.failNext('payment');                                 // the next payment is declined (CARD_DECLINED)
+mock.networkErrorNext('capture');                         // the next capture goes through, but its response is lost
+mock.reset();                                             // clear payments, saved cards and queued outcomes
+```
+
+İşlemler: `payment` (`createPayment`, `authorize`), `threeDSInit`, `threeDSComplete`, `refund`, `cancel`, `capture`, `void`.
+
+## 3D Secure
+
+`initThreeDSPayment()`, `threeDSHtmlContent` döner: imzalı sonucu hemen `callbackUrl`'inize POST eden bir sayfa. Tarayıcı testinde (Playwright, Cypress) onu her zamanki gibi render edersiniz. Birim testinde ise callback'i doğrudan alırsınız:
+
+```typescript
+const init = await payment.use('mock').initThreeDSPayment({ ...order, callbackUrl });
+const callback = await mock.threeDSCallback(init.paymentId!);                     // approved
+const abandoned = await mock.threeDSCallback(init.paymentId!, { approve: false }); // failed / abandoned
+
+// Post it to the handler like the bank would, or call the provider directly
+await payment.handler.handle({
+  method: 'POST',
+  url: '/api/pay/mock/payment/complete-3ds',
+  headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams(callback).toString(),
+});
+```
+
+Callback'ler, her `MockProvider` için rastgele üretilen bir gizli anahtarla HMAC imzalanır. Değiştirilmiş ya da başka bir örneğin imzaladığı bir callback, sahte bir banka callback'i gibi `INVALID_HASH` ile başarısız olur.
+
+## Uçtan uca bir test [#an-end-to-end-test]
+
+Vitest ile, gerçek handler'ınız üzerinden bir ödeme → 3D Secure → iade akışı (Jest'te de aynı şekilde çalışır):
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { BetterPayment } from 'better-payment';
+import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
+
+it('charges and refunds an order', async () => {
+  const mock = new MockProvider();
+  const payment = new BetterPayment({
+    providers: { mock: { enabled: true, provider: mock } },
+    handler: { allowedActions: 'all', authorize: () => true },
+  });
+  const call = (method: string, path: string, body?: unknown) =>
+    payment.handler.handle({
+      method,
+      url: `/api/pay/mock/${path}`,
+      headers: { 'content-type': 'application/json' },
+      body,
+    });
+
+  const init = await call('POST', 'payment/init-3ds', { ...order, callbackUrl: 'https://shop.test/return' });
+  const { paymentId } = init.body as { paymentId: string };
+
+  const done = await call('POST', 'payment/complete-3ds', await mock.threeDSCallback(paymentId));
+  expect(done.body).toMatchObject({ status: 'success' });
+
+  const refund = await call('POST', 'refund', { paymentId, price: '25.00', currency: 'TRY', ip: '127.0.0.1' });
+  expect(refund.status).toBe(200);
+  expect(mock.getRecord(paymentId)).toMatchObject({ refundedAmount: 2500 });
+});
+```
+
+## Durumu incelemek [#inspecting-state]
+
+`mock.getRecord(paymentId)` ve `mock.payments`, sahte bankanın her ödeme hakkında bildiklerini döner:
+- `state`: `pending_3ds`, `succeeded`, `authorized`, `failed`, `cancelled` ya da `voided`
+- küçük birim cinsinden tutarlar (kuruş): `amount`, `capturedAmount`, `refundedAmount`
+- `refunds`, `installment`, `cardLastFour` ve `errorCode`
+
+`getPayment()` aynı kaydı `rawResponse` olarak döner.
+
+## Desteklenen diğer özellikler [#also-supported]
+
+- Ön provizyon: `authorize`, `initThreeDSAuthorize`, `capture` (kısmi) ve `voidAuthorization`.
+- Kayıtlı kartlar: ödeme sırasında ya da tek başına `saveCard`, `listCards`, `deleteCard` ve `storedCard` ile ödeme.
+- `binCheck()` ve `installmentInfo()`. Taksit oranları `new MockProvider({ installmentRates: { 1: 0, 3: 2.5 } })` ile ayarlanabilir.

@@ -1,0 +1,70 @@
+---
+title: Ön provizyon
+description: Tutarı şimdi kartta bloke edin, sonra capture ile tahsil edin ya da void ile serbest bırakın.
+---
+
+Normal bir ödeme kartı hemen çeker. **Ön provizyon** ise yalnızca tutarı bloke eder: müşteri bekleyen bir işlem görür ve limiti düşer, ama siz **capture** (provizyon kapama) yapana kadar hiçbir şey tahsil edilmez. Sipariş gerçekleşmezse ön provizyonu **void** ile iptal edin; bloke iade gerekmeden kalkar.
+
+Tipik kullanımlar:
+
+- **Oteller ve kiralama:** rezervasyonda depozito bloke edin, çıkışta nihai tutarı (ekstralar ya da hasarla birlikte) tahsil edin.
+- **Stok kontrollü siparişler:** ödeme adımında bloke edin, ürün kargoya verildiğinde capture yapın. Stokta yoksa void yapın; müşteri hiçbir zaman iade beklemez.
+- **Pazaryerleri:** satıcı siparişi kabul ettiğinde capture yapın.
+- **Değişken tutarlar** (tartıyla satılan ürünler, saatlik hizmetler): tahmini tutarı bloke edin, gerçek tutarı capture edin.
+
+## Akış [#flow]
+
+```typescript
+// 1. Block the amount (non-3D) …
+const auth = await payment.use('akbank').authorize(order);
+// … or with 3D Secure: render threeDSHtmlContent, then completeThreeDSPayment() on the callback
+const init = await payment.use('akbank').initThreeDSAuthorize({ ...order, callbackUrl });
+
+if (auth.status === 'success') {
+  // auth.paymentId identifies the authorization; store it with the order
+}
+
+// 2a. Charge it: the full amount, or less (partial capture)
+await payment.use('akbank').capture({
+  paymentId: auth.paymentId!,
+  amount: '80.00',
+  ip: customerIp,
+});
+
+// 2b. …or release it; nothing is charged
+await payment.use('akbank').voidAuthorization({ paymentId: auth.paymentId!, ip: customerIp });
+```
+
+3D Secure varyantı tam bir 3D ödeme gibi tamamlanır: banka `callbackUrl`'inize POST eder, `completeThreeDSPayment()` (ya da handler'ın `payment/complete-3ds` route'u) doğrular. Bu durumda `success` sonucu tutarın tahsil edildiği değil, **bloke edildiği** anlamına gelir. Hangi siparişlerin `initThreeDSAuthorize()` ile başlatıldığını saklayın ki sonradan capture yapabilesiniz.
+
+## Sağlayıcılar [#providers]
+
+| Sağlayıcı | Ön provizyon | 3D ön provizyon | Capture | Void |
+| -------- | --------- | ------------ | ------- | ---- |
+| iyzico | `/payment/preauth` | `/payment/3dsecure/initialize/preauth` | `/payment/postauth` | `/payment/cancel` |
+| Parampos | `TP_Islem_Odeme_OnProv_WMD` (NS) | `TP_Islem_Odeme_OnProv_WMD` (3D) | `TP_Islem_Odeme_OnProv_Kapa` | `TP_Islem_Iptal_OnProv` |
+| Akbank | txnCode `1004` | txnCode `3004` (3D_PAY) | txnCode `1005` | txnCode `1003` |
+| PayTR | henüz yok ([#60](https://github.com/furkanczay/better-payment/issues/60)) | — | — | — |
+
+- `paymentId`, iyzico'da iyzico'nun ödeme numarası; Parampos ve Akbank'ta sizin sipariş numaranızdır.
+- `capture()` için `amount` zorunludur. Kısmi capture için bloke edilen tutardan azını verin.
+- Desteklemeyen sağlayıcılar `NOT_SUPPORTED` fırlatır; HTTP handler `400` döner.
+
+<Callout type="warn">
+  Ön provizyonun genellikle banka ya da sağlayıcı tarafından **üye işyeri hesabınızda açılması** gerekir. Capture yapılmayan bir ön provizyonun ayrıca **süresi dolar**: bankaya göre genellikle 7–30 gün sonra. Bundan sonra bloke otomatik olarak kalkar ve capture başarısız olur.
+</Callout>
+
+## HTTP handler
+
+| Route | İşlem | `authorize` gerekir mi |
+| ----- | ------ | ----------------- |
+| `POST /:provider/authorize` | `authorize` | — |
+| `POST /:provider/authorize/init-3ds` | `authorize/init-3ds` | — |
+| `POST /:provider/capture` | `capture` | 🔒 |
+| `POST /:provider/void` | `void` | 🔒 |
+
+Capture ve void para hareketi yarattığı için, iadeler gibi yalnızca bir `authorize` hook'uyla birlikte açılabilir. Dördü de `Idempotency-Key` başlığını kabul eder. Tarayıcı client'ında aynı metotlar var: `client.akbank.authorize(...)`, `client.akbank.capture(...)` vb.
+
+## Doğrulama [#verification]
+
+iyzico akışı (ön provizyon, kısmi capture, void, 3D ön provizyon) her gece gerçek iyzico sandbox'ına karşı çalıştırılır. Parampos ve Akbank sağlayıcıların spesifikasyonlarını ve referans test vektörlerini izler; henüz kendi sandbox'larında çalıştırılmadı.

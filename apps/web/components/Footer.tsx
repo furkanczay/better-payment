@@ -1,48 +1,52 @@
 import Image from "next/image";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
+import type { Dictionary } from "@/lib/i18n/dictionary";
+import { localePath, type Locale } from "@/lib/i18n/config";
 
-const links = {
-  Product: [
-    { label: "Features", href: "/#features" },
-    { label: "Providers", href: "/#providers" },
-    { label: "Quick Start", href: "/#quickstart" },
-    { label: "Docs", href: "/docs" },
-  ],
-  Documentation: [
-    { label: "Introduction", href: "/docs" },
-    { label: "Installation", href: "/docs/installation" },
-    { label: "Configuration", href: "/docs/configuration" },
-    { label: "API Reference", href: "/docs/api/handler" },
-  ],
-  Providers: [
-    { label: "İyzico", href: "/docs/providers/iyzico" },
-    { label: "PayTR", href: "/docs/providers/paytr" },
-    { label: "Parampos", href: "/docs/providers/parampos" },
-    { label: "Akbank", href: "/docs/banks/akbank" },
-  ],
-  Resources: [
+function footerLinks(t: Dictionary["footer"]) {
+  return [
     {
-      label: "npm",
-      href: "https://www.npmjs.com/package/better-payment",
-      external: true,
+      group: t.groups.product,
+      items: [
+        { label: t.links.features, href: "/#features" },
+        { label: t.links.providers, href: "/#providers" },
+        { label: t.links.quickStart, href: "/#quickstart" },
+        { label: t.links.docs, href: "/docs" },
+      ],
     },
     {
-      label: "GitHub",
-      href: "https://github.com/furkanczay/better-payment",
-      external: true,
+      group: t.groups.documentation,
+      items: [
+        { label: t.links.introduction, href: "/docs" },
+        { label: t.links.installation, href: "/docs/installation" },
+        { label: t.links.configuration, href: "/docs/configuration" },
+        { label: t.links.apiReference, href: "/docs/api/handler" },
+      ],
     },
     {
-      label: "Issues",
-      href: "https://github.com/furkanczay/better-payment/issues",
-      external: true,
+      group: t.groups.providers,
+      items: [
+        { label: "iyzico", href: "/docs/providers/iyzico" },
+        { label: "PayTR", href: "/docs/providers/paytr" },
+        { label: "Parampos", href: "/docs/providers/parampos" },
+        { label: "Akbank", href: "/docs/banks/akbank" },
+      ],
     },
-    { label: "What's new in 0.0.1", href: "/docs/whats-new" },
-    { label: "Changelog", href: "/docs/guides/changelog" },
-  ],
-};
+    {
+      group: t.groups.resources,
+      items: [
+        { label: "npm", href: "https://www.npmjs.com/package/better-payment", external: true },
+        { label: "GitHub", href: "https://github.com/furkanczay/better-payment", external: true },
+        { label: t.links.issues, href: "https://github.com/furkanczay/better-payment/issues", external: true },
+        { label: t.links.whatsNew, href: "/docs/whats-new" },
+        { label: t.links.changelog, href: "/docs/guides/changelog" },
+      ],
+    },
+  ];
+}
 
-export default function Footer() {
+export default function Footer({ lang, t }: { lang: Locale; t: Dictionary["footer"] }) {
   return (
     <footer className="border-t border-border bg-card/30">
       <div className="max-w-6xl mx-auto px-5 sm:px-8 py-16">
@@ -50,7 +54,7 @@ export default function Footer() {
           {/* Brand */}
           <div className="col-span-2 sm:col-span-2">
             <Link
-              href="/"
+              href={localePath(lang, "/")}
               className="flex items-center gap-2.5 mb-4 w-fit group"
             >
               <Image
@@ -62,8 +66,7 @@ export default function Footer() {
               />
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-[230px]">
-              A unified, type-safe payment gateway library for Node.js and
-              TypeScript.
+              {t.tagline}
             </p>
             <div className="flex items-center gap-3 mt-5">
               <a
@@ -86,7 +89,7 @@ export default function Footer() {
           </div>
 
           {/* Link columns */}
-          {Object.entries(links).map(([group, items]) => (
+          {footerLinks(t).map(({ group, items }) => (
             <div key={group} className="col-span-1">
               <h4 className="text-[10.5px] font-semibold uppercase tracking-widest text-muted-foreground/50 mb-4">
                 {group}
@@ -105,7 +108,7 @@ export default function Footer() {
                       </a>
                     ) : (
                       <Link
-                        href={item.href}
+                        href={localePath(lang, item.href)}
                         className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                       >
                         {item.label}
@@ -122,11 +125,10 @@ export default function Footer() {
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <span className="text-xs text-muted-foreground/50">
-            © {new Date().getFullYear()} better-payment. Released under the MIT
-            License.
+            © {new Date().getFullYear()} better-payment. {t.license}
           </span>
           <span className="text-xs text-muted-foreground/35 font-mono">
-            Built with Next.js, Tailwind CSS & shadcn/ui
+            {t.builtWith}
           </span>
         </div>
       </div>

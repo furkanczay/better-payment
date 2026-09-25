@@ -3,6 +3,8 @@ import { ArrowRight, Star } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import Code from "@/components/Code";
+import type { Dictionary } from "@/lib/i18n/dictionary";
+import { localePath, type Locale } from "@/lib/i18n/config";
 
 const heroCode = `import { BetterPayment } from "better-payment";
 
@@ -20,14 +22,15 @@ const result = await payment.use("iyzico").initThreeDSPayment(order);
 const paid = await payment.iyzico.completeThreeDSPayment(body);
 if (paid.status === "success") await markOrderPaid(paid.paymentId);`;
 
-const stats = [
-  { value: "4", label: "Providers" },
-  { value: "1", label: "Runtime dependency" },
-  { value: "TS", label: "Typed end to end" },
-  { value: "MIT", label: "License" },
-];
-
-export default function Hero({ version }: { version: string }) {
+export default function Hero({
+  version,
+  lang,
+  t,
+}: {
+  version: string;
+  lang: Locale;
+  t: Dictionary["hero"];
+}) {
   return (
     <section className="relative pt-32 pb-24 lg:pt-40 lg:pb-28 px-5 sm:px-8">
       <div className="max-w-6xl mx-auto">
@@ -35,33 +38,31 @@ export default function Hero({ version }: { version: string }) {
           {/* Left */}
           <div className="flex-1 flex flex-col items-start gap-7 min-w-0 max-w-xl">
             <Link
-              href="/docs/whats-new"
+              href={localePath(lang, "/docs/whats-new")}
               className="group inline-flex items-center gap-2 rounded-full border border-border bg-card hover:bg-muted px-3.5 py-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <span className="font-mono text-foreground">{version}</span>
               <span className="w-px h-3 bg-border" />
-              A fresh start: see what changed
+              {t.badge}
               <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
             </Link>
 
             <h1 className="text-[2.75rem] sm:text-[3.5rem] lg:text-[3.9rem] font-bold tracking-[-0.03em] leading-[1.05] text-foreground">
-              One API for
+              {t.titleLine1}
               <br />
-              Turkish payments.
+              {t.titleLine2}
             </h1>
 
             <p className="text-base sm:text-lg text-muted-foreground leading-relaxed max-w-[460px]">
-              <strong className="text-foreground font-semibold">better-payment</strong> gives
-              iyzico, PayTR, Parampos and Akbank one type-safe interface, with signature-verified
-              callbacks and a secure-by-default HTTP handler.
+              <strong className="text-foreground font-semibold">better-payment</strong> {t.lead}
             </p>
 
             <div className="flex flex-col sm:flex-row gap-3">
               <Link
-                href="/docs"
+                href={localePath(lang, "/docs")}
                 className={cn(buttonVariants({ size: "lg" }), "gap-2 h-11 px-6 text-sm font-medium")}
               >
-                Get Started <ArrowRight className="w-3.5 h-3.5" />
+                {t.getStarted} <ArrowRight className="w-3.5 h-3.5" />
               </Link>
               <a
                 href="https://github.com/furkanczay/better-payment"
@@ -73,7 +74,7 @@ export default function Hero({ version }: { version: string }) {
                 )}
               >
                 <Star className="w-3.5 h-3.5" />
-                Star on GitHub
+                {t.star}
               </a>
             </div>
 
@@ -83,7 +84,7 @@ export default function Hero({ version }: { version: string }) {
             </div>
 
             <dl className="flex flex-wrap items-center gap-x-8 gap-y-4 pt-1">
-              {stats.map((s) => (
+              {t.stats.map((s) => (
                 <div key={s.label}>
                   <dt className="sr-only">{s.label}</dt>
                   <dd className="text-xl font-semibold tabular-nums text-foreground">{s.value}</dd>

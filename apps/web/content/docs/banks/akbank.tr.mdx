@@ -1,0 +1,68 @@
+---
+title: Akbank
+description: Akbank Sanal POS (JSON API) entegrasyon referansı.
+---
+
+Akbank'ın Sanal POS JSON API'sini kullanır. Her istek bir `auth-hash` başlığı taşır (`base64(HMAC-SHA512(body, secretKey))`).
+
+## Yapılandırma [#configuration]
+
+```typescript
+akbank: {
+  enabled: true,
+  config: {
+    merchantSafeId: process.env.AKBANK_MERCHANT_SAFE_ID!,
+    terminalSafeId: process.env.AKBANK_TERMINAL_SAFE_ID!,
+    secretKey: process.env.AKBANK_SECRET_KEY!,
+    // subMerchantId?: string
+    // testMode: defaults to mode === 'sandbox' (test 3D gateway)
+    // baseUrl: defaults from mode (apipre.akbank.com / api.akbank.com)
+  },
+}
+```
+
+`paymentId` sipariş numaranızdır: verdiğiniz `conversationId` ya da üretilen bir numara.
+
+## Doğrudan ödeme (3D'siz) [#direct-payment-non-3d]
+
+```typescript
+const result = await payment.akbank.createPayment({ ...paymentRequest, conversationId: 'ORDER123' });
+// txnCode 1000; success when responseCode is VPS-0000
+```
+
+## 3D Secure (3D_PAY)
+
+```typescript
+const init = await payment.akbank.initThreeDSPayment({
+  ...paymentRequest,
+  conversationId: 'ORDER123',
+  callbackUrl: 'https://yoursite.com/api/pay/akbank/payment/complete-3ds',
+});
+// init.threeDSHtmlContent auto-submits a signed form to the Akbank securepay gateway
+```
+
+Akbank kartı doğrular, çekimi yapar ve imzalı sonucu `callbackUrl` adresine POST eder:
+
+```typescript
+const result = await payment.akbank.completeThreeDSPayment(callbackBody);
+```
+
+Sonuca yalnızca şu durumda güvenilir:
+
+- `hashParams` içindeki alanlar üzerinden hesaplanan HMAC `hash` geçerlidir **ve** `responseCode`, `orderId`, `merchantSafeId` ile `terminalSafeId` alanlarını kapsar;
+- terminal kimlikleri yapılandırmanızla eşleşir.
+
+Yalnızca `responseCode` `VPS-0000` olduğunda `success` döner. Eksik bir sonuç kodu asla başarı sayılmaz.
+
+## İade, iptal ve durum sorgusu [#refund-cancel--status]
+
+```typescript
+await payment.akbank.refund({ paymentId: 'ORDER123', price: '50.00', currency: 'TRY', ip: '1.2.3.4' }); // 1002
+await payment.akbank.cancel({ paymentId: 'ORDER123', ip: '1.2.3.4' });                               // 1003
+const status = await payment.akbank.getPayment('ORDER123');                                          // 1010
+// status: 'success' (N), 'cancelled' (V/R), 'failure'
+```
+
+<Callout type="info">
+  Akbank için BIN ve taksit sorguları desteklenmez: Sanal POS API'sinde taksit oranı sorgusu yoktur. `binCheck()` ve `installmentInfo()` `NOT_SUPPORTED` fırlatır. Taksit planları Akbank ile yaptığınız anlaşmadan gelir: ödeme isteğinde `installment` gönderin ve `paidPrice`'ı anlaştığınız oranlardan hesaplayın.
+</Callout>

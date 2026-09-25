@@ -1,0 +1,67 @@
+---
+title: Giriş
+description: Node.js ve Türk ödeme sağlayıcıları için tip güvenli, birleşik ödeme kütüphanesi.
+---
+
+**better-payment**, Türk ödeme sağlayıcılarını (iyzico, PayTR, Akbank ve Parampos) tek bir TypeScript API'siyle entegre etmenizi sağlar.
+
+<Callout type="warn">
+  **0.0.1 yeni bir başlangıç.** Sürüm geçmişi sıfırlandı. `1.x`–`3.x` sürümlerinde hatalı sağlayıcı entegrasyonları ve atlatılabilen callback kontrolleri vardı; bu sürümler kullanımdan kaldırıldı. Nelerin değiştiğini ve nasıl geçiş yapacağınızı [0.0.1'deki yenilikler](/docs/whats-new) sayfasında okuyun.
+</Callout>
+
+## Neden better-payment? [#why-better-payment]
+
+Her ödeme sağlayıcısının kendi SDK'sı, istek formatı, imza yöntemi ve hata modeli var. **better-payment** bu farkları tek bir arayüzün arkasına gizler.
+
+<Cards>
+  <Card title="Tek API" description="createPayment, initThreeDSPayment, refund, cancel ve getPayment her sağlayıcıda aynı şekilde çalışır." />
+  <Card title="Doğrulanmış callback'ler" description="3D Secure callback'leri, hiçbir sonuca güvenilmeden önce sizin kimlik bilgilerinizle kontrol edilir." />
+  <Card title="Güvenli HTTP handler" description="Framework'ten bağımsız handler yalnızca sizin açtığınız işlemleri sunar; authorize ve tutarı sunucuda belirleme hook'ları vardır." />
+  <Card title="Çoklu sağlayıcı" description="Birden fazla sağlayıcıyı aynı anda etkinleştirin, her istekte birini seçin." />
+</Cards>
+
+## Desteklenen sağlayıcılar [#supported-providers]
+
+| Sağlayıcı | 3D'siz | 3D Secure | İade | İptal | Durum | BIN | Taksit |
+|----------|--------|-----------|--------|--------|--------|-----|--------------|
+| iyzico   | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| PayTR    | ✅ ¹ | ✅ iFrame | ✅ | ✅ ² | ✅ | ✅ | ✅ |
+| Akbank   | ✅ | ✅ 3D_PAY | ✅ | ✅ | ✅ | — | — |
+| Parampos | ✅ (TRY) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+¹ PayTR hesabınızın 3D'siz ödemeler için onaylanmış olması gerekir.
+² PayTR'de iptal (void) uç noktası yoktur; bu yüzden `cancel()` tam iade yapar.
+
+## Kısa örnek [#quick-example]
+
+```typescript
+import { BetterPayment, ProviderType } from 'better-payment';
+
+const payment = new BetterPayment({
+  mode: 'sandbox',
+  defaultProvider: ProviderType.IYZICO,
+  providers: {
+    iyzico: {
+      enabled: true,
+      config: {
+        apiKey: process.env.IYZICO_API_KEY!,
+        secretKey: process.env.IYZICO_SECRET_KEY!,
+      },
+    },
+  },
+});
+
+const result = await payment.initThreeDSPayment({
+  price: '100.00',
+  paidPrice: '100.00',
+  currency: 'TRY',
+  basketId: 'B1',
+  callbackUrl: 'https://yoursite.com/api/pay/iyzico/payment/complete-3ds',
+  paymentCard: { /* ... */ },
+  buyer: { /* ... */ },
+  shippingAddress: { /* ... */ },
+  billingAddress: { /* ... */ },
+  basketItems: [{ /* ... */ }],
+});
+// Render result.threeDSHtmlContent in the customer's browser
+```

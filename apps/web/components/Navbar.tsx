@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import Image from "next/image";
 import { useTheme } from "next-themes";
 import { buttonVariants } from "@/lib/button-variants";
@@ -9,15 +10,41 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Menu, X, Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { Dictionary } from "@/lib/i18n/dictionary";
+import { LOCALE_NAMES, localePath, stripLocale, type Locale } from "@/lib/i18n/config";
 
-const navLinks = [
-  { label: "Features", href: "/#features" },
-  { label: "Providers", href: "/#providers" },
-  { label: "Quick Start", href: "/#quickstart" },
-  { label: "Docs", href: "/docs" },
-];
+function navLinks(t: Dictionary["nav"]) {
+  return [
+    { label: t.features, href: "/#features" },
+    { label: t.providers, href: "/#providers" },
+    { label: t.quickStart, href: "/#quickstart" },
+    { label: t.docs, href: "/docs" },
+  ];
+}
 
-function ThemeToggle() {
+/** Switches the language and stays on the same page */
+function LanguageSwitch({ lang, label }: { lang: Locale; label: string }) {
+  const pathname = usePathname();
+  const other: Locale = lang === "tr" ? "en" : "tr";
+  const path = stripLocale(pathname || "/");
+  // "/en/..." makes the proxy remember English and redirect to the unprefixed URL
+  const href = other === "en" ? `/en${path === "/" ? "" : path}` : localePath("tr", path);
+  return (
+    <Link
+      href={href}
+      hrefLang={other}
+      aria-label={`${label}: ${LOCALE_NAMES[other]}`}
+      className={cn(
+        buttonVariants({ variant: "ghost", size: "sm" }),
+        "text-muted-foreground hover:text-foreground h-8 px-2.5 text-xs font-medium font-mono uppercase",
+      )}
+    >
+      {other}
+    </Link>
+  );
+}
+
+function ThemeToggle({ label }: { label: string }) {
   const { theme, setTheme } = useTheme();
   // false during SSR and hydration, true afterwards (the theme is only known on the client)
   const mounted = useSyncExternalStore(
@@ -32,6 +59,7 @@ function ThemeToggle() {
         buttonVariants({ variant: "ghost", size: "icon" }),
         "h-8 w-8 text-muted-foreground hover:text-foreground",
       )}
+      aria-label={label}
       onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
     >
       {theme === "dark" ? (
@@ -43,7 +71,16 @@ function ThemeToggle() {
   );
 }
 
-export default function Navbar({ version }: { version: string }) {
+export default function Navbar({
+  version,
+  lang,
+  t,
+}: {
+  version: string;
+  lang: Locale;
+  t: Dictionary["nav"];
+}) {
+  const links = navLinks(t);
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -64,7 +101,7 @@ export default function Navbar({ version }: { version: string }) {
     >
       <nav className="max-w-6xl mx-auto px-5 sm:px-8 flex items-center justify-between h-14">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 group">
+        <Link href={localePath(lang, "/")} className="flex items-center gap-2 group">
           <Image
             src="/better-payment-logo.svg"
             width={304}
@@ -82,10 +119,10 @@ export default function Navbar({ version }: { version: string }) {
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-0.5">
-          {navLinks.map((link) => (
+          {links.map((link) => (
             <Link
               key={link.label}
-              href={link.href}
+              href={localePath(lang, link.href)}
               className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-accent/60 font-medium"
             >
               {link.label}
@@ -95,7 +132,8 @@ export default function Navbar({ version }: { version: string }) {
 
         {/* Desktop actions */}
         <div className="hidden md:flex items-center gap-1.5">
-          <ThemeToggle />
+          <LanguageSwitch lang={lang} label={t.language} />
+          <ThemeToggle label={t.toggleTheme} />
           <Separator orientation="vertical" className="h-4 mx-1" />
           <a
             href="https://github.com/furkanczay/better-payment"
@@ -123,6 +161,7 @@ export default function Navbar({ version }: { version: string }) {
 
         {/* Mobile menu toggle */}
         <button
+          aria-label={t.openMenu}
           className="md:hidden p-1.5 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-accent/60"
           onClick={() => setOpen(!open)}
         >
@@ -137,10 +176,10 @@ export default function Navbar({ version }: { version: string }) {
       {/* Mobile menu */}
       {open && (
         <div className="md:hidden border-t border-border bg-background/95 backdrop-blur-2xl px-5 py-3 flex flex-col gap-0.5">
-          {navLinks.map((link) => (
+          {links.map((link) => (
             <Link
               key={link.label}
-              href={link.href}
+              href={localePath(lang, link.href)}
               className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground rounded-md hover:bg-accent/60 transition-colors font-medium"
               onClick={() => setOpen(false)}
             >
@@ -149,6 +188,7 @@ export default function Navbar({ version }: { version: string }) {
           ))}
           <Separator className="my-2.5" />
           <div className="flex gap-2 pb-1">
+            <LanguageSwitch lang={lang} label={t.language} />
             <a
               href="https://github.com/furkanczay/better-payment"
               target="_blank"

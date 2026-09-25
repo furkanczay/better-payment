@@ -1,0 +1,154 @@
+---
+title: 0.0.1'deki yenilikler
+description: Sürüm geçmişinin neden sıfırlandığı, kütüphanenin artık nasıl çalıştığı ve 3.x'ten nasıl geçiş yapılacağı.
+---
+
+**better-payment 0.0.1 yeni bir başlangıç.** Sürüm numarasını bilerek sıfırladık. Bu, tek bir kural etrafında yeniden yazılan kütüphanenin ilk sürümü: **bir ödeme ancak sağlayıcı onayladığında başarılıdır ve her callback sizin kimlik bilgilerinizle doğrulanır.**
+
+<Callout type="warn">
+  `1.x`, `2.x` ve `3.x` sürümleri **kullanımdan kaldırıldı**. Bu sürümlerde sağlayıcıların gerçek API'leriyle uyuşmayan entegrasyonlar ve atlatılabilen callback kontrolleri vardı. Bunlardan birini kullanıyorsanız `0.0.1`'e yükseltin.
+</Callout>
+
+## Neden 0.0.1'e döndük? [#why-go-back-to-001]
+
+Normalde bu büyüklükte bir sürüm `4.0.0` olurdu. Bunu yapmadık, çünkü daha yüksek bir numara `4.0.0`'ın `3.x`'in üzerine kurulduğunu düşündürürdü. Öyle değil. Paketin gözden geçirilmesi, eski sürümlere güvenilemeyeceğini ortaya çıkardı:
+
+| Alan | 1.x–3.x'teki sorun |
+|------|---------------------|
+| Parampos | 3D callback hash'i, **callback'in kendisinden alınan** bir GUID ile kontrol ediliyordu. Herkes "başarılı" bir ödeme uydurabilirdi. |
+| Parampos / Akbank | Banka callback'i tamamlanmış ödeme sayılıyordu. Ödeme bankada hiç tamamlanmıyordu; Akbank sonuç kodu eksikse varsayılan olarak "başarılı" kabul ediyordu. |
+| PayTR | İmzalar yanlış anahtarla atılıyordu. Gerçek bildirimler reddediliyor, sandbox'ta `test_mode` hiç açılmıyordu. |
+| Akbank | İstekler Akbank API'sinde bulunmayan uç noktalara gidiyordu. |
+| iyzico | Checkout Form, **ödeme** başarısız olsa bile API çağrısı başarılıysa `success` dönüyordu. |
+| HTTP handler | İadeler, iptaller ve abonelik yönetimi dahil her route herkese açıktı. Tutar tarayıcıdan geliyordu. |
+| Yeniden denemeler | Zaman aşımına uğrayan bir ödeme tekrar gönderilip müşteriden iki kez çekim yapılabiliyordu. |
+
+Bunları düzeltmek config'lerde, ID'lerde, durumlarda ve handler'da geriye uyumsuz değişiklikler gerektirdi. Bu sürümlerin üzerine bir major sürüm daha eklemek yerine sürüm geçmişini yeniden başlattık. **`0.0.1` temel sürümdür; ondan öncesi eskide kaldı.**
+
+<Callout type="info">
+  `0.0.1`, `3.0.1`'den küçük olduğu için `"better-payment": "^3.0.1"` gibi bir aralık yeni sürümü **asla** almaz. Açıkça yükseltin: `npm install better-payment@latest`.
+</Callout>
+
+## Yeni sistem nasıl çalışıyor? [#how-the-new-system-works]
+
+### 1. Karar callback'in değil sağlayıcının [#1-the-provider-decides-not-the-callback]
+
+Tarayıcı callback'leri ve 3D Secure dönüşleri yalnızca birer iddiadır. Kütüphane her birine güvenmeden önce kontrol eder:
+
+| Sağlayıcı | 3D Secure'dan sonra ne olur |
+|----------|------------------------------|
+| iyzico | `status=success` ve `mdStatus=1` şartı aranır, ardından iyzico ile ödeme onaylanır (auth). |
+| Parampos | `islemHash` **sizin** GUID'inizle doğrulanır, `mdStatus=1` şartı aranır, ardından `TP_WMD_Pay` ile ödeme tamamlanır. Yalnızca dönen bir `Dekont_ID` başarı demektir. |
+| Akbank | Sonuç kodunu, sipariş numarasını ve sizin terminalinizi kapsaması gereken HMAC-SHA512 imzası doğrulanır. Yalnızca `VPS-0000` başarı demektir. |
+| PayTR | `merchant_key`'inizle imzalanan sunucudan sunucuya bildirim doğrulanır. Tarayıcı yönlendirmesi sonucu hiçbir zaman taşımaz. |
+
+Sahte, değiştirilmiş ya da başarısız bir callback her zaman `status: 'failure'` döner.
+
+### 2. Dört net durum [#2-four-clear-statuses]
+
+| `status` | Anlamı | Ne yaparsınız |
+|----------|---------|-------------|
+| `success` | Sağlayıcı onayladı | Siparişi tamamlayın |
+| `failure` | Sağlayıcı reddetti | `errorMessage`'ı gösterin, müşterinin tekrar denemesine izin verin |
+| `pending` | Müşteri bekleniyor (3DS, havale) **ya da** sonuç bilinmiyor | Aşağıya bakın |
+| `cancelled` | İptal edildi veya tamamen iade edildi (durum sorguları) | Siparişi güncelleyin |
+
+### 3. Bilinmeyen, başarısız demek değil [#3-unknown-is-not-failure]
+
+Bir ödeme isteği zaman aşımına uğrarsa banka kartı yine de çekmiş olabilir. Bu tür istekler artık `failure` yerine `status: 'pending'` ve `errorCode: 'NETWORK_ERROR'` döner. Ödeme, iade ve iptal istekleri **asla otomatik olarak yeniden denenmez**; yalnızca salt okunur sorgular yeniden denenir.
+
+```typescript
+const result = await payment.paytr.createPayment(request);
+
+if (result.errorCode === 'NETWORK_ERROR') {
+  const status = await payment.paytr.getPayment(result.paymentId!);
+  // decide based on the real outcome
+}
+```
+
+### 4. Sipariş numaranız ödeme numarasıdır [#4-your-order-id-is-the-payment-id]
+
+PayTR, Parampos ve Akbank'ta `paymentId` **sizin sipariş numaranızdır**: gönderdiğiniz `conversationId` ya da göndermezseniz üretilen alfanümerik bir numara. Bunu siparişinizle birlikte saklayın; `refund()`, `cancel()` ve `getPayment()` bunu kullanır.
+
+### 5. Varsayılan olarak kapalı bir handler [#5-a-handler-that-is-closed-by-default]
+
+HTTP handler yalnızca bir ödeme akışının dışarıdan ihtiyaç duyduğu şeyleri açar: sağlayıcı callback'leri ve kart sorguları. Geri kalan her şeyi sizin açmanız gerekir; hassas işlemler ayrıca bir `authorize` hook'u ister:
+
+```typescript
+handler: {
+  allowedActions: ['payment/init-3ds', 'payment/complete-3ds', 'callback', 'refund'],
+  authorize: async (ctx) => /* your auth */ true,
+  transformRequest: async (ctx) => buildRequestFromOrder(ctx.body?.orderId), // amounts from your DB
+  onCallback: async (result) => updateOrder(result.paymentId, result.status),
+}
+```
+
+Ayrıntılar için [BetterPaymentHandler](/docs/api/handler) sayfasına bakın.
+
+### 6. Her sağlayıcı için ayrı config [#6-one-config-per-provider]
+
+Her sağlayıcı yalnızca gerçekten kullandığı kimlik bilgilerini alır. Eksik değerler, eksik alanları listeleyen bir `ConfigurationError` ile hemen hata verir. `mode: 'sandbox'` sandbox URL'lerine ve sağlayıcıların test modlarına geçer.
+
+## 3.x'ten geçiş [#migrating-from-3x]
+
+### Adım 1: Kurun [#step-1-install]
+
+```bash
+npm install better-payment@latest
+```
+
+`package.json`'da artık `"better-payment": "^0.0.1"` göründüğünü kontrol edin.
+
+### Adım 2: Sağlayıcı config'lerini güncelleyin [#step-2-update-provider-configs]
+
+```typescript
+// 3.x
+paytr: { enabled: true, config: { apiKey: KEY, secretKey: KEY, merchantId, merchantSalt } }
+akbank: { enabled: true, config: { apiKey, secretKey, merchantId, terminalId, storeKey } }
+parampos: { enabled: true, config: { apiKey: GUID, secretKey: PASS, clientCode, clientUsername, clientPassword, guid } }
+
+// 0.0.1
+paytr: { enabled: true, config: { merchantId, merchantKey, merchantSalt } }
+akbank: { enabled: true, config: { merchantSafeId, terminalSafeId, secretKey } }
+parampos: { enabled: true, config: { clientCode, clientUsername, clientPassword, guid } }
+```
+
+iyzico değişmedi: `{ apiKey, secretKey }`. Test ederken `mode: 'sandbox'` ekleyin.
+
+<Callout type="info">
+  Akbank artık **Sanal POS JSON API**'sini kullanıyor. `merchantSafeId`, `terminalSafeId` ve gizli anahtarı Akbank Sanal POS panelinden alın. Eski `storeKey` değerleri bu API ile çalışmaz.
+</Callout>
+
+### Adım 3: Sipariş numarasını saklayın [#step-3-store-the-order-id]
+
+Sipariş numaranızı `conversationId` olarak gönderin (PayTR için yalnızca harf ve rakam), dönen `paymentId`'yi de `refund`, `cancel` ve `getPayment` için kullanın.
+
+### Adım 4: `pending` ve `NETWORK_ERROR` durumlarını ele alın [#step-4-handle-pending-and-network_error]
+
+Zaman aşımından sonra `status === 'failure'` kontrol ettiğiniz her yerde, müşteriye ödemenin başarısız olduğunu söylemeden önce gerçek sonucu `getPayment()` ile kontrol edin.
+
+### Adım 5: Handler'ı yapılandırın [#step-5-configure-the-handler]
+
+`payment.handler` kullanıyorsanız ihtiyacınız olan işlemleri `allowedActions` içinde listeleyin. İadeleri, iptalleri, ödeme sorgularını ya da abonelik yönetimini açıyorsanız `authorize` ekleyin. Tutarların tarayıcıdan değil sunucunuzdan gelmesi için `transformRequest` tanımlayın.
+
+### Adım 6: Callback'leri yeni route'lara yönlendirin [#step-6-point-callbacks-at-the-new-routes]
+
+| Sağlayıcı | URL |
+|----------|-----|
+| iyzico / Parampos / Akbank | `callbackUrl`: `https://yoursite.com/api/pay/<provider>/payment/complete-3ds` |
+| PayTR | PayTR panelindeki bildirim URL'si: `https://yoursite.com/api/pay/paytr/callback` (`OK` ile yanıtlar) |
+
+### Adım 7: Sandbox'ta test edin [#step-7-test-in-sandbox]
+
+Canlıya geçmeden önce her sağlayıcı için `mode: 'sandbox'` ile bir başarılı ödeme, bir reddedilen ödeme, bir iade ve bir durum sorgusu yapın.
+
+## Sık sorulan sorular [#faq]
+
+**3.x çalışmaya devam edecek mi?**
+Eski sürümler npm'de kalıyor ama kullanımdan kaldırıldı ve düzeltme almayacak. Sağlayıcı akışlarının birçoğu gerçek API'lerle zaten hiç çalışmadı.
+
+**Neden 4.0.0 değil?**
+`4.0.0`, `3.x`'ten bir yükseltme yolu olduğunu düşündürürdü. `0.0.1`, bunun yeni bir temel olduğunu açıkça gösterir; bundan sonraki sürümler semantik sürümlemeyi izler.
+
+**API kararlı mı?**
+`0.x` sürümleri API'yi hâlâ değiştirebilir. Geriye uyumsuz değişiklikler her zaman geçiş notlarıyla birlikte [sürüm notlarında](/docs/guides/changelog) listelenir.
