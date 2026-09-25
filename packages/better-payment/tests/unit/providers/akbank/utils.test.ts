@@ -13,8 +13,8 @@ import {
 import { AKBANK_TEST, AKBANK_3DPAY_CALLBACK } from '../../../fixtures/akbank';
 
 describe('Akbank utils', () => {
-  it('3D form hash matches the reference vector', () => {
-    const hash = createAkbank3DFormHash(
+  it('3D form hash matches the reference vector', async () => {
+    const hash = await createAkbank3DFormHash(
       {
         paymentModel: '3D',
         txnCode: '3000',
@@ -44,40 +44,40 @@ describe('Akbank utils', () => {
   });
 
   describe('verifyAkbank3DCallback', () => {
-    it('accepts the reference 3D_PAY callback', () => {
-      expect(verifyAkbank3DCallback(AKBANK_3DPAY_CALLBACK, AKBANK_TEST.secretKey)).toBe(true);
+    it('accepts the reference 3D_PAY callback', async () => {
+      expect(await verifyAkbank3DCallback(AKBANK_3DPAY_CALLBACK, AKBANK_TEST.secretKey)).toBe(true);
     });
 
-    it('rejects a tampered responseCode', () => {
-      expect(verifyAkbank3DCallback({ ...AKBANK_3DPAY_CALLBACK, responseCode: 'VPS-1005' }, AKBANK_TEST.secretKey)).toBe(
+    it('rejects a tampered responseCode', async () => {
+      expect(await verifyAkbank3DCallback({ ...AKBANK_3DPAY_CALLBACK, responseCode: 'VPS-1005' }, AKBANK_TEST.secretKey)).toBe(
         false
       );
     });
 
-    it('rejects a wrong key', () => {
-      expect(verifyAkbank3DCallback(AKBANK_3DPAY_CALLBACK, 'other-key')).toBe(false);
+    it('rejects a wrong key', async () => {
+      expect(await verifyAkbank3DCallback(AKBANK_3DPAY_CALLBACK, 'other-key')).toBe(false);
     });
 
-    it('rejects a hashParams list that does not cover responseCode/orderId', () => {
+    it('rejects a hashParams list that does not cover responseCode/orderId', async () => {
       const data = { orderId: 'X', responseCode: 'VPS-0000', hashParams: 'orderId' };
-      const forged = { ...data, hash: akbankSign('X', AKBANK_TEST.secretKey) };
-      expect(verifyAkbank3DCallback(forged, AKBANK_TEST.secretKey)).toBe(false);
+      const forged = { ...data, hash: await akbankSign('X', AKBANK_TEST.secretKey) };
+      expect(await verifyAkbank3DCallback(forged, AKBANK_TEST.secretKey)).toBe(false);
     });
 
-    it('rejects missing hash', () => {
-      expect(verifyAkbank3DCallback({ ...AKBANK_3DPAY_CALLBACK, hash: undefined }, AKBANK_TEST.secretKey)).toBe(false);
+    it('rejects missing hash', async () => {
+      expect(await verifyAkbank3DCallback({ ...AKBANK_3DPAY_CALLBACK, hash: undefined }, AKBANK_TEST.secretKey)).toBe(false);
     });
   });
 
-  it('random number is 128 hex chars', () => {
+  it('random number is 128 hex chars', async () => {
     expect(generateAkbankRandomNumber()).toMatch(/^[0-9A-F]{128}$/);
   });
 
-  it('formats request date in Istanbul time', () => {
+  it('formats request date in Istanbul time', async () => {
     expect(formatAkbankDateTime(new Date('2024-04-04T18:11:41.123Z'))).toBe('2024-04-04T21:11:41.000');
   });
 
-  it('formats amounts, expiry and currency', () => {
+  it('formats amounts, expiry and currency', async () => {
     expect(formatAkbankAmount('1.1')).toBe('1.10');
     expect(formatAkbankExpiry('1', '2035')).toBe('0135');
     expect(formatAkbankExpiry('11', '35')).toBe('1135');

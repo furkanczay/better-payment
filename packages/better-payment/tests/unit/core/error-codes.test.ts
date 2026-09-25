@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { HttpError } from '../../../src/core/http';
 import {
   PaymentErrorCode,
   ISO8583_ERROR_CODES,
@@ -115,7 +116,7 @@ describe('normalized error codes on provider results', () => {
 
   it('timeouts are pending with NETWORK_ERROR', async () => {
     const { provider, request } = iyzico();
-    request.mockRejectedValue({ isAxiosError: true, code: 'ECONNABORTED', request: {} });
+    request.mockRejectedValue(new HttpError('Request timed out', {}, { code: 'ETIMEDOUT' }));
 
     const result = await provider.createPayment(mockPaymentRequest);
 

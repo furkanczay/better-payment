@@ -4,12 +4,8 @@
  * SOAP-based integration with Param (TurkPOS).
  */
 
-import axios, { AxiosInstance } from 'axios';
-import {
-  PaymentProvider,
-  PaymentProviderConfig,
-  RetryableRequestConfig,
-} from '../../core/PaymentProvider';
+import type { HttpClient, HttpRequestConfig } from '../../core/http';
+import { PaymentProvider, PaymentProviderConfig } from '../../core/PaymentProvider';
 import { ConfigurationError, ValidationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
 import type { PaymentValidationRules } from '../../core/validation';
@@ -81,20 +77,15 @@ export interface ParamposConfig extends PaymentProviderConfig {
  * Parampos Payment Provider
  */
 export class Parampos extends PaymentProvider<ParamposConfig> {
-  private client: AxiosInstance;
+  private client: HttpClient;
 
   constructor(config: ParamposConfig) {
     super(config);
 
-    this.client = axios.create({
-      baseURL: this.config.baseUrl,
+    this.client = this.createHttpClient('parampos', {
       timeout: 60000,
-      headers: {
-        'Content-Type': 'text/xml; charset=utf-8',
-      },
+      headers: { 'Content-Type': 'text/xml; charset=utf-8' },
     });
-    this.setupAxiosLogging(this.client, 'parampos');
-    this.setupAxiosRetry(this.client);
   }
 
   protected validateConfig(): void {
@@ -143,7 +134,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
   ): Promise<string> {
     const envelope = buildParamposSoapEnvelope(soapAction, fields);
 
-    const requestConfig: RetryableRequestConfig = {
+    const requestConfig: HttpRequestConfig = {
       headers: { SOAPAction: `https://turkpos.com.tr/${soapAction}` },
       retryable: options.retryable === true,
       responseType: 'text',
@@ -161,17 +152,17 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
     return this.withErrorCode(failureResult<T>('Parampos', error, fallback, extra));
   }
 
-  private buildPaymentFields(
+  private async buildPaymentFields(
     request: PaymentRequest,
     orderId: string,
     securityType: 'NS' | '3D',
     installment: number,
     callbackUrl?: string
-  ): Record<string, XmlValue> {
+  ): Promise<Record<string, XmlValue>> {
     const card = this.cardOf(request);
     const transactionAmount = formatParamposAmount(request.price);
     const totalAmount = formatParamposAmount(request.paidPrice ?? request.price);
-    const hash = generateParamposPaymentHash(
+    const hash = await generateParamposPaymentHash(
       this.config.clientCode,
       this.config.guid,
       installment,
@@ -212,13 +203,13 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
    * TP_Islem_Odeme_OnProv_WMD fields (pre-authorization), as Param expects them:
    * no order description or Data fields, and the URLs only for 3D Secure.
    */
-  private buildPreAuthFields(
+  private async buildPreAuthFields(
     request: PaymentRequest,
     orderId: string,
     securityType: 'NS' | '3D',
     installment: number,
     callbackUrl?: string
-  ): Record<string, XmlValue> {
+  ): Promise<Record<string, XmlValue>> {
     const card = this.cardOf(request);
     const transactionAmount = formatParamposAmount(request.price);
     const totalAmount = formatParamposAmount(request.paidPrice ?? request.price);
@@ -241,7 +232,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
       KK_SK_Yil: formatParamposExpiryYear(card.expireYear),
       KK_CVC: card.cvc,
       KK_Sahibi_GSM: formatParamposGsm(request.buyer?.gsmNumber),
-      Islem_Hash: generateParamposPreAuthHash(
+      Islem_Hash: await generateParamposPreAuthHash(
         this.config.clientCode,
         this.config.guid,
         transactionAmount,
@@ -281,7 +272,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
       this.validatePayment(request, PARAMPOS_CARD_RULES);
       this.assertTry(request.currency);
       const installment = Math.max(1, request.installment ?? 1);
-      const fields = this.buildPaymentFields(request, orderId, 'NS', installment);
+      const fields = await this.buildPaymentFields(request, orderId, 'NS', installment);
       const result = await this.sendSoapRequest('TP_WMD_UCD', fields);
 
       const approved = isParamposSuccess(result.Sonuc) && Number(result.Islem_ID) > 0;
@@ -317,7 +308,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
         throw new ValidationError('callbackUrl is required for 3D Secure payments');
       }
       const installment = Math.max(1, request.installment ?? 1);
-      const fields = this.buildPaymentFields(
+      const fields = await this.buildPaymentFields(
         request,
         orderId,
         '3D',
@@ -361,7 +352,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
       this.validatePayment(request, PARAMPOS_CARD_RULES);
       this.assertTry(request.currency);
       const installment = Math.max(1, request.installment ?? 1);
-      const fields = this.buildPreAuthFields(request, orderId, 'NS', installment);
+      const fields = await this.buildPreAuthFields(request, orderId, 'NS', installment);
       const result = await this.sendSoapRequest('TP_Islem_Odeme_OnProv_WMD', fields);
 
       const approved = isParamposSuccess(result.Sonuc) && Number(result.Islem_ID) > 0;
@@ -395,7 +386,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
         throw new ValidationError('callbackUrl is required for 3D Secure payments');
       }
       const installment = Math.max(1, request.installment ?? 1);
-      const fields = this.buildPreAuthFields(
+      const fields = await this.buildPreAuthFields(
         request,
         orderId,
         '3D',
@@ -497,7 +488,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
   async completeThreeDSPayment(callbackData: Parampos3DSCallbackData): Promise<PaymentResponse> {
     const orderId = callbackData?.orderId;
     try {
-      if (!verifyParampos3DSCallback(callbackData ?? {}, this.config.guid)) {
+      if (!(await verifyParampos3DSCallback(callbackData ?? {}, this.config.guid))) {
         return this.withErrorCode({
           status: PaymentStatus.FAILURE,
           paymentId: orderId,

@@ -210,7 +210,7 @@ describe('Idempotency-Key requests', () => {
 });
 
 describe('MemoryIdempotencyStore', () => {
-  it('expires entries', () => {
+  it('expires entries', async () => {
     vi.useFakeTimers();
     const store = new MemoryIdempotencyStore();
     store.set('k', 'v', 1);
@@ -221,7 +221,7 @@ describe('MemoryIdempotencyStore', () => {
     expect(store.setIfAbsent('k', 'x', 1)).toBe(false);
   });
 
-  it('evicts the oldest entries beyond maxEntries', () => {
+  it('evicts the oldest entries beyond maxEntries', async () => {
     const store = new MemoryIdempotencyStore(2);
     store.set('a', '1', 60);
     store.set('b', '2', 60);
@@ -232,8 +232,8 @@ describe('MemoryIdempotencyStore', () => {
 });
 
 describe('fingerprint', () => {
-  it('ignores object key order', () => {
-    expect(fingerprint({ a: 1, b: { c: 2, d: 3 } })).toBe(fingerprint({ b: { d: 3, c: 2 }, a: 1 }));
-    expect(fingerprint({ a: 1 })).not.toBe(fingerprint({ a: 2 }));
+  it('ignores object key order', async () => {
+    expect(await fingerprint({ a: 1, b: { c: 2, d: 3 } })).toBe(await fingerprint({ b: { d: 3, c: 2 }, a: 1 }));
+    expect(await fingerprint({ a: 1 })).not.toBe(await fingerprint({ a: 2 }));
   });
 });

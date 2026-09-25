@@ -1,5 +1,5 @@
-import * as crypto from 'crypto';
 import { safeEqual, formatDecimal } from '../../core/utils';
+import { hmac, randomHex, toBase64 } from '../../core/crypto';
 import { ValidationError } from '../../core/errors';
 
 export const AKBANK_API_VERSION = '1.00';
@@ -25,8 +25,8 @@ export const AKBANK_3D_GATEWAYS = {
 /**
  * base64(HMAC-SHA512(data, secretKey))
  */
-export function akbankSign(data: string, secretKey: string): string {
-  return crypto.createHmac('sha512', secretKey).update(data, 'utf8').digest('base64');
+export async function akbankSign(data: string, secretKey: string): Promise<string> {
+  return toBase64(await hmac('SHA-512', secretKey, data));
 }
 
 /**
@@ -60,7 +60,7 @@ export const AKBANK_3D_HASH_FIELDS = [
 export function createAkbank3DFormHash(
   fields: Record<string, string | undefined>,
   secretKey: string
-): string {
+): Promise<string> {
   const data = AKBANK_3D_HASH_FIELDS.map((key) => fields[key] ?? '').join('');
   return akbankSign(data, secretKey);
 }
@@ -78,14 +78,14 @@ const REQUIRED_CALLBACK_HASH_FIELDS = [
 /**
  * Verifies the okUrl/failUrl callback: hash = base64(HMAC-SHA512(values of hashParams, secretKey))
  */
-export function verifyAkbank3DCallback(
+export async function verifyAkbank3DCallback(
   data: Record<string, string | undefined>,
   secretKey: string
-): boolean {
+): Promise<boolean> {
   if (!data || !data.hash || !data.hashParams) return false;
   const params = data.hashParams.split('+').filter(Boolean);
   if (!REQUIRED_CALLBACK_HASH_FIELDS.every((field) => params.includes(field))) return false;
-  const expected = akbankSign(params.map((key) => data[key] ?? '').join(''), secretKey);
+  const expected = await akbankSign(params.map((key) => data[key] ?? '').join(''), secretKey);
   return safeEqual(expected, data.hash);
 }
 
@@ -93,7 +93,7 @@ export function verifyAkbank3DCallback(
  * 128 hex chars (uppercase)
  */
 export function generateAkbankRandomNumber(): string {
-  return crypto.randomBytes(64).toString('hex').toUpperCase();
+  return randomHex(64).toUpperCase();
 }
 
 /**

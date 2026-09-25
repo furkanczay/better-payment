@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { HttpError } from '../../../src/core/http';
 import { Parampos, mapParamposOrderStatus } from '../../../src/providers/parampos';
 import {
   generateParamposPaymentHash,
@@ -36,15 +37,15 @@ function soap(action: string, fields: Record<string, string>): string {
 }
 
 describe('Parampos utils', () => {
-  it('payment hash matches the reference vector (base64(sha1), ISO-8859-9)', () => {
-    expect(generateParamposPaymentHash('10738', GUID, '3', '1.000,01', '1.000,01', '202412293F4E')).toBe(
+  it('payment hash matches the reference vector (base64(sha1), ISO-8859-9)', async () => {
+    expect(await generateParamposPaymentHash('10738', GUID, '3', '1.000,01', '1.000,01', '202412293F4E')).toBe(
       'jsLYSB3lJ81leFgDLw4D8PbXURs='
     );
   });
 
-  it('3D callback hash matches the reference vector', () => {
+  it('3D callback hash matches the reference vector', async () => {
     expect(
-      generateParampos3DSVerificationHash(
+      await generateParampos3DSVerificationHash(
         '35513153-9902-4a4c-a256-af6ed9cadc52',
         '581877:A65A349B0BAE27FC6567294215158DD8AE223843B5C96462F04A750CA7E8B165:3680:##500100000',
         '1',
@@ -63,20 +64,20 @@ describe('Parampos utils', () => {
       islemHash: 'b1D7+nI3j4k3WGJuhW5IuPOFpEE=',
     };
 
-    it('accepts a valid callback', () => {
-      expect(verifyParampos3DSCallback(callback, GUID)).toBe(true);
+    it('accepts a valid callback', async () => {
+      expect(await verifyParampos3DSCallback(callback, GUID)).toBe(true);
     });
 
-    it('rejects a tampered mdStatus', () => {
-      expect(verifyParampos3DSCallback({ ...callback, mdStatus: '0' }, GUID)).toBe(false);
+    it('rejects a tampered mdStatus', async () => {
+      expect(await verifyParampos3DSCallback({ ...callback, mdStatus: '0' }, GUID)).toBe(false);
     });
 
-    it('rejects a callback signed with an attacker-chosen GUID', () => {
+    it('rejects a callback signed with an attacker-chosen GUID', async () => {
       const attackerGuid = '11111111-1111-1111-1111-111111111111';
       const forged = {
         ...callback,
         GUID: attackerGuid,
-        islemHash: generateParampos3DSVerificationHash(
+        islemHash: await generateParampos3DSVerificationHash(
           callback.islemGUID,
           callback.md,
           '1',
@@ -84,16 +85,16 @@ describe('Parampos utils', () => {
           attackerGuid
         ),
       };
-      expect(verifyParampos3DSCallback(forged, GUID)).toBe(false);
+      expect(await verifyParampos3DSCallback(forged, GUID)).toBe(false);
     });
 
-    it('rejects callbacks with missing fields', () => {
-      expect(verifyParampos3DSCallback({ ...callback, islemHash: undefined }, GUID)).toBe(false);
-      expect(verifyParampos3DSCallback({}, GUID)).toBe(false);
+    it('rejects callbacks with missing fields', async () => {
+      expect(await verifyParampos3DSCallback({ ...callback, islemHash: undefined }, GUID)).toBe(false);
+      expect(await verifyParampos3DSCallback({}, GUID)).toBe(false);
     });
   });
 
-  it('formats payment amounts with a decimal comma', () => {
+  it('formats payment amounts with a decimal comma', async () => {
     expect(formatParamposAmount('100')).toBe('100,00');
     expect(formatParamposAmount(10.5)).toBe('10,50');
     expect(formatParamposAmount('1.006')).toBe('1,01');
@@ -101,11 +102,11 @@ describe('Parampos utils', () => {
     expect(() => formatParamposAmount('-1')).toThrow();
   });
 
-  it('formats refund amounts with a decimal dot', () => {
+  it('formats refund amounts with a decimal dot', async () => {
     expect(formatParamposRefundAmount('10.5')).toBe('10.50');
   });
 
-  it('formats card expiry', () => {
+  it('formats card expiry', async () => {
     expect(formatParamposExpiryMonth('3')).toBe('03');
     expect(() => formatParamposExpiryMonth('13')).toThrow();
     expect(formatParamposExpiryYear('30')).toBe('2030');
@@ -113,30 +114,30 @@ describe('Parampos utils', () => {
     expect(() => formatParamposExpiryYear('203')).toThrow();
   });
 
-  it('formats GSM numbers to 10 digits', () => {
+  it('formats GSM numbers to 10 digits', async () => {
     expect(formatParamposGsm('+90 535 000 00 00')).toBe('5350000000');
     expect(formatParamposGsm('05350000000')).toBe('5350000000');
     expect(formatParamposGsm(undefined)).toBe('');
   });
 
-  it('encodes Turkish characters as ISO-8859-9', () => {
+  it('encodes Turkish characters as ISO-8859-9', async () => {
     expect([...encodeIso88599('ğüşİıç')]).toEqual([0xf0, 0xfc, 0xfe, 0xdd, 0xfd, 0xe7]);
   });
 
-  it('escapes and unescapes XML', () => {
+  it('escapes and unescapes XML', async () => {
     expect(escapeXml('<a & "b">')).toBe('&lt;a &amp; &quot;b&quot;&gt;');
     expect(unescapeXml('&lt;form action=&quot;x&quot;&gt;&#x130;&#252;')).toBe('<form action="x">İü');
     expect(escapeXml(undefined)).toBe('');
   });
 
-  it('builds a SOAP envelope with escaped values', () => {
+  it('builds a SOAP envelope with escaped values', async () => {
     const xml = buildParamposSoapEnvelope('TP_WMD_Pay', { G: { CLIENT_CODE: '1' }, Siparis_ID: 'a<b' });
     expect(xml).toContain('<TP_WMD_Pay xmlns="https://turkpos.com.tr/">');
     expect(xml).toContain('<G><CLIENT_CODE>1</CLIENT_CODE></G>');
     expect(xml).toContain('<Siparis_ID>a&lt;b</Siparis_ID>');
   });
 
-  it('parses results, unescaping HTML and flattening nested elements', () => {
+  it('parses results, unescaping HTML and flattening nested elements', async () => {
     const xml = soap('TP_Islem_Sorgulama4', { Sonuc: '1', Sonuc_Str: 'Başarılı' }).replace(
       '<Sonuc>',
       '<DT_Bilgi><Durum>SUCCESS</Durum><Toplam_Tutar>10.01</Toplam_Tutar></DT_Bilgi><Sonuc>'
@@ -148,21 +149,21 @@ describe('Parampos utils', () => {
     expect(html.UCD_HTML).toBe('<form id="x"></form>');
   });
 
-  it('throws on SOAP faults and missing results', () => {
+  it('throws on SOAP faults and missing results', async () => {
     expect(() =>
       parseParamposSoapResponse('<soap:Fault><faultstring>Server was unable</faultstring></soap:Fault>', 'X')
     ).toThrow(/Server was unable/);
     expect(() => parseParamposSoapResponse('<a/>', 'TP_WMD_UCDResult')).toThrow();
   });
 
-  it('isParamposSuccess treats positive codes as success', () => {
+  it('isParamposSuccess treats positive codes as success', async () => {
     expect(isParamposSuccess('1')).toBe(true);
     expect(isParamposSuccess('0')).toBe(false);
     expect(isParamposSuccess('-102')).toBe(false);
     expect(isParamposSuccess(undefined)).toBe(false);
   });
 
-  it('maps Durum values', () => {
+  it('maps Durum values', async () => {
     expect(mapParamposOrderStatus('SUCCESS')).toBe(PaymentStatus.SUCCESS);
     expect(mapParamposOrderStatus('REFUND')).toBe(PaymentStatus.CANCELLED);
     expect(mapParamposOrderStatus('CANCEL')).toBe(PaymentStatus.CANCELLED);
@@ -170,7 +171,7 @@ describe('Parampos utils', () => {
     expect(mapParamposOrderStatus(undefined)).toBe(PaymentStatus.PENDING);
   });
 
-  it('validates TC identity numbers and masks card numbers', () => {
+  it('validates TC identity numbers and masks card numbers', async () => {
     expect(validateTurkishIdentityNumber('10000000146')).toBe(true);
     expect(validateTurkishIdentityNumber('12345678901')).toBe(false);
     expect(maskCardNumber('4446763125813623')).toBe('4446********3623');
@@ -195,7 +196,7 @@ describe('Parampos provider', () => {
 
   const sentXml = (call = 0): string => post.mock.calls[call][1];
 
-  it('requires all credentials', () => {
+  it('requires all credentials', async () => {
     expect(
       () =>
         new Parampos({
@@ -221,7 +222,7 @@ describe('Parampos provider', () => {
     expect(xml).toContain('<Siparis_ID>ORDER1</Siparis_ID>');
     expect(xml).toContain('<GUID>' + GUID + '</GUID>');
     expect(xml).toContain(
-      `<Islem_Hash>${generateParamposPaymentHash('10738', GUID, 1, '1,00', '1,20', 'ORDER1')}</Islem_Hash>`
+      `<Islem_Hash>${await generateParamposPaymentHash('10738', GUID, 1, '1,00', '1,20', 'ORDER1')}</Islem_Hash>`
     );
     expect(result.status).toBe(PaymentStatus.SUCCESS);
     expect(result.paymentId).toBe('ORDER1');
@@ -295,7 +296,7 @@ describe('Parampos provider', () => {
       const forged = {
         ...callback,
         GUID: attackerGuid,
-        islemHash: generateParampos3DSVerificationHash(callback.islemGUID, callback.md, '1', callback.orderId, attackerGuid),
+        islemHash: await generateParampos3DSVerificationHash(callback.islemGUID, callback.md, '1', callback.orderId, attackerGuid),
       };
       const result = await parampos.completeThreeDSPayment(forged);
       expect(result.status).toBe(PaymentStatus.FAILURE);
@@ -307,7 +308,7 @@ describe('Parampos provider', () => {
       const md0 = {
         ...callback,
         mdStatus: '0',
-        islemHash: generateParampos3DSVerificationHash(callback.islemGUID, callback.md, '0', callback.orderId, GUID),
+        islemHash: await generateParampos3DSVerificationHash(callback.islemGUID, callback.md, '0', callback.orderId, GUID),
       };
       const result = await parampos.completeThreeDSPayment(md0);
       expect(result.status).toBe(PaymentStatus.FAILURE);
@@ -355,7 +356,7 @@ describe('Parampos provider', () => {
   });
 
   it('reports network errors as PENDING (outcome unknown)', async () => {
-    post.mockRejectedValue({ isAxiosError: true, code: 'ECONNABORTED', request: {} });
+    post.mockRejectedValue(new HttpError('Request timed out', {}, { code: 'ETIMEDOUT' }));
     const result = await parampos.createPayment(mockPaymentRequest);
     expect(result.status).toBe(PaymentStatus.PENDING);
     expect(result.errorCode).toBe('NETWORK_ERROR');

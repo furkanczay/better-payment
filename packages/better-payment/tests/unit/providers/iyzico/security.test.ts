@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { HttpError } from '../../../../src/core/http';
 import { Iyzico } from '../../../../src/providers/iyzico';
 import { PaymentStatus } from '../../../../src/types';
 
@@ -87,7 +88,7 @@ describe('Iyzico - payment status and request semantics', () => {
   });
 
   it('returns PENDING (outcome unknown) on network errors instead of FAILURE', async () => {
-    request.mockRejectedValue({ isAxiosError: true, code: 'ECONNABORTED', request: {}, message: 'timeout' });
+    request.mockRejectedValue(new HttpError('Request timed out', {}, { code: 'ETIMEDOUT' }));
     const result = await iyzico.createPayment({
       price: '1.00',
       paidPrice: '1.00',

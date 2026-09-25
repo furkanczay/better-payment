@@ -1,24 +1,14 @@
-import crypto from 'crypto';
 import { ValidationError } from './errors';
+import { randomHex, safeEqual } from './crypto';
 
-/**
- * Constant-time string comparison for signatures/hashes.
- * Returns false for missing values or different lengths.
- */
-export function safeEqual(a: string | undefined | null, b: string | undefined | null): boolean {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  const bufA = Buffer.from(a, 'utf8');
-  const bufB = Buffer.from(b, 'utf8');
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
+export { safeEqual };
 
 /**
  * Generates an alphanumeric order id (no separators), accepted by every
  * supported provider. Example: BP1727180000000A1B2C3D4
  */
 export function generateOrderId(prefix = 'BP'): string {
-  return `${prefix}${Date.now()}${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+  return `${prefix}${Date.now()}${randomHex(4).toUpperCase()}`;
 }
 
 /**
@@ -72,15 +62,5 @@ export function errorMessage(error: unknown, fallback: string): string {
  */
 export function isNetworkError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
-  const e = error as {
-    isAxiosError?: boolean;
-    response?: unknown;
-    request?: unknown;
-    code?: string;
-  };
-  return (
-    !!e.isAxiosError &&
-    !e.response &&
-    (!!e.request || e.code === 'ECONNABORTED' || e.code === 'ETIMEDOUT')
-  );
+  return (error as { isNetworkError?: unknown }).isNetworkError === true;
 }

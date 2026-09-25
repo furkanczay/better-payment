@@ -31,7 +31,6 @@ tests/
 │   └── provider-responses.ts # Provider response'ları (sadece unit testler için)
 │
 └── helpers/                  # Test yardımcıları
-    ├── axios-mock.ts        # Axios mock (sadece unit testler için)
     └── request-validator.ts # Request validation helpers
 ```
 
@@ -42,7 +41,7 @@ tests/
 **Amaç**: Tek bir fonksiyon veya sınıfı izole bir şekilde test etmek.
 
 **Özellikler**:
-- HTTP istekleri mock'lanır (axios-mock kullanır)
+- HTTP istekleri mock'lanır (sahte `fetch` ile)
 - Provider response'ları fixture'dan gelir
 - Hızlı çalışır
 - Kod mantığını test eder
@@ -137,16 +136,16 @@ npm run test:watch
 ### Unit Test Yazma
 
 1. `tests/unit/` altında uygun klasöre git
-2. `axios-mock.ts` helper'ını import et
+2. Provider'a `fetch` seçeneğiyle sahte bir fetch ver (ya da `(provider as any).client.request/post`'u stub'la)
 3. Provider response'ları için `fixtures/provider-responses.ts` kullan
 4. Tek bir fonksiyon/metod'u test et
 
 ```typescript
-import { mockAxios, setupAxiosMock } from '../../../helpers/axios-mock';
 import { mockIyzicoSuccessResponse } from '../../../fixtures/provider-responses';
 
 it('should handle payment success', async () => {
-  setupAxiosMock('post', mockIyzicoSuccessResponse);
+  const fetch = vi.fn(async () => new Response(JSON.stringify(mockIyzicoSuccessResponse)));
+  const iyzico = new Iyzico({ apiKey: 'k', secretKey: 's', baseUrl: 'https://sandbox-api.iyzipay.com', fetch });
 
   const result = await iyzico.createPayment(mockPaymentRequest);
 
@@ -158,7 +157,7 @@ it('should handle payment success', async () => {
 
 1. `tests/integration/` altında uygun klasöre git
 2. `RequestValidator` kullan
-3. Axios'u intercept et (mock etme!)
+3. İstekleri sahte `fetch` ile yakala
 4. Request formatını detaylı kontrol et
 
 ```typescript
@@ -168,14 +167,11 @@ beforeEach(() => {
   requestValidator = new RequestValidator();
 
   // Intercept requests
-  vi.spyOn(axios, 'create').mockImplementation((config) => {
-    const instance = axios.create(config);
-    instance.interceptors.request.use((req) => {
-      requestValidator.captureRequest({ /* ... */ });
-      return Promise.reject({ response: { data: {}, status: 200 } });
-    });
-    return instance;
+  const fetch = vi.fn(async (url: string, init: RequestInit) => {
+    requestValidator.captureRequest({ /* url, init.headers, init.body */ });
+    return new Response('{}');
   });
+  iyzico = new Iyzico({ ...config, fetch });
 });
 
 it('should send correct format', async () => {
@@ -192,7 +188,7 @@ it('should send correct format', async () => {
 
 ```typescript
 // KÖTÜ - Bu unit test!
-setupAxiosMock('post', mockIyzicoSuccessResponse);
+const fetch = async () => new Response(JSON.stringify(mockIyzicoSuccessResponse));
 await iyzico.createPayment(mockPaymentRequest);
 ```
 
@@ -200,7 +196,7 @@ await iyzico.createPayment(mockPaymentRequest);
 
 ```typescript
 // İYİ - Bu integration test!
-vi.spyOn(axios, 'create').mockImplementation(/* intercept */);
+const iyzico = new Iyzico({ ...config, fetch: capturingFetch });
 await iyzico.createPayment(mockPaymentRequest);
 
 const request = requestValidator.getLastRequest();

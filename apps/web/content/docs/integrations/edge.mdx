@@ -1,0 +1,100 @@
+---
+title: Edge runtimes
+description: Run better-payment on Vercel Edge, Cloudflare Workers, Deno and Bun.
+---
+
+`better-payment` has no runtime dependencies and uses only web-standard APIs: `fetch`, WebCrypto (`crypto.subtle`), `TextEncoder` and `atob`/`btoa`. The same package runs on:
+
+- Node.js 20+
+- Vercel Edge Functions and Next.js routes with `runtime = 'edge'`
+- Cloudflare Workers
+- Deno and Deno Deploy
+- Bun
+
+Every release is tested in the Vercel Edge Runtime VM. That VM has no `Buffer`, `process` or `require`. The test signs requests and verifies callbacks for all four providers there, and compares the results with values computed in Node.js.
+
+## Next.js (edge)
+
+The [Next.js route handler](/docs/integrations/nextjs) works unchanged. Only switch the runtime:
+
+```typescript
+// app/api/pay/[...path]/route.ts
+export const runtime = 'edge'; // or 'nodejs'
+```
+
+## Cloudflare Workers
+
+```typescript
+import { BetterPayment, ProviderType } from 'better-payment';
+
+interface Env {
+  IYZICO_API_KEY: string;
+  IYZICO_SECRET_KEY: string;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const payment = new BetterPayment({
+      mode: 'sandbox',
+      providers: {
+        [ProviderType.IYZICO]: {
+          enabled: true,
+          config: { apiKey: env.IYZICO_API_KEY, secretKey: env.IYZICO_SECRET_KEY },
+        },
+      },
+    });
+
+    const res = await payment.handler.handle({
+      method: request.method,
+      url: request.url,
+      headers: Object.fromEntries(request.headers),
+      // JSON and form-urlencoded bodies can be passed as raw text
+      body: request.method === 'GET' ? undefined : await request.text(),
+    });
+
+    return typeof res.body === 'string'
+      ? new Response(res.body, { status: res.status, headers: res.headers })
+      : Response.json(res.body, { status: res.status, headers: res.headers });
+  },
+};
+```
+
+## Deno
+
+```typescript
+import { BetterPayment } from 'npm:better-payment';
+
+const payment = new BetterPayment({ /* ... */ });
+
+Deno.serve(async (request) => {
+  const res = await payment.handler.handle({
+    method: request.method,
+    url: request.url,
+    headers: Object.fromEntries(request.headers),
+    body: request.method === 'GET' ? undefined : await request.text(),
+  });
+  return typeof res.body === 'string'
+    ? new Response(res.body, { status: res.status, headers: res.headers })
+    : Response.json(res.body, { status: res.status, headers: res.headers });
+});
+```
+
+Bun works the same way with `Bun.serve({ fetch })`.
+
+## Idempotency on edge and serverless
+
+The default idempotency store keeps duplicate-callback and `Idempotency-Key` records **in memory**. On edge and serverless platforms, every isolate or instance has its own memory, so it only deduplicates requests that reach the same isolate. Pass a [shared store](/docs/api/handler#duplicate-callbacks-and-idempotency-key) in production:
+
+- **Upstash Redis** (HTTP-based, works on every edge runtime): `SET key value EX ttl NX` for `setIfAbsent`.
+- **Cloudflare:** Durable Objects or D1 (`INSERT ... ON CONFLICT DO NOTHING`). Workers KV is eventually consistent and cannot implement the atomic `setIfAbsent`.
+
+## Custom fetch
+
+Provider API calls use `globalThis.fetch`. Pass your own implementation, for example to route requests through a proxy or to stub them in tests:
+
+```typescript
+new BetterPayment({
+  fetch: (input, init) => fetch(input, { ...init, keepalive: true }),
+  providers: { /* ... */ },
+});
+```

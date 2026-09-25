@@ -1,4 +1,3 @@
-import type { AxiosInstance, AxiosRequestConfig } from 'axios';
 import {
   PaymentCard,
   PaymentRequest,
@@ -23,6 +22,7 @@ import {
 } from '../types';
 import { BetterPaymentLogger } from './logger';
 import type { RetryConfig } from './retry';
+import { HttpClient } from './http';
 import { BetterPaymentError, ValidationError } from './errors';
 import { PaymentErrorCode, resolveErrorCode } from './error-codes';
 import { NETWORK_ERROR_CODE, type FailureResult } from './failure';
@@ -42,23 +42,14 @@ export interface PaymentProviderConfig {
   locale?: string;
   logger?: BetterPaymentLogger;
   retry?: RetryConfig;
+  /** Custom fetch implementation for API calls. Default: globalThis.fetch. */
+  fetch?: typeof fetch;
   /**
    * Validate requests before calling the provider (card, amounts, basket,
    * required fields). Default: true.
    */
   validate?: boolean;
 }
-
-/**
- * Axios request config'ine eklenen, bu isteğin tekrar denenmesinin
- * güvenli olduğunu belirten işaret. Ödeme/iade gibi idempotent olmayan
- * istekler bu işaret olmadan asla yeniden gönderilmez.
- */
-export interface RetryableRequestConfig extends AxiosRequestConfig {
-  retryable?: boolean;
-}
-
-const IDEMPOTENT_METHODS = ['get', 'head', 'options'];
 
 /**
  * Tüm ödeme sağlayıcıları için temel abstract sınıf
@@ -150,87 +141,21 @@ export abstract class PaymentProvider<
   abstract getPayment(paymentId: string): Promise<PaymentResponse>;
 
   /**
-   * Attaches request/response logging interceptors to an axios instance.
-   * No-op when no logger is configured. Request/response bodies are never
-   * logged because they contain card data and credentials.
+   * Creates the fetch-based HTTP client for a provider, with the configured logger,
+   * retry policy (idempotent requests only) and fetch implementation.
    */
-  protected setupAxiosLogging(client: AxiosInstance, provider: string): void {
-    const logger = this.config.logger;
-    if (!logger) return;
-
-    client.interceptors.request.use((config) => {
-      logger.debug(`[${provider}] ${config.method?.toUpperCase()} ${config.url}`, {
-        provider,
-        method: config.method,
-        url: config.url,
-      });
-      return config;
-    });
-
-    client.interceptors.response.use(
-      (response) => {
-        logger.debug(`[${provider}] ${response.status} ${response.config.url}`, {
-          provider,
-          status: response.status,
-          url: response.config.url,
-        });
-        return response;
-      },
-      (error) => {
-        logger.error(
-          `[${provider}] Request failed: ${error?.message}`,
-          error instanceof Error ? error : new Error(String(error)),
-          {
-            provider,
-            url: error?.config?.url,
-            status: error?.response?.status,
-          }
-        );
-        return Promise.reject(error);
-      }
-    );
-  }
-
-  /**
-   * Attaches retry logic to an axios instance.
-   *
-   * Only idempotent requests are retried: GET/HEAD/OPTIONS, or requests
-   * explicitly marked with `retryable: true` (e.g. read-only SOAP/POST queries).
-   * Payment, refund and cancel requests are never retried, because a timeout
-   * after the provider received the request would otherwise charge or refund
-   * twice.
-   *
-   * No-op when retry.attempts <= 1 or retry is not configured.
-   */
-  protected setupAxiosRetry(client: AxiosInstance): void {
-    const retry = this.config.retry;
-    if (!retry || retry.attempts <= 1) return;
-
-    client.interceptors.response.use(undefined, async (error) => {
-      const config = error.config as
-        | (RetryableRequestConfig & { __retryCount?: number })
-        | undefined;
-      if (!config) return Promise.reject(error);
-
-      const method = (config.method || 'get').toLowerCase();
-      const isSafe = config.retryable === true || IDEMPOTENT_METHODS.includes(method);
-      if (!isSafe) return Promise.reject(error);
-
-      const retryCount = config.__retryCount ?? 0;
-
-      const networkError = !error.response;
-      const statusMatch =
-        !!error.response &&
-        !!retry.statusCodes &&
-        retry.statusCodes.includes(error.response.status as number);
-
-      const shouldRetry = retryCount < retry.attempts - 1 && (networkError || statusMatch);
-
-      if (!shouldRetry) return Promise.reject(error);
-
-      config.__retryCount = retryCount + 1;
-      await new Promise<void>((resolve) => setTimeout(resolve, retry.delay ?? 1000));
-      return client(config);
+  protected createHttpClient(
+    provider: string,
+    options: { timeout: number; headers?: Record<string, string> }
+  ): HttpClient {
+    return new HttpClient({
+      provider,
+      baseURL: this.config.baseUrl,
+      timeout: options.timeout,
+      headers: options.headers,
+      fetch: this.config.fetch,
+      logger: this.config.logger,
+      retry: this.config.retry,
     });
   }
 

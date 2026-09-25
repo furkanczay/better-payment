@@ -26,6 +26,8 @@
     "test:integration": "vitest tests/integration",
     "test:e2e": "vitest tests/e2e",
     "test:sandbox": "vitest run --config vitest.sandbox.config.ts",
+    "test:edge": "vitest run --config vitest.edge.config.ts",
+    "test:edge-smoke": "node scripts/edge-smoke.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
@@ -54,7 +56,10 @@
     "online-payment",
     "3d-secure",
     "nodejs",
-    "nextjs"
+    "nextjs",
+    "edge",
+    "cloudflare-workers",
+    "deno"
   ],
   "author": "Better Pay Contributors",
   "license": "MIT",
@@ -73,10 +78,12 @@
   "devDependencies": {
     "@commitlint/cli": "^18.4.3",
     "@commitlint/config-conventional": "^18.4.3",
+    "@edge-runtime/vm": "^5.0.0",
     "@types/node": "^20.19.22",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
     "@vitest/coverage-v8": "^4.0.1",
+    "esbuild": "0.27.7",
     "eslint": "^8.54.0",
     "husky": "^8.0.3",
     "lint-staged": "^15.2.0",
@@ -84,9 +91,6 @@
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
     "vitest": "^4.0.1"
-  },
-  "dependencies": {
-    "axios": "^1.6.2"
   },
   "files": [
     "dist",

@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import { digest, toHex } from './crypto';
 
 /**
  * Key-value store used by the HTTP handler to process each callback once and to
@@ -69,9 +69,6 @@ function canonical(value: unknown): unknown {
 }
 
 /** SHA-256 of a value's canonical JSON (object keys sorted), hex encoded */
-export function fingerprint(value: unknown): string {
-  return crypto
-    .createHash('sha256')
-    .update(JSON.stringify(canonical(value ?? null)))
-    .digest('hex');
+export async function fingerprint(value: unknown): Promise<string> {
+  return toHex(await digest('SHA-256', JSON.stringify(canonical(value ?? null))));
 }

@@ -3,20 +3,6 @@ import { BetterPayment } from '../../../src/core/BetterPayment';
 import { ProviderType } from '../../../src/core/BetterPaymentConfig';
 import { ProviderNotEnabledError } from '../../../src/core/errors';
 
-// Mock axios so providers don't make real HTTP calls
-vi.mock('axios', () => ({
-  default: {
-    create: vi.fn(() => ({
-      interceptors: {
-        request: { use: vi.fn() },
-        response: { use: vi.fn() },
-      },
-      post: vi.fn(),
-      get: vi.fn(),
-    })),
-  },
-}));
-
 const iyzicoConfig = {
   iyzico: {
     enabled: true,

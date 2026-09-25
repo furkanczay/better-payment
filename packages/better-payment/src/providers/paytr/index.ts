@@ -1,12 +1,12 @@
-import axios, { AxiosInstance } from 'axios';
-import crypto from 'crypto';
-import { PaymentProvider, RetryableRequestConfig } from '../../core/PaymentProvider';
+import type { HttpClient, HttpRequestConfig } from '../../core/http';
+import { PaymentProvider } from '../../core/PaymentProvider';
 import { ConfigurationError, ValidationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
 import type { PaymentValidationRules } from '../../core/validation';
 import { PAYTR_ERROR_CODES } from './error-codes';
 import type { PaymentErrorCode } from '../../core/error-codes';
 import { generateOrderId, parseAmount } from '../../core/utils';
+import { randomHex } from '../../core/crypto';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -82,20 +82,15 @@ const PAYTR_ORDER_RULES: PaymentValidationRules = {
  *   permission on the PayTR account).
  */
 export class PayTR extends PaymentProvider<PayTRConfig> {
-  private client: AxiosInstance;
+  private client: HttpClient;
 
   constructor(config: PayTRConfig) {
     super(config);
 
-    this.client = axios.create({
-      baseURL: this.config.baseUrl,
+    this.client = this.createHttpClient('paytr', {
       timeout: 30000,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
-    this.setupAxiosLogging(this.client, 'paytr');
-    this.setupAxiosRetry(this.client);
   }
 
   protected validateConfig(): void {
@@ -134,7 +129,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
   }
 
   private post<T>(path: string, data: Record<string, string>, retryable = false): Promise<T> {
-    const config: RetryableRequestConfig = { retryable };
+    const config: HttpRequestConfig = { retryable };
     return this.client.post<T>(path, createPayTRFormData(data), config).then((res) => res.data);
   }
 
@@ -188,7 +183,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
 
       const body: Record<string, string> = {
         ...params,
-        paytr_token: generatePayTRDirectToken(
+        paytr_token: await generatePayTRDirectToken(
           {
             merchantId: params.merchant_id,
             userIp: params.user_ip,
@@ -269,7 +264,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
       const maxInstallment =
         request.installment && request.installment > 1 ? String(request.installment) : '0';
 
-      const paytrToken = generatePayTRIframeToken(
+      const paytrToken = await generatePayTRIframeToken(
         {
           merchantId: this.config.merchantId,
           userIp: request.buyer.ip,
@@ -346,11 +341,11 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
    */
   async completeThreeDSPayment(callbackData: PayTRCallbackData): Promise<PaymentResponse> {
     if (
-      !verifyPayTRCallback(
+      !(await verifyPayTRCallback(
         callbackData ?? ({} as PayTRCallbackData),
         this.config.merchantSalt,
         this.config.merchantKey
-      )
+      ))
     ) {
       return this.withErrorCode({
         status: PaymentStatus.FAILURE,
@@ -387,7 +382,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
         merchant_id: this.config.merchantId,
         merchant_oid: request.paymentId,
         return_amount: returnAmount,
-        paytr_token: generatePayTRRefundToken(
+        paytr_token: await generatePayTRRefundToken(
           this.config.merchantId,
           request.paymentId,
           returnAmount,
@@ -515,7 +510,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
         {
           merchant_id: this.config.merchantId,
           utoken: request.customerToken,
-          paytr_token: generatePayTRCardListToken(
+          paytr_token: await generatePayTRCardListToken(
             request.customerToken,
             this.config.merchantSalt,
             this.config.merchantKey
@@ -556,7 +551,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
           merchant_id: this.config.merchantId,
           ctoken: request.cardToken,
           utoken: request.customerToken,
-          paytr_token: generatePayTRCardDeleteToken(
+          paytr_token: await generatePayTRCardDeleteToken(
             request.cardToken,
             request.customerToken,
             this.config.merchantSalt,
@@ -660,7 +655,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
         non_3d: '0',
       };
 
-      fields.paytr_token = generatePayTRDirectToken(
+      fields.paytr_token = await generatePayTRDirectToken(
         {
           merchantId: fields.merchant_id,
           userIp: fields.user_ip,
@@ -708,13 +703,13 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
     }
   }
 
-  private queryStatus(merchantOid: string): Promise<PayTRStatusResponse> {
+  private async queryStatus(merchantOid: string): Promise<PayTRStatusResponse> {
     return this.post<PayTRStatusResponse>(
       '/odeme/durum-sorgu',
       {
         merchant_id: this.config.merchantId,
         merchant_oid: merchantOid,
-        paytr_token: generatePayTRStatusToken(
+        paytr_token: await generatePayTRStatusToken(
           this.config.merchantId,
           merchantOid,
           this.config.merchantSalt,
@@ -795,7 +790,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
       {
         merchant_id: this.config.merchantId,
         bin_number: binNumber,
-        paytr_token: generatePayTRBinToken(
+        paytr_token: await generatePayTRBinToken(
           binNumber,
           this.config.merchantId,
           this.config.merchantSalt,
@@ -830,13 +825,13 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
       const price = parseAmount(request.price, 'price');
       const bin = await this.binCheck(request.binNumber);
 
-      const requestId = crypto.randomBytes(8).toString('hex');
+      const requestId = randomHex(8);
       const rates = await this.post<PayTRInstallmentRatesResponse>(
         '/odeme/taksit-oranlari',
         {
           merchant_id: this.config.merchantId,
           request_id: requestId,
-          paytr_token: generatePayTRInstallmentRatesToken(
+          paytr_token: await generatePayTRInstallmentRatesToken(
             this.config.merchantId,
             requestId,
             this.config.merchantSalt,

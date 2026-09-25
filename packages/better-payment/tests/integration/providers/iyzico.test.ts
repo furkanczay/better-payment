@@ -41,7 +41,7 @@ describe('Iyzico Provider - Integration Tests', () => {
       locale: 'tr',
     });
 
-    // Spy on the internal axios client's post method
+    // Spy on the internal HTTP client's request method
     const client = (iyzico as any).client;
     vi.spyOn(client, 'request').mockImplementation(async (...args: unknown[]) => {
       const [config] = args as [any];

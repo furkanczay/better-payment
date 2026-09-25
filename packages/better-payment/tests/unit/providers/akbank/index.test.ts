@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { HttpError } from '../../../../src/core/http';
 import { Akbank, mapAkbankTxnStatus } from '../../../../src/providers/akbank';
 import { akbankSign } from '../../../../src/providers/akbank/utils';
 import { PaymentStatus } from '../../../../src/types';
@@ -33,7 +34,7 @@ describe('Akbank provider', () => {
 
     const { url, body, raw, config } = sent();
     expect(url).toBe('/transaction/process');
-    expect(config.headers['auth-hash']).toBe(akbankSign(raw, AKBANK_TEST.secretKey));
+    expect(config.headers['auth-hash']).toBe(await akbankSign(raw, AKBANK_TEST.secretKey));
     expect(config.retryable).toBe(false);
     expect(body).toMatchObject({
       version: '1.00',
@@ -137,7 +138,7 @@ describe('Akbank provider', () => {
     expect(result.status).toBe(PaymentStatus.CANCELLED);
   });
 
-  it('maps txnStatus values', () => {
+  it('maps txnStatus values', async () => {
     expect(mapAkbankTxnStatus({ responseCode: 'VPS-0000', txnStatus: 'N' })).toBe(PaymentStatus.SUCCESS);
     expect(mapAkbankTxnStatus({ responseCode: 'VPS-0000', txnStatus: 'R' })).toBe(PaymentStatus.CANCELLED);
     expect(mapAkbankTxnStatus({ responseCode: 'VPS-1005' })).toBe(PaymentStatus.FAILURE);
@@ -153,7 +154,7 @@ describe('Akbank provider', () => {
   });
 
   it('reports timeouts as PENDING', async () => {
-    post.mockRejectedValue({ isAxiosError: true, code: 'ECONNABORTED', request: {} });
+    post.mockRejectedValue(new HttpError('Request timed out', {}, { code: 'ETIMEDOUT' }));
     const result = await akbank.createPayment(mockPaymentRequest);
     expect(result.status).toBe(PaymentStatus.PENDING);
   });

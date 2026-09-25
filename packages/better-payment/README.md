@@ -49,9 +49,10 @@ npm install better-payment
 pnpm add better-payment
 ```
 
-Requires Node.js 20+. The server entry point uses `node:crypto` and does not run
-on edge runtimes (Vercel Edge, Cloudflare Workers). `better-payment/client` is
-browser-safe.
+No runtime dependencies. Runs on Node.js 20+ and on edge runtimes (Vercel Edge,
+Cloudflare Workers, Deno, Bun): it only uses `fetch` and WebCrypto. See the
+[edge runtimes guide](https://better-payment.czaylabs.com/docs/integrations/edge).
+`better-payment/client` is browser-safe.
 
 ## Quick Start
 

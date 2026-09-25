@@ -76,6 +76,11 @@ export interface BetterPaymentConfig {
   logger?: BetterPaymentLogger;
   retry?: RetryConfig;
   /**
+   * Custom fetch implementation for provider API calls (for example to add a proxy
+   * or for tests). Default: globalThis.fetch.
+   */
+  fetch?: typeof fetch;
+  /**
    * Validate requests before calling providers. Default: true.
    * Can be overridden per provider with `config.validate`.
    */

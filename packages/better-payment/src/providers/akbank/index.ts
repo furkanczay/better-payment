@@ -1,5 +1,5 @@
-import axios, { AxiosInstance } from 'axios';
-import { PaymentProvider, RetryableRequestConfig } from '../../core/PaymentProvider';
+import type { HttpClient, HttpRequestConfig } from '../../core/http';
+import { PaymentProvider } from '../../core/PaymentProvider';
 import { BetterPaymentError, ConfigurationError, ValidationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
 import type { PaymentValidationRules } from '../../core/validation';
@@ -63,20 +63,15 @@ const AKBANK_CARD_RULES: PaymentValidationRules = { card: true, required: ['buye
  * - refund() 1002, cancel() 1003, getPayment() 1010 (order history)
  */
 export class Akbank extends PaymentProvider<AkbankConfig> {
-  private client: AxiosInstance;
+  private client: HttpClient;
 
   constructor(config: AkbankConfig) {
     super(config);
 
-    this.client = axios.create({
-      baseURL: this.config.baseUrl,
+    this.client = this.createHttpClient('akbank', {
       timeout: 30000,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
     });
-    this.setupAxiosLogging(this.client, 'akbank');
-    this.setupAxiosRetry(this.client);
   }
 
   protected validateConfig(): void {
@@ -131,10 +126,10 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
     retryable = false
   ): Promise<AkbankApiResponse> {
     const json = JSON.stringify(body);
-    const config: RetryableRequestConfig = {
+    const config: HttpRequestConfig = {
       headers: {
         'Content-Type': 'application/json',
-        'auth-hash': akbankSign(json, this.config.secretKey),
+        'auth-hash': await akbankSign(json, this.config.secretKey),
       },
       retryable,
       // Akbank returns 4xx with a JSON body for validation errors
@@ -291,7 +286,7 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
       if (this.config.subMerchantId) {
         fields.subMerchantId = this.config.subMerchantId;
       }
-      fields.hash = createAkbank3DFormHash(fields, this.config.secretKey);
+      fields.hash = await createAkbank3DFormHash(fields, this.config.secretKey);
 
       const inputs = Object.entries(fields)
         .map(
@@ -330,7 +325,7 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
   async completeThreeDSPayment(callbackData: Akbank3DCallbackData): Promise<PaymentResponse> {
     const orderId = callbackData?.orderId;
 
-    if (!verifyAkbank3DCallback(callbackData ?? {}, this.config.secretKey)) {
+    if (!(await verifyAkbank3DCallback(callbackData ?? {}, this.config.secretKey))) {
       return this.withErrorCode({
         status: PaymentStatus.FAILURE,
         paymentId: orderId,
