@@ -11,6 +11,8 @@ const budgets = [
   { file: 'dist/client/index.js', maxGzipKb: 2 },
   { file: 'dist/testing/index.mjs', maxGzipKb: 8 },
   { file: 'dist/testing/index.js', maxGzipKb: 8 },
+  { file: 'dist/plugins/index.mjs', maxGzipKb: 3 },
+  { file: 'dist/plugins/index.js', maxGzipKb: 3 },
   { file: 'dist/next/index.mjs', maxGzipKb: 1 },
   { file: 'dist/next/index.js', maxGzipKb: 1 },
   { file: 'dist/express/index.mjs', maxGzipKb: 1 },

@@ -21,6 +21,11 @@
       "import": "./dist/testing/index.mjs",
       "require": "./dist/testing/index.js"
     },
+    "./plugins": {
+      "types": "./dist/plugins/index.d.ts",
+      "import": "./dist/plugins/index.mjs",
+      "require": "./dist/plugins/index.js"
+    },
     "./next": {
       "types": "./dist/next/index.d.ts",
       "import": "./dist/next/index.mjs",

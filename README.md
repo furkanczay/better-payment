@@ -260,6 +260,16 @@ const payment = betterPayment({ providers: { ... }, plugins: [auditLog] });
 payment.on('payment.succeeded', (event) => orders.markPaid(event.conversationId));
 ```
 
+Official plugins ship under `better-payment/plugins`. `localizedErrors` puts
+customer-facing error messages in `errorMessage`, in the customer's language
+(English and Turkish included; per request from `Accept-Language` in the handler):
+
+```typescript
+import { localizedErrors } from 'better-payment/plugins';
+
+const payment = betterPayment({ providers: { ... }, plugins: [localizedErrors({ locale: 'tr' })] });
+```
+
 See [Plugins](https://better-payment.czaylabs.com/docs/plugins),
 [payment events](https://better-payment.czaylabs.com/docs/plugins/events) and
 [writing a plugin](https://better-payment.czaylabs.com/docs/plugins/writing-plugins).

@@ -50,9 +50,10 @@ Provider-specific methods (the iyzico checkout form, PWI and subscriptions, PayT
 
 ## Official plugins
 
-Official plugins will ship in the package, under `better-payment/plugins`. Planned:
+Official plugins ship in the package, under `better-payment/plugins`:
 
-- Localized error messages, in English and Turkish ([#76](https://github.com/furkanczay/better-payment/issues/76))
-- Commission router: send each payment to the cheapest provider ([#51](https://github.com/furkanczay/better-payment/issues/51))
+| Plugin | What it does |
+| ------ | ------------ |
+| [`localizedErrors`](/docs/plugins/localized-errors) | Error messages for customers, in their language (English and Turkish included) |
 
-Until then, [write your own](/docs/plugins/writing-plugins). It takes a few lines.
+Planned: a commission router that sends each payment to the cheapest provider ([#51](https://github.com/furkanczay/better-payment/issues/51)). Need something else? [Write your own](/docs/plugins/writing-plugins); it takes a few lines.

@@ -188,6 +188,8 @@ endpoints: {
 - Ödemeleri değiştiren ya da gösteren endpoint'leri `privileged: true` ile işaretleyin: handler, iadelerde olduğu gibi `authorize` hook'u olmadan başlamayı reddeder.
 - Bir adres bir sağlayıcı kimliğiyle ya da `health` ile başlayamaz.
 
+Handler'ın yanıtlarını değiştirmek için `onResponse` kullanın. Tekrar gönderilenler dahil her yanıtta çalışır ve yerine yeni bir yanıt döndürebilir; [localizedErrors](/docs/plugins/localized-errors) bunu, mesajları her isteğin `Accept-Language` başlığına göre çevirmek için kullanır. Hata fırlatırsa hata loglanır ve yanıt değiştirilmeden gönderilir.
+
 ## Hata kodları [#error-codes]
 
 Plugin'in kendi hata kodlarını varsayılan (İngilizce) mesajlarıyla `$ERROR_CODES` içinde tanımlayın; yukarıdaki `BLOCKED_BIN` gibi. Bunlar `payment.$ERROR_CODES` içinde birleşir ve orada tiplidir; böylece uygulamalar ve çeviri plugin'leri bunları kullanabilir. Kodu sonucun `errorCode` alanına yazın; `code` alanı [normalize hata kodlarından](/docs/api/error-codes) biri olarak kalsın.
@@ -242,6 +244,7 @@ interface BetterPaymentPlugin {
   events?: { [type in PaymentEventType | '*']?: (event: PaymentEvent) => void | Promise<void> };
   methods?: (ctx: PluginContext) => Record<string, unknown>;
   endpoints?: Record<string, PaymentEndpoint>;
+  onResponse?: (response: BetterPaymentResponse, ctx: { request: BetterPaymentRequest }) => BetterPaymentResponse | void | Promise<BetterPaymentResponse | void>;
   $ERROR_CODES?: Record<string, string>;
 }
 
@@ -260,6 +263,7 @@ interface BeforeHookResult {
 
 interface PluginContext {
   providerIds: readonly string[];
+  errorCodes: Readonly<Record<string, string>>; // $ERROR_CODES of all plugins
   defaultProvider: string | undefined;
   mode: 'sandbox' | 'production';
   logger: BetterPaymentLogger | undefined;
