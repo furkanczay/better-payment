@@ -30,13 +30,17 @@ export {
   DEFAULT_HANDLER_ACTIONS,
   PRIVILEGED_HANDLER_ACTIONS,
   CALLBACK_HANDLER_ACTIONS,
+  IDEMPOTENT_KEY_ACTIONS,
 } from './core/BetterPaymentHandler';
+export { MemoryIdempotencyStore } from './core/idempotency';
+export type { IdempotencyStore } from './core/idempotency';
 export type {
   BetterPaymentRequest,
   BetterPaymentResponse,
   BetterPaymentHandlerOptions,
   HandlerAction,
   HandlerContext,
+  HandlerIdempotencyOptions,
 } from './core/BetterPaymentHandler';
 
 export { VERSION } from './version';
