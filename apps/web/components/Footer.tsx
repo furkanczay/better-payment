@@ -37,6 +37,7 @@ const links = {
       href: "https://github.com/furkanczay/better-payment/issues",
       external: true,
     },
+    { label: "What's new in 0.0.1", href: "/docs/whats-new" },
     { label: "Changelog", href: "/docs/guides/changelog" },
   ],
 };
@@ -57,7 +58,7 @@ export default function Footer() {
                 width={304}
                 height={64}
                 alt="better-payment"
-                className="h-16 w-auto opacity-90 group-hover:opacity-100 transition-opacity"
+                className="h-16 w-auto brightness-0 dark:invert opacity-90 group-hover:opacity-100 transition-opacity"
               />
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-[230px]">

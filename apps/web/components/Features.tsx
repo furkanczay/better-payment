@@ -1,118 +1,84 @@
-import { Shield, Zap, Code2, Layers, RefreshCw, CreditCard, Webhook, GitBranch } from "lucide-react";
+import { Layers, Code2, Package, ShieldCheck, Lock, Clock, CreditCard, GitBranch } from "lucide-react";
 
 const features = [
   {
     icon: Layers,
     title: "Unified API surface",
     description:
-      "One consistent method set across every provider. createPayment, refund, cancel — all providers respond the same way.",
-    color: "text-violet-500 dark:text-violet-400",
-    bg: "bg-violet-500/8 border-violet-500/15",
+      "createPayment, initThreeDSPayment, refund, cancel and getPayment take the same request types on every provider and return the same result shape.",
     span: "lg:col-span-2",
   },
   {
     icon: Code2,
-    title: "100% TypeScript",
-    description:
-      "Full type definitions shipped out of the box. Catch payment errors at compile time, not in production.",
-    color: "text-sky-500 dark:text-sky-400",
-    bg: "bg-sky-500/8 border-sky-500/15",
-    span: "",
+    title: "TypeScript-first",
+    description: "Typed requests, results and configuration, with no any types in the public API.",
   },
   {
-    icon: Zap,
-    title: "Minimal dependencies",
+    icon: Package,
+    title: "Small footprint",
     description:
-      "Only axios as a peer dependency. Keeps your bundle lean and your dependency tree clean.",
-    color: "text-amber-500 dark:text-amber-400",
-    bg: "bg-amber-500/8 border-amber-500/15",
-    span: "",
+      "One runtime dependency, ESM and CJS builds, and a separate browser-safe client entry point.",
   },
   {
-    icon: Shield,
-    title: "Secure by default",
+    icon: ShieldCheck,
+    title: "Verified callbacks",
     description:
-      "HMAC-SHA256 signature validation, 3D Secure support, and no credential exposure in transport.",
-    color: "text-emerald-500 dark:text-emerald-400",
-    bg: "bg-emerald-500/8 border-emerald-500/15",
-    span: "",
+      "3D Secure callbacks and PayTR notifications are checked against your own credentials, in constant time, before anything counts as paid.",
   },
   {
-    icon: Webhook,
-    title: "Auto HTTP handler",
+    icon: Lock,
+    title: "Secure-by-default handler",
     description:
-      "BetterPaymentHandler turns your config into a full REST API with zero boilerplate — drop-in for Next.js or Express.",
-    color: "text-rose-500 dark:text-rose-400",
-    bg: "bg-rose-500/8 border-rose-500/15",
-    span: "",
+      "The HTTP handler exposes only callbacks and card queries by default. Refunds, cancels and lookups require an authorize hook.",
   },
   {
-    icon: GitBranch,
-    title: "Multi-provider switching",
+    icon: Clock,
+    title: "No double charges",
     description:
-      "Configure all providers upfront, then switch at runtime with payment.use(\"paytr\"). A/B test gateways without code changes.",
-    color: "text-primary",
-    bg: "bg-primary/8 border-primary/15",
-    span: "",
+      "A timeout returns pending with NETWORK_ERROR instead of guessing. Payment, refund and cancel requests are never retried automatically.",
   },
   {
     icon: CreditCard,
-    title: "All payment methods",
+    title: "iyzico extras",
     description:
-      "Card, 3DS, EFT/IBAN, hosted checkout, installments, subscriptions — fully unified across the provider surface.",
-    color: "text-teal-500 dark:text-teal-400",
-    bg: "bg-teal-500/8 border-teal-500/15",
+      "Hosted checkout form, pay with IBAN (PWI) and subscription billing: products, pricing plans and card updates. These are iyzico-only APIs.",
     span: "lg:col-span-2",
   },
   {
-    icon: RefreshCw,
-    title: "Subscription billing",
+    icon: GitBranch,
+    title: "Several providers, one config",
     description:
-      "İyzico subscription APIs — product creation, pricing plans, card update — all available through the unified handler.",
-    color: "text-orange-500 dark:text-orange-400",
-    bg: "bg-orange-500/8 border-orange-500/15",
-    span: "",
+      "Enable multiple providers and choose one per call with payment.use(). Provider-specific setup, like callback URLs, still applies.",
   },
 ];
 
 export default function Features() {
   return (
-    <section id="features" className="py-28 px-5 sm:px-8 bg-muted/15 border-y border-border/50">
+    <section id="features" className="py-24 px-5 sm:px-8 bg-muted/30 border-y border-border">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-14 max-w-2xl">
-          <p className="text-xs font-mono uppercase tracking-[0.2em] text-primary mb-3">
+        <div className="mb-12 max-w-2xl">
+          <p className="text-xs font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
             Features
           </p>
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground tracking-tight leading-tight">
+          <h2 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight leading-tight">
             Everything you need,
             <br />
             <span className="text-muted-foreground font-medium">nothing you don&apos;t.</span>
           </h2>
         </div>
 
-        {/* Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {features.map((f) => (
             <div
               key={f.title}
               className={[
-                "group relative rounded-xl border bg-card p-6 flex flex-col gap-4 transition-all duration-300",
-                "hover:shadow-lg hover:-translate-y-0.5",
-                f.span,
-              ]
-                .filter(Boolean)
-                .join(" ")}
+                "rounded-xl border border-border bg-card p-6 flex flex-col gap-4 transition-colors hover:border-foreground/20",
+                f.span ?? "",
+              ].join(" ")}
             >
-              {/* Hover accent line */}
-              <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-              <div
-                className={`w-10 h-10 rounded-xl border flex items-center justify-center ${f.bg} transition-all duration-300 group-hover:scale-105`}
-              >
-                <f.icon className={`w-4.5 h-4.5 ${f.color}`} />
+              <div className="w-9 h-9 rounded-lg border border-border bg-muted/50 flex items-center justify-center">
+                <f.icon className="w-4 h-4 text-foreground/80" />
               </div>
-
               <div>
                 <h3 className="font-semibold text-foreground mb-2 text-[15px]">{f.title}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">{f.description}</p>

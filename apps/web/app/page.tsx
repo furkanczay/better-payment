@@ -1,3 +1,4 @@
+import { VERSION } from "better-payment";
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
 import TrustBar from "@/components/TrustBar";
@@ -12,9 +13,9 @@ import Footer from "@/components/Footer";
 export default function Home() {
   return (
     <>
-      <Navbar />
+      <Navbar version={VERSION} />
       <main>
-        <Hero />
+        <Hero version={VERSION} />
         <TrustBar />
         <Compare />
         <Features />
