@@ -148,7 +148,7 @@ this id to `refund`, `cancel` and `getPayment`.
 | -------- | ------------------------- | --------------------------- | :----: | ------------------ | :----: | :-: | ----------------- |
 | iyzico   | ✓                         | ✓                           |   ✓    | ✓                  |   ✓    |  ✓  | ✓                 |
 | PayTR    | ✓ (needs non-3D approval) | ✓ iFrame                    |   ✓    | ✓ (full refund)    |   ✓    |  ✓  | ✓ (account rates) |
-| Parampos | ✓ (TRY)                   | ✓ `TP_WMD_UCD`/`TP_WMD_Pay` |   ✓    | ✓                  |   ✓    |  ✓  | —                 |
+| Parampos | ✓ (TRY)                   | ✓ `TP_WMD_UCD`/`TP_WMD_Pay` |   ✓    | ✓                  |   ✓    |  ✓  | ✓ (account rates) |
 | Akbank   | ✓                         | ✓ 3D_PAY                    |   ✓    | ✓                  |   ✓    |  —  | —                 |
 
 ### 3D Secure completion
@@ -163,8 +163,10 @@ this id to `refund`, `cancel` and `getPayment`.
   `OK`.
 
 Installments: pass `installment` in the request. For Parampos, set `paidPrice`
-to the total including commission, using the rates configured on your Param
-account. The library never invents commission rates.
+to the total including commission: `payment.parampos.calculatePaidPrice({ binNumber,
+price, installment })` computes it from your Param rates. Akbank has no
+installment-rate API; use your contracted rates. The library never invents
+commission rates.
 
 ## HTTP Handler
 

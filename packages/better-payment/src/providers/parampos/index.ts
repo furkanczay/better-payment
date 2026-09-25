@@ -13,7 +13,7 @@ import {
 import { ConfigurationError, ValidationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
 import type { PaymentValidationRules } from '../../core/validation';
-import { generateOrderId } from '../../core/utils';
+import { generateOrderId, toMinorUnits } from '../../core/utils';
 import {
   PaymentRequest,
   PaymentResponse,
@@ -24,6 +24,9 @@ import {
   CancelRequest,
   CancelResponse,
   BinCheckResponse,
+  InstallmentDetail,
+  InstallmentInfoRequest,
+  InstallmentInfoResponse,
   PaymentStatus,
 } from '../../types';
 import { ParamposResult, Parampos3DSCallbackData, ParamposOrderStatus } from './types';
@@ -39,6 +42,9 @@ import {
   parseParamposSoapResponse,
   isParamposSuccess,
   parseParamposAmount,
+  parseParamposDataSetRows,
+  paramposRatesOf,
+  calculateParamposTotalMinor,
   XmlValue,
 } from './utils';
 
@@ -46,6 +52,16 @@ import {
  * Parampos configuration
  */
 const PARAMPOS_CARD_RULES: PaymentValidationRules = { card: true, required: ['buyer.ip'] };
+
+/** Commission rates of one card program (virtual POS) */
+export interface ParamposInstallmentRates {
+  /** Param SanalPOS_ID */
+  posId: string;
+  /** Card bank / program name, e.g. "Diğer Banka Kartları" */
+  bankName: string;
+  /** Commission rate in percent by installment count; unavailable counts are absent */
+  rates: Record<number, number>;
+}
 
 export interface ParamposConfig extends PaymentProviderConfig {
   /** CLIENT_CODE (terminal numarası) */
@@ -112,6 +128,16 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
     fields: Record<string, XmlValue>,
     options: { retryable?: boolean } = {}
   ): Promise<ParamposResult> {
+    const xml = await this.sendSoapRaw(soapAction, fields, options);
+    return parseParamposSoapResponse<ParamposResult>(xml, `${soapAction}Result`);
+  }
+
+  /** Sends a SOAP request and returns the response XML as is */
+  private async sendSoapRaw(
+    soapAction: string,
+    fields: Record<string, XmlValue>,
+    options: { retryable?: boolean } = {}
+  ): Promise<string> {
     const envelope = buildParamposSoapEnvelope(soapAction, fields);
 
     const requestConfig: RetryableRequestConfig = {
@@ -121,7 +147,7 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
     };
 
     const response = await this.client.post('', envelope, requestConfig);
-    return parseParamposSoapResponse<ParamposResult>(String(response.data), `${soapAction}Result`);
+    return String(response.data);
   }
 
   private failure<T extends FailureResult>(
@@ -463,18 +489,9 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
    * BIN query (BIN_SanalPos)
    */
   async binCheck(binNumber: string): Promise<BinCheckResponse> {
-    const result = await this.sendSoapRequest(
-      'BIN_SanalPos',
-      { ...this.credentials, BIN: binNumber },
-      { retryable: true }
-    );
-
-    if (!isParamposSuccess(result.Sonuc) || !result.BIN) {
-      throw new Error(result.Sonuc_Str || `BIN ${binNumber} not found`);
-    }
-
+    const result = await this.lookupBin(binNumber);
     return {
-      binNumber: result.BIN,
+      binNumber: result.BIN ?? binNumber,
       cardType: result.Kart_Tip || '',
       cardAssociation: result.Kart_Org || '',
       cardFamily: result.Kart_Tip || '',
@@ -483,6 +500,123 @@ export class Parampos extends PaymentProvider<ParamposConfig> {
       commercial: result.Ticari_Kart === '1' || /ticari/i.test(result.Kart_Tip || ''),
       rawResponse: result,
     };
+  }
+
+  private async lookupBin(binNumber: string): Promise<ParamposResult> {
+    const result = await this.sendSoapRequest(
+      'BIN_SanalPos',
+      { ...this.credentials, BIN: binNumber },
+      { retryable: true }
+    );
+    if (!isParamposSuccess(result.Sonuc) || !result.BIN) {
+      throw new Error(result.Sonuc_Str || `BIN ${binNumber} not found`);
+    }
+    return result;
+  }
+
+  /**
+   * The merchant's customer-facing commission rates per card program
+   * (`TP_Ozel_Oran_SK_Liste`). Negative rates mean "not available" and are left out.
+   */
+  async getInstallmentRates(): Promise<ParamposInstallmentRates[]> {
+    const xml = await this.sendSoapRaw('TP_Ozel_Oran_SK_Liste', this.credentials, {
+      retryable: true,
+    });
+    const result = parseParamposSoapResponse<ParamposResult>(xml, 'TP_Ozel_Oran_SK_ListeResult');
+    if (result.Sonuc !== undefined && !isParamposSuccess(result.Sonuc)) {
+      throw new Error(result.Sonuc_Str || 'Could not list installment rates');
+    }
+    return parseParamposDataSetRows(xml, 'DT_Ozel_Oranlar_SK').map((row) => ({
+      posId: row.SanalPOS_ID,
+      bankName: row.Kredi_Karti_Banka || '',
+      rates: Object.fromEntries(paramposRatesOf(row)),
+    }));
+  }
+
+  /**
+   * Rates that apply to a card: the row of the card's virtual POS, or the
+   * "other bank cards" row when Param routes the BIN there (DKK = 1).
+   */
+  private async ratesForBin(binNumber: string) {
+    const [bin, programs] = await Promise.all([
+      this.lookupBin(binNumber),
+      this.getInstallmentRates(),
+    ]);
+    const program =
+      programs.find((p) => p.posId === bin.SanalPOS_ID) ??
+      (bin.DKK === '1' ? programs.find((p) => /diğer|diger|other/i.test(p.bankName)) : undefined);
+    return { bin, program };
+  }
+
+  /**
+   * Installment options for a card with Param's totals
+   * (Toplam_Tutar = price + price × rate / 100).
+   */
+  async installmentInfo(request: InstallmentInfoRequest): Promise<InstallmentInfoResponse> {
+    try {
+      const priceMinor = toMinorUnits(request.price);
+      if (!(priceMinor > 0)) throw new ValidationError('price must be greater than 0', 'parampos');
+      const { bin, program } = await this.ratesForBin(request.binNumber);
+
+      const installmentPrices: InstallmentDetail[] = Object.entries(program?.rates ?? {})
+        .map(([count, rate]) => {
+          const installmentNumber = Number(count);
+          const totalMinor = calculateParamposTotalMinor(priceMinor, rate);
+          return {
+            installmentNumber,
+            totalPrice: totalMinor / 100,
+            installmentPrice: Math.round(totalMinor / installmentNumber) / 100,
+            commissionRate: rate,
+          };
+        })
+        .sort((a, b) => a.installmentNumber - b.installmentNumber);
+
+      return this.withErrorCode({
+        status: PaymentStatus.SUCCESS,
+        installmentDetails: [
+          {
+            binNumber: bin.BIN ?? request.binNumber,
+            price: priceMinor / 100,
+            cardType: bin.Kart_Tip || '',
+            cardAssociation: bin.Kart_Org || '',
+            cardFamilyName: program?.bankName || bin.Kart_Banka || '',
+            bankCode: Number(bin.Banka_Kodu) || 0,
+            bankName: bin.Kart_Banka || '',
+            commercial: bin.Ticari_Kart === '1' ? 1 : 0,
+            installmentPrices,
+          },
+        ],
+        conversationId: request.conversationId,
+        rawResponse: { bin, program },
+      });
+    } catch (error) {
+      return this.failure<InstallmentInfoResponse>(error, 'Installment info failed');
+    }
+  }
+
+  /**
+   * The amount to charge (`paidPrice`, Param's Toplam_Tutar) for a card and
+   * installment count, using the merchant's rates.
+   *
+   * @throws ValidationError when the installment count is not available for the card
+   */
+  async calculatePaidPrice(request: {
+    binNumber: string;
+    price: string;
+    installment?: number;
+  }): Promise<string> {
+    const installment = request.installment ?? 1;
+    const priceMinor = toMinorUnits(request.price);
+    const { program } = await this.ratesForBin(request.binNumber);
+    const rate = program?.rates[installment];
+    if (rate === undefined) {
+      throw new ValidationError(
+        `installment ${installment} is not available for BIN ${request.binNumber}`,
+        'parampos',
+        [{ path: 'installment', message: 'is not available for this card' }]
+      );
+    }
+    return (calculateParamposTotalMinor(priceMinor, rate) / 100).toFixed(2);
   }
 }
 

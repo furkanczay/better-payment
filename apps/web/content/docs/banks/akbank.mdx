@@ -67,5 +67,5 @@ const status = await payment.akbank.getPayment('ORDER123');                     
 ```
 
 <Callout type="info">
-  BIN and installment queries are not supported for Akbank; `binCheck()` and `installmentInfo()` throw.
+  BIN and installment queries are not supported for Akbank: its Sanal POS API has no installment-rate query. `binCheck()` and `installmentInfo()` throw `NOT_SUPPORTED`. Installment plans come from your Akbank agreement: send `installment` in the payment request and compute `paidPrice` from your contracted rates.
 </Callout>

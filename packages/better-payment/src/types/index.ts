@@ -336,6 +336,8 @@ export interface InstallmentDetail {
   installmentNumber: number; // Taksit sayısı (1 = tek çekim)
   totalPrice: number; // Toplam tutar
   installmentPrice: number; // Taksit başına tutar
+  /** Commission rate in percent that produced totalPrice, when the provider reports it */
+  commissionRate?: number;
 }
 
 /**

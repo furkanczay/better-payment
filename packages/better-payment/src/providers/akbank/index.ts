@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { PaymentProvider, RetryableRequestConfig } from '../../core/PaymentProvider';
-import { ConfigurationError, ValidationError } from '../../core/errors';
+import { BetterPaymentError, ConfigurationError, ValidationError } from '../../core/errors';
 import { failureResult, FailureResult } from '../../core/failure';
 import type { PaymentValidationRules } from '../../core/validation';
 import { ISO8583_ERROR_CODES, PaymentErrorCode, resolveErrorCode } from '../../core/error-codes';
@@ -14,6 +14,8 @@ import {
   RefundResponse,
   CancelRequest,
   CancelResponse,
+  InstallmentInfoRequest,
+  InstallmentInfoResponse,
   PaymentStatus,
 } from '../../types';
 import {
@@ -394,6 +396,19 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
   /**
    * Order status via order history (txnCode 1010)
    */
+  /**
+   * Not available: Akbank's Sanal POS API has no installment-rate query.
+   * Installment plans come from your Akbank agreement; send `installment` in
+   * the payment request and set `paidPrice` from your contracted rates.
+   */
+  async installmentInfo(_request: InstallmentInfoRequest): Promise<InstallmentInfoResponse> {
+    throw new BetterPaymentError(
+      "Akbank's Sanal POS API has no installment-rate query. Installment plans come from your Akbank agreement: send `installment` in the payment request and compute `paidPrice` from your contracted rates.",
+      'NOT_SUPPORTED',
+      'akbank'
+    );
+  }
+
   async getPayment(paymentId: string): Promise<PaymentResponse> {
     try {
       const data = await this.process(
