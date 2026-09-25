@@ -126,6 +126,30 @@ export function generatePayTRInstallmentRatesToken(
 }
 
 /**
+ * Stored card list token (Kart Saklama, capi/list): utoken + merchant_salt
+ * (per PayTR's official Postman collection)
+ */
+export function generatePayTRCardListToken(
+  utoken: string,
+  merchantSalt: string,
+  merchantKey: string
+): string {
+  return paytrSign(utoken + merchantSalt, merchantKey);
+}
+
+/**
+ * Stored card delete token (capi/delete): ctoken + utoken + merchant_salt
+ */
+export function generatePayTRCardDeleteToken(
+  ctoken: string,
+  utoken: string,
+  merchantSalt: string,
+  merchantKey: string
+): string {
+  return paytrSign(ctoken + utoken + merchantSalt, merchantKey);
+}
+
+/**
  * Verifies the hash PayTR sends to the notification (Bildirim) URL:
  * base64(HMAC-SHA256(merchant_oid + merchant_salt + status + total_amount, merchant_key))
  */

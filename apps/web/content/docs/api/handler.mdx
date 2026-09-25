@@ -88,6 +88,9 @@ Paths are relative to `basePath` (default `/api/pay`).
 | POST | `/:provider/authorize/init-3ds` | `authorize/init-3ds` | `initThreeDSAuthorize()` | — |
 | POST | `/:provider/capture` | `capture` | `capture()` | — 🔒 |
 | POST | `/:provider/void` | `void` | `voidAuthorization()` | — 🔒 |
+| POST | `/:provider/cards/save` | `cards/save` | `saveCard()` | — 🔒 |
+| POST | `/:provider/cards/list` | `cards/list` | `listCards()` | — 🔒 |
+| POST | `/:provider/cards/delete` | `cards/delete` | `deleteCard()` | — 🔒 |
 | POST | `/iyzico/checkout/init` | `checkout/init` | `initCheckoutForm()` | — |
 | POST | `/iyzico/checkout/retrieve` | `checkout/retrieve` | `retrieveCheckoutForm()` | — |
 | POST | `/iyzico/pwi/init` | `pwi/init` | `initPWIPayment()` | — |
@@ -127,7 +130,7 @@ Providers deliver callbacks more than once: PayTR resends a notification until i
 
 Duplicates are recognized by a SHA-256 hash of the callback body. A forged body can never match a stored response.
 
-Mutating routes (`payment`, `payment/init-3ds`, `refund`, `cancel`, `authorize`, `capture`, `void`, iyzico checkout/PWI/subscription management) also honor an **`Idempotency-Key`** header. Send a unique key per operation, for example a UUID or `refund-<orderId>`:
+Mutating routes (`payment`, `payment/init-3ds`, `refund`, `cancel`, `authorize`, `capture`, `void`, `cards/save`, `cards/delete`, iyzico checkout/PWI/subscription management) also honor an **`Idempotency-Key`** header. Send a unique key per operation, for example a UUID or `refund-<orderId>`:
 
 - The same key and the same body return the first response, marked `Idempotent-Replayed: true`, without calling the provider again.
 - The same key with a different body returns `422`.

@@ -1,5 +1,6 @@
 import type { AxiosInstance, AxiosRequestConfig } from 'axios';
 import {
+  PaymentCard,
   PaymentRequest,
   PaymentResponse,
   ThreeDSPaymentRequest,
@@ -13,11 +14,16 @@ import {
   InstallmentInfoResponse,
   CaptureRequest,
   VoidAuthorizationRequest,
+  SaveCardRequest,
+  SaveCardResponse,
+  ListCardsResponse,
+  DeleteCardRequest,
+  DeleteCardResponse,
   PaymentStatus,
 } from '../types';
 import { BetterPaymentLogger } from './logger';
 import type { RetryConfig } from './retry';
-import { BetterPaymentError } from './errors';
+import { BetterPaymentError, ValidationError } from './errors';
 import { PaymentErrorCode, resolveErrorCode } from './error-codes';
 import { NETWORK_ERROR_CODE, type FailureResult } from './failure';
 import {
@@ -253,6 +259,34 @@ export abstract class PaymentProvider<
   /** Releases a pre-authorization; nothing is charged */
   async voidAuthorization(_request: VoidAuthorizationRequest): Promise<CancelResponse> {
     throw this.notSupported('Voiding a pre-authorization');
+  }
+
+  /** Saves a card with the provider without charging it */
+  async saveCard(_request: SaveCardRequest): Promise<SaveCardResponse> {
+    throw this.notSupported('Card storage');
+  }
+
+  /** A customer's saved cards */
+  async listCards(_request: { customerToken: string }): Promise<ListCardsResponse> {
+    throw this.notSupported('Card storage');
+  }
+
+  /** Deletes a saved card */
+  async deleteCard(_request: DeleteCardRequest): Promise<DeleteCardResponse> {
+    throw this.notSupported('Card storage');
+  }
+
+  /**
+   * The request's card, for code paths that need card data. Validation normally
+   * rejects a missing card first; this keeps the types honest.
+   */
+  protected cardOf(request: { paymentCard?: PaymentCard }): PaymentCard {
+    if (!request.paymentCard) {
+      throw new ValidationError('paymentCard is required', undefined, [
+        { path: 'paymentCard', message: 'is required' },
+      ]);
+    }
+    return request.paymentCard;
   }
 
   protected notSupported(feature: string, detail?: string): BetterPaymentError {

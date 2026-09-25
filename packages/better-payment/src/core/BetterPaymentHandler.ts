@@ -61,6 +61,9 @@ export type HandlerAction =
   | 'authorize/init-3ds'
   | 'capture'
   | 'void'
+  | 'cards/save'
+  | 'cards/list'
+  | 'cards/delete'
   | 'checkout/init'
   | 'checkout/retrieve'
   | 'pwi/init'
@@ -88,6 +91,9 @@ export const ALL_HANDLER_ACTIONS: HandlerAction[] = [
   'authorize/init-3ds',
   'capture',
   'void',
+  'cards/save',
+  'cards/list',
+  'cards/delete',
   'checkout/init',
   'checkout/retrieve',
   'pwi/init',
@@ -123,6 +129,9 @@ export const PRIVILEGED_HANDLER_ACTIONS: HandlerAction[] = [
   'cancel',
   'capture',
   'void',
+  'cards/save',
+  'cards/list',
+  'cards/delete',
   'payment/get',
   'subscription/cancel',
   'subscription/upgrade',
@@ -219,6 +228,8 @@ export const IDEMPOTENT_KEY_ACTIONS: HandlerAction[] = [
   'authorize/init-3ds',
   'capture',
   'void',
+  'cards/save',
+  'cards/delete',
   'checkout/init',
   'pwi/init',
   'subscription/initialize',
@@ -294,6 +305,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' };
  * - POST /:provider/refund | cancel        -> refund() / cancel()
  * - POST /:provider/authorize[/init-3ds]    -> authorize() / initThreeDSAuthorize()
  * - POST /:provider/capture | void         -> capture() / voidAuthorization()
+ * - POST /:provider/cards/{save,list,delete} -> saveCard() / listCards() / deleteCard()
  * - POST /:provider/installment | bin-check
  * - iyzico only: checkout/*, pwi/*, subscription/*
  * - GET  /health
@@ -553,6 +565,18 @@ export class BetterPaymentHandler {
       case 'void':
         this.requireMethod(ctx, 'POST');
         return this.resultResponse(await provider.voidAuthorization(this.requireBody(ctx)));
+
+      case 'cards/save':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(await provider.saveCard(this.requireBody(ctx)));
+
+      case 'cards/list':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(await provider.listCards(this.requireBody(ctx)));
+
+      case 'cards/delete':
+        this.requireMethod(ctx, 'POST');
+        return this.resultResponse(await provider.deleteCard(this.requireBody(ctx)));
 
       case 'installment':
         this.requireMethod(ctx, 'POST');

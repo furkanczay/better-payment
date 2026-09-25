@@ -75,12 +75,40 @@ export interface IyzicoCancelResponse extends IyzicoResponse {
  */
 
 export interface IyzicoPaymentCard {
-  cardHolderName: string;
-  cardNumber: string;
-  expireMonth: string;
-  expireYear: string;
-  cvc: string;
+  cardHolderName?: string;
+  cardNumber?: string;
+  expireMonth?: string;
+  expireYear?: string;
+  cvc?: string;
   registerCard?: number;
+  cardAlias?: string;
+  /** Stored card: customer key and card token instead of card data */
+  cardUserKey?: string;
+  cardToken?: string;
+}
+
+/** A card as returned by the card storage API */
+export interface IyzicoStoredCardDetails {
+  cardToken: string;
+  cardAlias?: string;
+  binNumber?: string;
+  lastFourDigits?: string;
+  cardType?: string;
+  cardAssociation?: string;
+  cardFamily?: string;
+  cardBankName?: string;
+  cardBankCode?: number;
+}
+
+export interface IyzicoCardResponse extends IyzicoResponse, Partial<IyzicoStoredCardDetails> {
+  cardUserKey?: string;
+  externalId?: string;
+  email?: string;
+}
+
+export interface IyzicoCardListResponse extends IyzicoResponse {
+  cardUserKey?: string;
+  cardDetails?: IyzicoStoredCardDetails[];
 }
 
 export interface IyzicoBuyer {

@@ -21,6 +21,11 @@ import {
   CancelResponse,
   CaptureRequest,
   VoidAuthorizationRequest,
+  SaveCardRequest,
+  SaveCardResponse,
+  ListCardsResponse,
+  DeleteCardRequest,
+  DeleteCardResponse,
 } from '../types';
 import { BetterPaymentHandler, BetterPaymentHandlerOptions } from './BetterPaymentHandler';
 
@@ -260,6 +265,21 @@ export class BetterPayment {
   /** Voids a pre-authorization with the default provider */
   async voidAuthorization(request: VoidAuthorizationRequest): Promise<CancelResponse> {
     return this.getDefaultProvider().voidAuthorization(request);
+  }
+
+  /** Saves a card with the default provider */
+  async saveCard(request: SaveCardRequest): Promise<SaveCardResponse> {
+    return this.getDefaultProvider().saveCard(request);
+  }
+
+  /** Lists a customer's saved cards with the default provider */
+  async listCards(request: { customerToken: string }): Promise<ListCardsResponse> {
+    return this.getDefaultProvider().listCards(request);
+  }
+
+  /** Deletes a saved card with the default provider */
+  async deleteCard(request: DeleteCardRequest): Promise<DeleteCardResponse> {
+    return this.getDefaultProvider().deleteCard(request);
   }
 
   async getPayment(paymentId: string): Promise<PaymentResponse> {

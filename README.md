@@ -167,6 +167,11 @@ Pre-authorization (block now, charge later) works on iyzico, Parampos and Akbank
 `voidAuthorization({ paymentId, ip })`. See the
 [pre-authorization guide](https://better-payment.czaylabs.com/docs/guides/pre-authorization).
 
+Stored cards (iyzico, PayTR): pass `saveCard: true` with a payment, then pay with
+`storedCard: { customerToken, cardToken }` instead of `paymentCard`. `listCards()` and
+`deleteCard()` manage saved cards. Only tokens are stored, never card numbers. See the
+[stored cards guide](https://better-payment.czaylabs.com/docs/guides/stored-cards).
+
 Installments: pass `installment` in the request. For Parampos, set `paidPrice`
 to the total including commission: `payment.parampos.calculatePaidPrice({ binNumber,
 price, installment })` computes it from your Param rates. Akbank has no
@@ -247,6 +252,7 @@ export const POST = handler;
 | `POST /:provider/refund`, `/cancel`    | `refund`, `cancel`       | — (needs `authorize`)                 |
 | `POST /:provider/authorize[/init-3ds]` | `authorize`, `authorize/init-3ds` | —                          |
 | `POST /:provider/capture`, `/void`     | `capture`, `void`        | — (needs `authorize`)                 |
+| `POST /:provider/cards/{save,list,delete}` | `cards/*`            | — (needs `authorize`)                 |
 | `POST /iyzico/checkout/*`, `/pwi/*`    | iyzico only              | —                                     |
 | `POST /iyzico/subscription/*`          | iyzico only              | — (management actions need `authorize`) |
 | `GET  /health`                        | health check             | ✓                                     |

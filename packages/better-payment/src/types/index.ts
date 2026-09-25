@@ -58,7 +58,17 @@ export interface PaymentRequest {
   paidPrice: string;
   currency: Currency | string;
   basketId: string;
-  paymentCard: PaymentCard;
+  /** The card to charge. Omit it when paying with `storedCard`. */
+  paymentCard?: PaymentCard;
+  /** Pay with a card saved earlier (iyzico, PayTR) instead of `paymentCard` */
+  storedCard?: StoredCardReference;
+  /**
+   * Save `paymentCard` with the provider during this payment (iyzico, PayTR
+   * Direct API). The tokens come back in `storedCard` of the result, or of the
+   * 3D Secure / notification result. Pass `customerToken` to add the card to an
+   * existing customer.
+   */
+  saveCard?: boolean | { customerToken?: string; alias?: string };
   buyer: Buyer;
   shippingAddress: Address;
   billingAddress: Address;
@@ -86,6 +96,87 @@ export interface PaymentResponse {
   errorCode?: string;
   errorMessage?: string;
   errorGroup?: string;
+  /** Tokens of the card saved during this payment (`saveCard`) */
+  storedCard?: SavedCardTokens;
+  rawResponse?: unknown;
+}
+
+/** A card saved with the provider, referenced by its tokens */
+export interface StoredCardReference {
+  /** The provider's customer token (iyzico cardUserKey, PayTR utoken) */
+  customerToken: string;
+  /** The provider's card token (iyzico cardToken, PayTR ctoken) */
+  cardToken: string;
+  /** CVC, for providers or cards that require it on stored-card payments (PayTR require_cvv) */
+  cvc?: string;
+}
+
+/** Tokens returned when a card is saved */
+export interface SavedCardTokens {
+  customerToken: string;
+  /** Not every provider returns the card token with the payment result (PayTR: use listCards) */
+  cardToken?: string;
+}
+
+/** A saved card as listed by the provider; never contains the full card number */
+export interface StoredCard {
+  cardToken: string;
+  alias?: string;
+  /** First digits of the card (BIN), when the provider returns them */
+  binNumber?: string;
+  lastFourDigits?: string;
+  expireMonth?: string;
+  expireYear?: string;
+  cardType?: string;
+  cardAssociation?: string;
+  cardFamily?: string;
+  bankName?: string;
+  /** The card needs its CVC when charged (PayTR) */
+  requiresCvc?: boolean;
+}
+
+export interface SaveCardRequest {
+  /** Existing customer to add the card to; omit to create a new customer */
+  customerToken?: string;
+  /** Your own customer id (iyzico externalId) */
+  externalId?: string;
+  email?: string;
+  alias?: string;
+  card: Omit<PaymentCard, 'cvc' | 'registerCard'>;
+  conversationId?: string;
+}
+
+export interface SaveCardResponse {
+  status: PaymentStatus;
+  customerToken?: string;
+  card?: StoredCard;
+  code?: PaymentErrorCode;
+  errorCode?: string;
+  errorMessage?: string;
+  rawResponse?: unknown;
+}
+
+export interface ListCardsResponse {
+  status: PaymentStatus;
+  customerToken?: string;
+  cards: StoredCard[];
+  code?: PaymentErrorCode;
+  errorCode?: string;
+  errorMessage?: string;
+  rawResponse?: unknown;
+}
+
+export interface DeleteCardRequest {
+  customerToken: string;
+  cardToken: string;
+  conversationId?: string;
+}
+
+export interface DeleteCardResponse {
+  status: PaymentStatus;
+  code?: PaymentErrorCode;
+  errorCode?: string;
+  errorMessage?: string;
   rawResponse?: unknown;
 }
 

@@ -196,15 +196,13 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
     const preAuth = txnCode === AKBANK_TXN_CODES.PRE_AUTH;
     try {
       this.validatePayment(request, AKBANK_CARD_RULES);
+      const card = this.cardOf(request);
       const body = {
         ...this.baseRequest(txnCode),
         card: {
-          cardNumber: request.paymentCard.cardNumber,
-          cvv2: request.paymentCard.cvc,
-          expireDate: formatAkbankExpiry(
-            request.paymentCard.expireMonth,
-            request.paymentCard.expireYear
-          ),
+          cardNumber: card.cardNumber,
+          cvv2: card.cvc,
+          expireDate: formatAkbankExpiry(card.expireMonth, card.expireYear),
         },
         transaction: {
           amount: formatAkbankAmount(request.paidPrice ?? request.price),
@@ -266,6 +264,7 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
     const orderId = request.conversationId || generateOrderId();
     try {
       this.validatePayment(request, AKBANK_CARD_RULES);
+      const card = this.cardOf(request);
       if (!request.callbackUrl) {
         throw new ValidationError('callbackUrl is required for 3D Secure payments');
       }
@@ -283,12 +282,9 @@ export class Akbank extends PaymentProvider<AkbankConfig> {
         okUrl: request.callbackUrl,
         failUrl: request.failUrl || request.callbackUrl,
         emailAddress: request.buyer?.email ?? '',
-        creditCard: request.paymentCard.cardNumber,
-        expiredDate: formatAkbankExpiry(
-          request.paymentCard.expireMonth,
-          request.paymentCard.expireYear
-        ),
-        cvv: request.paymentCard.cvc,
+        creditCard: card.cardNumber,
+        expiredDate: formatAkbankExpiry(card.expireMonth, card.expireYear),
+        cvv: card.cvc,
         randomNumber: generateAkbankRandomNumber(),
         requestDateTime: formatAkbankDateTime(),
       };

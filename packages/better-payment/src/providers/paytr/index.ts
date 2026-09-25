@@ -18,6 +18,13 @@ import {
   CancelResponse,
   CaptureRequest,
   VoidAuthorizationRequest,
+  SavedCardTokens,
+  StoredCard,
+  SaveCardRequest,
+  SaveCardResponse,
+  ListCardsResponse,
+  DeleteCardRequest,
+  DeleteCardResponse,
   PaymentStatus,
   BinCheckResponse,
   InstallmentInfoRequest,
@@ -27,6 +34,8 @@ import {
 import {
   generatePayTRIframeToken,
   generatePayTRDirectToken,
+  generatePayTRCardListToken,
+  generatePayTRCardDeleteToken,
   generatePayTRRefundToken,
   generatePayTRStatusToken,
   generatePayTRBinToken,
@@ -152,7 +161,12 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
   async createPayment(request: PaymentRequest): Promise<PaymentResponse> {
     let merchantOid: string | undefined;
     try {
-      this.validatePayment(request, { ...PAYTR_ORDER_RULES, card: true });
+      this.validatePayment(request, {
+        ...PAYTR_ORDER_RULES,
+        card: true,
+        storedCard: true,
+        saveCard: true,
+      });
       merchantOid = this.resolveMerchantOid(request.conversationId);
       const installmentCount =
         request.installment && request.installment > 1 ? String(request.installment) : '0';
@@ -197,11 +211,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
         user_address: request.billingAddress?.address || request.shippingAddress?.address || '',
         user_phone: request.buyer.gsmNumber,
         user_basket: this.buildBasket(request.basketItems),
-        cc_owner: request.paymentCard.cardHolderName,
-        card_number: request.paymentCard.cardNumber,
-        expiry_month: request.paymentCard.expireMonth.padStart(2, '0'),
-        expiry_year: request.paymentCard.expireYear.slice(-2),
-        cvv: request.paymentCard.cvc,
+        ...this.cardFields(request),
       };
 
       const data = await this.post<PayTRDirectPaymentResponse>('/odeme', body);
@@ -215,6 +225,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
         errorMessage: approved
           ? undefined
           : String(data.failed_reason_msg ?? data.err_msg ?? data.msg ?? data.reason ?? ''),
+        ...PayTR.savedCardOf(data),
         rawResponse: data,
       });
     } catch (error) {
@@ -238,6 +249,10 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
   async initThreeDSPayment(
     request: ThreeDSPaymentRequest & { failUrl?: string }
   ): Promise<ThreeDSInitResponse> {
+    if (request.storedCard) {
+      // Stored cards are charged through the Direct API (3D form), not the iFrame
+      return this.initStoredCardPayment(request);
+    }
     let merchantOid: string | undefined;
     try {
       // iFrame flow: the card is entered on PayTR's page
@@ -355,6 +370,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
       conversationId: callbackData.merchant_oid,
       errorCode: approved ? undefined : callbackData.failed_reason_code,
       errorMessage: approved ? undefined : callbackData.failed_reason_msg,
+      ...(approved ? PayTR.savedCardOf(callbackData) : {}),
       rawResponse: callbackData,
     });
   }
@@ -447,6 +463,172 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
         conversationId: request.conversationId,
       });
     }
+  }
+
+  /**
+   * Direct API card fields: the card, or a stored card (utoken + ctoken). With
+   * `saveCard`, PayTR stores the card (store_card=1); the customer's utoken
+   * comes back in the notification (and in the sync response when present).
+   */
+  private cardFields(request: PaymentRequest): Record<string, string> {
+    if (request.storedCard) {
+      return {
+        utoken: request.storedCard.customerToken,
+        ctoken: request.storedCard.cardToken,
+        require_cvv: request.storedCard.cvc ? '1' : '0',
+        ...(request.storedCard.cvc ? { cvv: request.storedCard.cvc } : {}),
+      };
+    }
+    const card = this.cardOf(request);
+    const fields: Record<string, string> = {
+      cc_owner: card.cardHolderName,
+      card_number: card.cardNumber,
+      expiry_month: card.expireMonth.padStart(2, '0'),
+      expiry_year: card.expireYear.slice(-2),
+      cvv: card.cvc,
+    };
+    if (request.saveCard) {
+      fields.store_card = '1';
+      const customerToken =
+        typeof request.saveCard === 'object' ? request.saveCard.customerToken : undefined;
+      if (customerToken) fields.utoken = customerToken;
+    }
+    return fields;
+  }
+
+  /**
+   * PayTR saves cards only during a Direct API payment: pass `saveCard` to
+   * createPayment(), then read the utoken from the result or the notification.
+   */
+  async saveCard(_request: SaveCardRequest): Promise<SaveCardResponse> {
+    throw this.notSupported(
+      'Saving a card without a payment',
+      'PayTR stores cards during a Direct API payment; pass `saveCard: true` to createPayment()'
+    );
+  }
+
+  /** A customer's saved cards (Kart Saklama, `/odeme/capi/list`) */
+  async listCards(request: { customerToken: string }): Promise<ListCardsResponse> {
+    try {
+      const data = await this.post<unknown>(
+        '/odeme/capi/list',
+        {
+          merchant_id: this.config.merchantId,
+          utoken: request.customerToken,
+          paytr_token: generatePayTRCardListToken(
+            request.customerToken,
+            this.config.merchantSalt,
+            this.config.merchantKey
+          ),
+        },
+        true
+      );
+
+      if (!Array.isArray(data)) {
+        const error = (data ?? {}) as { err_no?: unknown; err_msg?: unknown; reason?: unknown };
+        return this.withErrorCode({
+          status: PaymentStatus.FAILURE,
+          customerToken: request.customerToken,
+          cards: [],
+          errorCode: error.err_no !== undefined ? String(error.err_no) : undefined,
+          errorMessage: String(error.err_msg ?? error.reason ?? 'Could not list stored cards'),
+          rawResponse: data,
+        });
+      }
+
+      return this.withErrorCode({
+        status: PaymentStatus.SUCCESS,
+        customerToken: request.customerToken,
+        cards: data.map((raw) => PayTR.storedCardOf(raw as Record<string, unknown>)),
+        rawResponse: data,
+      });
+    } catch (error) {
+      return this.failure<ListCardsResponse>(error, 'Listing cards failed', { cards: [] });
+    }
+  }
+
+  /** Deletes a saved card (`/odeme/capi/delete`) */
+  async deleteCard(request: DeleteCardRequest): Promise<DeleteCardResponse> {
+    try {
+      const data = await this.post<{ status?: string; err_msg?: string; err_no?: unknown }>(
+        '/odeme/capi/delete',
+        {
+          merchant_id: this.config.merchantId,
+          ctoken: request.cardToken,
+          utoken: request.customerToken,
+          paytr_token: generatePayTRCardDeleteToken(
+            request.cardToken,
+            request.customerToken,
+            this.config.merchantSalt,
+            this.config.merchantKey
+          ),
+        }
+      );
+      const ok = data?.status === 'success';
+
+      return this.withErrorCode({
+        status: ok ? PaymentStatus.SUCCESS : PaymentStatus.FAILURE,
+        errorCode: ok || data?.err_no === undefined ? undefined : String(data.err_no),
+        errorMessage: ok ? undefined : String(data?.err_msg ?? 'Could not delete the card'),
+        rawResponse: data,
+      });
+    } catch (error) {
+      return this.failure<DeleteCardResponse>(error, 'Deleting the card failed');
+    }
+  }
+
+  /** The customer's utoken, when PayTR returns one after storing a card */
+  private static savedCardOf(data: unknown): { storedCard?: SavedCardTokens } {
+    const utoken = (data as { utoken?: unknown } | undefined)?.utoken;
+    return typeof utoken === 'string' && utoken ? { storedCard: { customerToken: utoken } } : {};
+  }
+
+  private static storedCardOf(raw: Record<string, unknown>): StoredCard {
+    const str = (key: string) =>
+      raw[key] === undefined || raw[key] === null ? undefined : String(raw[key]);
+    return {
+      cardToken: str('ctoken') ?? '',
+      lastFourDigits: str('last_4'),
+      expireMonth: str('month'),
+      expireYear: str('year'),
+      bankName: str('c_bank'),
+      cardFamily: str('c_brand'),
+      cardType: str('c_type'),
+      cardAssociation: str('schema'),
+      requiresCvc: str('require_cvv') === '1',
+    };
+  }
+
+  /** 3D payment with a stored card, via the Direct API form (createPaymentWithToken) */
+  private async initStoredCardPayment(
+    request: ThreeDSPaymentRequest & { failUrl?: string }
+  ): Promise<ThreeDSInitResponse> {
+    try {
+      this.validatePayment(request, { ...PAYTR_ORDER_RULES, storedCard: true });
+    } catch (error) {
+      return this.failure<ThreeDSInitResponse>(error, '3DS initialization failed');
+    }
+    const stored = request.storedCard!;
+    return this.createPaymentWithToken({
+      utoken: stored.customerToken,
+      ctoken: stored.cardToken,
+      cvv: stored.cvc,
+      price: request.paidPrice ?? request.price,
+      callbackUrl: request.callbackUrl,
+      failUrl: request.failUrl,
+      conversationId: request.conversationId,
+      buyer: {
+        email: request.buyer.email ?? '',
+        name: request.buyer.name,
+        surname: request.buyer.surname,
+        ip: request.buyer.ip ?? '',
+        gsmNumber: request.buyer.gsmNumber ?? '',
+        address: request.billingAddress?.address || request.shippingAddress?.address,
+      },
+      basketItems: request.basketItems,
+      currency: request.currency,
+      installment: request.installment,
+    });
   }
 
   /**

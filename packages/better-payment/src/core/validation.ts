@@ -12,6 +12,10 @@ import type { PaymentCard, PaymentRequest } from '../types';
 export interface PaymentValidationRules {
   /** Validate `paymentCard` (the provider receives card data) */
   card?: boolean;
+  /** The provider accepts `storedCard` instead of `paymentCard` */
+  storedCard?: boolean;
+  /** The provider can save the card during the payment (`saveCard`) */
+  saveCard?: boolean;
   /** Basket item prices must add up to `price` (iyzico) */
   basketMatchesPrice?: boolean;
   /** At least one basket item */
@@ -185,7 +189,20 @@ export function validatePaymentRequest(
     );
   }
 
-  if (rules.card) v.card(request.paymentCard);
+  if (request.storedCard !== undefined) {
+    if (!rules.storedCard) {
+      v.add('storedCard', 'is not supported by this provider');
+    } else {
+      if (isBlank(request.storedCard?.customerToken))
+        v.add('storedCard.customerToken', 'is required');
+      if (isBlank(request.storedCard?.cardToken)) v.add('storedCard.cardToken', 'is required');
+    }
+  } else if (rules.card) {
+    v.card(request.paymentCard);
+  }
+  if (request.saveCard && !rules.saveCard) {
+    v.add('saveCard', 'is not supported by this provider for this payment type');
+  }
   if (rules.required) v.required(request, rules.required);
   v.buyerFormats(request);
 
