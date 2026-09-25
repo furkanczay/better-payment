@@ -46,6 +46,8 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@tests': path.resolve(__dirname, './tests'),
+      'better-payment/testing': path.resolve(__dirname, './src/testing/index.ts'),
+      'better-payment': path.resolve(__dirname, './src/index.ts'),
     },
   },
 });

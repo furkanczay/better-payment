@@ -261,6 +261,22 @@ export const POST = handler;
 Failed operations return HTTP 422 with the result body. Unexpected errors return a
 generic 500 unless you set `exposeErrors: true`.
 
+## Testing
+
+`better-payment/testing` has an in-memory `MockProvider`. It needs no credentials and no network access, and uses magic card numbers for declines, 3D Secure failures and lost responses. Its 3D Secure callbacks are signed and go through the real handler.
+
+```typescript
+import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
+
+const mock = new MockProvider();
+const payment = new BetterPayment({ providers: { mock: { enabled: true, provider: mock } } });
+
+await payment.use('mock').createPayment({ ...order, paymentCard: { ...card, cardNumber: MOCK_CARDS.INSUFFICIENT_FUNDS } });
+// → { status: 'failure', code: 'INSUFFICIENT_FUNDS' }
+```
+
+See the [testing guide](https://better-payment.czaylabs.com/docs/guides/testing).
+
 ## Logging & Retry
 
 ```typescript

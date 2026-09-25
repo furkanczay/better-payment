@@ -4,6 +4,8 @@
     "module": "ESNext",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "types": [],
+    "baseUrl": ".",
+    "paths": { "better-payment": ["./src/index.ts"] },
     "declaration": true,
     "declarationMap": true,
     "outDir": "./dist",

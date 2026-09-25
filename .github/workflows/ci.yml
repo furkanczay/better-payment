@@ -63,6 +63,9 @@ jobs:
         run: |
           node -e "const bp = require('./dist/index.js'); if (!bp.VERSION || new bp.ValidationError('x').name !== 'ValidationError') process.exit(1)"
           node --input-type=module -e "import { VERSION } from './dist/index.mjs'; import { PaymentStatus } from './dist/client/index.mjs'; if (!VERSION || PaymentStatus.SUCCESS !== 'success') process.exit(1)"
+          # better-payment/testing must share classes with the main entry (instanceof checks)
+          node -e "const { MockProvider } = require('better-payment/testing'); const { PaymentProvider } = require('better-payment'); if (!(new MockProvider() instanceof PaymentProvider)) process.exit(1)"
+          node --input-type=module -e "import { MockProvider } from 'better-payment/testing'; import { PaymentProvider } from 'better-payment'; if (!(new MockProvider() instanceof PaymentProvider)) process.exit(1)"
 
       - name: Edge runtime smoke test (built bundle in the Vercel Edge VM)
         run: pnpm test:edge-smoke
@@ -74,4 +77,5 @@ jobs:
         run: |
           test -f dist/index.js && test -f dist/index.mjs && test -f dist/index.d.ts
           test -f dist/client/index.js && test -f dist/client/index.d.ts
+          test -f dist/testing/index.js && test -f dist/testing/index.mjs && test -f dist/testing/index.d.ts
           npm pack --dry-run

@@ -8,6 +8,8 @@ const budgets = [
   { file: 'dist/index.js', maxGzipKb: 25 },
   { file: 'dist/client/index.mjs', maxGzipKb: 2 },
   { file: 'dist/client/index.js', maxGzipKb: 2 },
+  { file: 'dist/testing/index.mjs', maxGzipKb: 8 },
+  { file: 'dist/testing/index.js', maxGzipKb: 8 },
 ];
 
 // better-payment/client must stay browser-safe
