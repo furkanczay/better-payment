@@ -16,7 +16,10 @@ export type ErrorMessageDictionary = Partial<Record<PaymentErrorCode, string>> &
  * The built-in languages. Each one has a message for every normalized error code;
  * a language that misses one does not compile.
  */
-export const errorMessages = { en, tr, de } satisfies Record<string, Record<PaymentErrorCode, string>>;
+export const errorMessages = { en, tr, de } satisfies Record<
+  string,
+  Record<PaymentErrorCode, string>
+>;
 
 export interface LocalizedErrorsOptions {
   /** Default language. Default: 'en' */
