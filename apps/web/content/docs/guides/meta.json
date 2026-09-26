@@ -3,6 +3,7 @@
   "pages": [
     "writing-plugins",
     "custom-providers",
+    "test-cards",
     "migration-0-5"
   ]
 }

@@ -1,0 +1,106 @@
+---
+title: Test Kartları ve Sandbox Kurulumu
+description: Entegrasyonunuzu bellek içi MockProvider veya gerçek sağlayıcı sandbox ortamlarıyla test edin.
+---
+
+`better-payment` ile gerçek para transferi yapmadan ödemeleri test etmek iki şekilde mümkündür:
+
+1. **Bellek İçi Mock Sağlayıcı (`better-payment/testing`)**: Birim testleri, CI boru hatları ve yerel geliştirme için en uygundur. Harici ağ istekleri veya kimlik bilgileri gerektirmeden tamamen bellekte çalışır. Sihirli kart numaralarının tam listesi ve test denetimleri (`failNext`, `networkErrorNext`) için [Test](/docs/concepts/testing) sayfasına bakın.
+2. **Sağlayıcı Sandbox Ortamı (`mode: 'sandbox'`)**: Canlı ortama geçmeden önce gerçek sağlayıcı test ortamlarına karşı uçtan uca doğrulama için en uygundur.
+
+---
+
+## Bellek İçi Mock Sağlayıcı [#in-memory-mock-provider]
+
+Uygulama testleri için `better-payment/testing` paketi `MockProvider` sağlar. API kimlik bilgileri gerektirmez ve sihirli kart numaralarıyla kesin sonuçlar sunar.
+
+Kurulum talimatları, istek örnekleri ve `MOCK_CARDS` (`SUCCESS`, `INSUFFICIENT_FUNDS`, `CARD_DECLINED`, `THREEDS_REQUIRED` vb.) referans tablosunun tamamı için [Test](/docs/concepts/testing) sayfasına bakın.
+
+---
+
+## Sağlayıcı Sandbox Kurulumu [#provider-sandbox-setup]
+
+`betterPayment` başlatılırken `mode: 'sandbox'` olarak ayarlayın. Sandbox modunda her sağlayıcı otomatik olarak kendi sandbox uç noktasına bağlanır:
+
+```typescript
+import { betterPayment, iyzico, paytr, akbank, parampos } from 'better-payment';
+
+const payment = betterPayment({
+  mode: 'sandbox',
+  providers: {
+    iyzico: iyzico({
+      apiKey: process.env.IYZICO_SANDBOX_API_KEY!,
+      secretKey: process.env.IYZICO_SANDBOX_SECRET_KEY!,
+    }),
+    paytr: paytr({
+      merchantId: process.env.PAYTR_SANDBOX_MERCHANT_ID!,
+      merchantKey: process.env.PAYTR_SANDBOX_MERCHANT_KEY!,
+      merchantSalt: process.env.PAYTR_SANDBOX_MERCHANT_SALT!,
+    }),
+    akbank: akbank({
+      merchantSafeId: process.env.AKBANK_SANDBOX_MERCHANT_SAFE_ID!,
+      terminalSafeId: process.env.AKBANK_SANDBOX_TERMINAL_SAFE_ID!,
+      secretKey: process.env.AKBANK_SANDBOX_SECRET_KEY!,
+    }),
+    parampos: parampos({
+      clientCode: process.env.PARAMPOS_SANDBOX_CLIENT_CODE!,
+      clientUsername: process.env.PARAMPOS_SANDBOX_CLIENT_USERNAME!,
+      clientPassword: process.env.PARAMPOS_SANDBOX_CLIENT_PASSWORD!,
+      guid: process.env.PARAMPOS_SANDBOX_GUID!,
+    }),
+  },
+});
+```
+
+Ortam değişkenlerini ayarlama ayrıntıları için [Kurulum](/docs/installation) sayfasına bakın.
+
+---
+
+## iyzico Sandbox [#iyzico-sandbox]
+
+- **Sandbox Uç Noktası**: `https://sandbox-api.iyzipay.com`
+- **Dokümantasyon**: [iyzico Test Kartları](https://dev.iyzipay.com/tr/test-kartlari)
+
+### Test Kartları [#test-cards]
+
+| Kart Numarası | Marka | Beklenen Sonuç | Son Kullanma Tarihi | CVC |
+| ------------- | ----- | -------------- | ------------------- | --- |
+| `5528790000000008` | Mastercard | Başarılı ödeme | Gelecek herhangi bir tarih | `123` |
+| `4111111111111129` | Visa | Yetersiz bakiye (`INSUFFICIENT_FUNDS`) | Gelecek herhangi bir tarih | `123` |
+
+iyzico sandbox ortamında 3D Secure doğrulaması standart test SMS kodu `123456` veya sahte SMS ekranındaki onay butonu ile tamamlanır. Senaryo kartlarının tam listesi için resmi [iyzico Test Kartları](https://dev.iyzipay.com/tr/test-kartlari) dokümantasyonuna bakın.
+
+---
+
+## PayTR Sandbox [#paytr-sandbox]
+
+- **Sandbox Uç Noktası**: `https://www.paytr.com` (PayTR tek bir uç nokta kullanır; sandbox modunda otomatik olarak `test_mode: 1` gönderilir)
+- **Dokümantasyon**: [PayTR Geliştirici Portalı](https://dev.paytr.com/)
+
+### Test Kartları [#test-cards-1]
+
+| Kart Numarası | Beklenen Sonuç | Son Kullanma Tarihi | CVC |
+| ------------- | -------------- | ------------------- | --- |
+| `4355084355084358` | Başarılı ödeme / BIN sorgusu | Gelecek herhangi bir tarih | `000` |
+
+PayTR sandbox ortamında:
+- iframe ve token ödemeleri için test modu **PayTR Mağaza Paneli > Bilgi** sekmesinden yapılandırılır.
+- 3D Secure doğrulama sayfasında kimlik doğrulamasını PayTR tarafından sağlanan sahte SMS onay adımıyla tamamlayın.
+
+---
+
+## Akbank Sandbox [#akbank-sandbox]
+
+- **Sandbox Uç Noktası**: `https://apipre.akbank.com/api/v1/payment/virtualpos`
+- **Dokümantasyon**: [Akbank API Portalı](https://apiportal.akbank.com/)
+
+Akbank, test kartlarını ve kimlik bilgilerini test üye işyeri hesabınızla birlikte sağlar; Akbank temsilcinizle iletişime geçin. Tüm istekler Akbank ön üretim API'leri üzerinden doğrulanır.
+
+---
+
+## Parampos Sandbox [#parampos-sandbox]
+
+- **Sandbox Uç Noktası**: `https://test-dmz.param.com.tr/turkpos.ws/service_turkpos_test.asmx`
+- **Dokümantasyon**: [Param Geliştirici Dokümantasyonu](https://dev.param.com.tr/)
+
+Parampos, test kartlarını, test kimlik bilgilerini (Müşteri Kodu, Kullanıcı Adı, Şifre ve GUID) ve SOAP uç noktalarını test üye işyeri hesabınızla birlikte sağlar; Param temsilcinizle iletişime geçin. Param tarafından sağlanan test kartları hem 3DS hem de 3DS'siz ödeme akışlarının ve taksitlerin test edilmesini sağlar.
