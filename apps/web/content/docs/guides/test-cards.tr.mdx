@@ -68,7 +68,7 @@ Ortam değişkenlerini ayarlama ayrıntıları için [Kurulum](/docs/installatio
 | `5528790000000008` | Mastercard | Başarılı ödeme | Gelecek herhangi bir tarih | `123` |
 | `4111111111111129` | Visa | Yetersiz bakiye (`INSUFFICIENT_FUNDS`) | Gelecek herhangi bir tarih | `123` |
 
-iyzico sandbox ortamında 3D Secure doğrulaması standart test SMS kodu `123456` veya sahte SMS ekranındaki onay butonu ile tamamlanır. Senaryo kartlarının tam listesi için resmi [iyzico Test Kartları](https://dev.iyzipay.com/tr/test-kartlari) dokümantasyonuna bakın.
+Bu iki kart, her gece çalışan sandbox testlerimizin kullandığı kartlardır. 3D Secure adımı (sandbox'ın istediği doğrulama kodu) ve senaryo kartlarının tam listesi için resmi [iyzico Test Kartları](https://dev.iyzipay.com/tr/test-kartlari) sayfasına bakın.
 
 ---
 
@@ -81,11 +81,9 @@ iyzico sandbox ortamında 3D Secure doğrulaması standart test SMS kodu `123456
 
 | Kart Numarası | Beklenen Sonuç | Son Kullanma Tarihi | CVC |
 | ------------- | -------------- | ------------------- | --- |
-| `4355084355084358` | Başarılı ödeme / BIN sorgusu | Gelecek herhangi bir tarih | `000` |
+| `4355084355084358` | PayTR test kartı (sandbox testlerimizde BIN sorgusu için kullanılır) | Gelecek herhangi bir tarih | `000` |
 
-PayTR sandbox ortamında:
-- iframe ve token ödemeleri için test modu **PayTR Mağaza Paneli > Bilgi** sekmesinden yapılandırılır.
-- 3D Secure doğrulama sayfasında kimlik doğrulamasını PayTR tarafından sağlanan sahte SMS onay adımıyla tamamlayın.
+`mode: 'sandbox'` ile better-payment her isteğe `test_mode=1` ekler. Değiştirmek için sağlayıcı ayarında `testMode` verin. Diğer test kartları ve 3D Secure test adımı için PayTR geliştirici dokümantasyonuna bakın.
 
 ---
 
@@ -94,7 +92,7 @@ PayTR sandbox ortamında:
 - **Sandbox Uç Noktası**: `https://apipre.akbank.com/api/v1/payment/virtualpos`
 - **Dokümantasyon**: [Akbank API Portalı](https://apiportal.akbank.com/)
 
-Akbank, test kartlarını ve kimlik bilgilerini test üye işyeri hesabınızla birlikte sağlar; Akbank temsilcinizle iletişime geçin. Tüm istekler Akbank ön üretim API'leri üzerinden doğrulanır.
+Akbank, test kartlarını ve kimlik bilgilerini test üye işyeri hesabınızla birlikte sağlar; Akbank temsilcinizle iletişime geçin.
 
 ---
 
@@ -103,4 +101,4 @@ Akbank, test kartlarını ve kimlik bilgilerini test üye işyeri hesabınızla 
 - **Sandbox Uç Noktası**: `https://test-dmz.param.com.tr/turkpos.ws/service_turkpos_test.asmx`
 - **Dokümantasyon**: [Param Geliştirici Dokümantasyonu](https://dev.param.com.tr/)
 
-Parampos, test kartlarını, test kimlik bilgilerini (Müşteri Kodu, Kullanıcı Adı, Şifre ve GUID) ve SOAP uç noktalarını test üye işyeri hesabınızla birlikte sağlar; Param temsilcinizle iletişime geçin. Param tarafından sağlanan test kartları hem 3DS hem de 3DS'siz ödeme akışlarının ve taksitlerin test edilmesini sağlar.
+Parampos, test kartlarını, test kimlik bilgilerini (Müşteri Kodu, Kullanıcı Adı, Şifre ve GUID) ve SOAP uç noktalarını test üye işyeri hesabınızla birlikte sağlar; Param temsilcinizle iletişime geçin.

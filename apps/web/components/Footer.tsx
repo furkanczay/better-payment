@@ -58,13 +58,7 @@ export default function Footer({ lang, t }: { lang: Locale; t: Dictionary["foote
               className="flex items-center gap-2.5 mb-4 w-fit group"
             >
               <Image src="/logo.svg" width={1000} height={897} alt="" className="h-9 w-auto" />
-              <Image
-                src="/better-payment-logo.svg"
-                width={304}
-                height={64}
-                alt="better-payment"
-                className="h-16 w-auto brightness-0 dark:invert opacity-90 group-hover:opacity-100 transition-opacity"
-              />
+              <span className="font-semibold tracking-tight text-lg">better-payment</span>
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-[230px]">
               {t.tagline}
