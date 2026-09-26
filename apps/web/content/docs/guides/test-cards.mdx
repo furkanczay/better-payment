@@ -68,7 +68,7 @@ See [Installation](/docs/installation) for details on setting up environment var
 | `5528790000000008` | Mastercard | Successful payment | Any future date | `123` |
 | `4111111111111129` | Visa | Insufficient funds (`INSUFFICIENT_FUNDS`) | Any future date | `123` |
 
-In the iyzico sandbox, 3D Secure verification uses the standard test OTP code `123456` or the confirmation button on the mock SMS screen. See the official [iyzico Test Cards](https://dev.iyzipay.com/tr/test-kartlari) documentation for the full list of scenario cards.
+Both cards are the ones our nightly sandbox tests use. For the 3D Secure step (the verification code the sandbox asks for) and the full list of scenario cards, see the official [iyzico Test Cards](https://dev.iyzipay.com/tr/test-kartlari) page.
 
 ---
 
@@ -81,11 +81,9 @@ In the iyzico sandbox, 3D Secure verification uses the standard test OTP code `1
 
 | Card Number | Expected Result | Expiry Date | CVC |
 | ----------- | --------------- | ----------- | --- |
-| `4355084355084358` | Successful payment / BIN query | Any future date | `000` |
+| `4355084355084358` | PayTR test card (used by our sandbox tests for BIN queries) | Any future date | `000` |
 
-In PayTR sandbox:
-- For iframe and token payments, test mode is configured under **PayTR Merchant Panel > Information**.
-- On the 3D Secure verification page, complete the authentication using the mock SMS confirmation step provided by PayTR.
+With `mode: 'sandbox'`, better-payment sends `test_mode=1` with every request, so nothing needs to be switched on in the PayTR merchant panel. Set `testMode` in the provider config to override it. For more test cards and the 3D Secure test step, see the PayTR developer documentation.
 
 ---
 
@@ -94,7 +92,7 @@ In PayTR sandbox:
 - **Sandbox Endpoint**: `https://apipre.akbank.com/api/v1/payment/virtualpos`
 - **Documentation**: [Akbank API Portal](https://apiportal.akbank.com/)
 
-Akbank provides test cards and credentials with your test merchant account; ask your Akbank contact. All requests are authenticated against Akbank pre-production APIs.
+Akbank provides test cards and credentials with your test merchant account; ask your Akbank contact.
 
 ---
 
@@ -103,4 +101,4 @@ Akbank provides test cards and credentials with your test merchant account; ask 
 - **Sandbox Endpoint**: `https://test-dmz.param.com.tr/turkpos.ws/service_turkpos_test.asmx`
 - **Documentation**: [Param Developer Documentation](https://dev.param.com.tr/)
 
-Parampos provides test cards, test credentials (Client Code, Username, Password, and GUID) and SOAP endpoints with your test merchant account; ask your Param contact. Test cards issued by Param allow validating both non-3DS and 3DS payment flows and installments.
+Parampos provides test cards, test credentials (Client Code, Username, Password, and GUID) and SOAP endpoints with your test merchant account; ask your Param contact.
