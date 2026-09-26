@@ -103,13 +103,7 @@ export default function Navbar({
         {/* Logo */}
         <Link href={localePath(lang, "/")} className="flex items-center gap-2 group">
           <Image src="/logo.svg" width={1000} height={897} alt="" priority className="h-8 w-auto" />
-          <Image
-            src="/better-payment-logo.svg"
-            width={304}
-            height={64}
-            alt="better-payment logo"
-            className="h-16 w-auto brightness-0 dark:invert"
-          />
+          <span className="font-semibold tracking-tight text-base">better-payment</span>
           <Badge
             variant="secondary"
             className="text-[10px] px-1.5 py-0 hidden sm:flex font-mono tracking-tight"
