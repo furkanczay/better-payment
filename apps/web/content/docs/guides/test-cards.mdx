@@ -1,74 +1,20 @@
 ---
 title: Test Cards and Sandbox Setup
-description: Test your integration with in-memory mock cards or real provider sandbox environments.
+description: Test your integration with the in-memory MockProvider or real provider sandbox environments.
 ---
 
 Testing payments without moving real money can be done in two ways with `better-payment`:
 
-1. **In-Memory Mock Provider (`better-payment/testing`)**: Best for unit tests, CI pipelines, and local development. It runs entirely in memory without network requests or external credentials.
+1. **In-Memory Mock Provider (`better-payment/testing`)**: Best for unit tests, CI pipelines, and local development. It runs entirely in memory without network requests or external credentials. See [Testing](/docs/concepts/testing) for the complete list of magic card numbers and test controls (`failNext`, `networkErrorNext`).
 2. **Provider Sandbox (`mode: 'sandbox'`)**: Best for end-to-end verification against real provider test environments before going live.
 
 ---
 
 ## In-Memory Mock Provider
 
-For unit tests and integration tests in your application, use `MockProvider` from `better-payment/testing`. It requires no API credentials and gives you deterministic outcomes using magic card numbers.
+For application tests, `better-payment/testing` provides `MockProvider`. It requires no API credentials and gives you deterministic outcomes using magic card numbers.
 
-```typescript
-import { betterPayment } from 'better-payment';
-import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
-
-const payment = betterPayment({
-  providers: {
-    mock: new MockProvider(),
-  },
-});
-
-const success = await payment.mock.createPayment({
-  price: '100',
-  currency: 'TRY',
-  conversationId: 'order-123',
-  paymentCard: {
-    cardNumber: MOCK_CARDS.SUCCESS,
-    cardHolderName: 'John Doe',
-    expireMonth: '12',
-    expireYear: '2030',
-    cvc: '123',
-  },
-});
-
-const declined = await payment.mock.createPayment({
-  price: '100',
-  currency: 'TRY',
-  conversationId: 'order-124',
-  paymentCard: {
-    cardNumber: MOCK_CARDS.INSUFFICIENT_FUNDS,
-    cardHolderName: 'John Doe',
-    expireMonth: '12',
-    expireYear: '2030',
-    cvc: '123',
-  },
-});
-```
-
-### Mock Card Numbers
-
-Every magic card number passes the Luhn checksum check. You can use any future expiry date and any 3-digit CVC:
-
-| Card Number | Scenario | Expected Status | Error Code |
-| ----------- | -------- | --------------- | ---------- |
-| `4242424242424242` | Success (Visa) | `SUCCESS` | — |
-| `5555555555554444` | Success (Mastercard) | `SUCCESS` | — |
-| `4000000000000002` | Card declined by bank | `FAILURE` | `CARD_DECLINED` |
-| `4000000000009995` | Insufficient funds | `FAILURE` | `INSUFFICIENT_FUNDS` |
-| `4000000000000069` | Expired card | `FAILURE` | `EXPIRED_CARD` |
-| `4000000000000127` | Incorrect security code (CVC) | `FAILURE` | `INVALID_CVC` |
-| `4100000000000019` | Suspected fraud | `FAILURE` | `FRAUD_SUSPECTED` |
-| `4000000000009987` | Card limit exceeded | `FAILURE` | `LIMIT_EXCEEDED` |
-| `4000002760003184` | 3D Secure required (declined on non-3DS) | `FAILURE` / `PENDING` | `CARD_DECLINED` |
-| `4000008400001629` | 3D Secure verification fails | `FAILURE` | `THREEDS_FAILED` |
-| `4000000000000341` | Network timeout / lost response | `PENDING` | `NETWORK_ERROR` |
-| `4000000000005126` | Payment succeeds, refund fails | `SUCCESS` | `PROVIDER_ERROR` |
+See [Testing](/docs/concepts/testing) for full setup instructions, request examples, and the complete reference table of `MOCK_CARDS` (`SUCCESS`, `INSUFFICIENT_FUNDS`, `CARD_DECLINED`, `THREEDS_REQUIRED`, etc.).
 
 ---
 
@@ -106,6 +52,8 @@ const payment = betterPayment({
 });
 ```
 
+See [Installation](/docs/installation) for details on setting up environment variables.
+
 ---
 
 ## iyzico Sandbox
@@ -115,13 +63,12 @@ const payment = betterPayment({
 
 ### Test Cards
 
-| Card Number | Brand | Scenario | Expiry / CVC | 3DS SMS Code |
-| ----------- | ----- | -------- | ------------ | ------------ |
-| `5528790000000008` | Mastercard | Success | Future / `123` | `123456` |
-| `4111111111111129` | Visa | Insufficient Funds | Future / `123` | `123456` |
-| `4000000000000002` | Visa | Card Declined | Future / `123` | `123456` |
+| Card Number | Brand | Expected Result | Expiry Date | CVC |
+| ----------- | ----- | --------------- | ----------- | --- |
+| `5528790000000008` | Mastercard | Successful payment | Any future date | `123` |
+| `4111111111111129` | Visa | Insufficient funds (`INSUFFICIENT_FUNDS`) | Any future date | `123` |
 
-When 3D Secure verification is required in the iyzico sandbox, any SMS verification code (such as `123456`) confirms the transaction.
+In the iyzico sandbox, 3D Secure verification uses the standard test OTP code `123456` or the confirmation button on the mock SMS screen. See the official [iyzico Test Cards](https://dev.iyzipay.com/tr/test-kartlari) documentation for the full list of scenario cards.
 
 ---
 
@@ -130,9 +77,15 @@ When 3D Secure verification is required in the iyzico sandbox, any SMS verificat
 - **Sandbox Endpoint**: `https://www.paytr.com` (PayTR uses a unified endpoint; `test_mode: 1` is sent automatically in sandbox mode)
 - **Documentation**: [PayTR Developer Portal](https://dev.paytr.com/)
 
+### Test Cards
+
+| Card Number | Expected Result | Expiry Date | CVC |
+| ----------- | --------------- | ----------- | --- |
+| `4355084355084358` | Successful payment / BIN query | Any future date | `000` |
+
 In PayTR sandbox:
-- Test mode credentials and test cards are configured in the **PayTR Merchant Panel > Information**.
-- For BIN queries and installment testing, any standard test card number (such as `4355084355084358`) can be used.
+- For iframe and token payments, test mode is configured under **PayTR Merchant Panel > Information**.
+- On the 3D Secure verification page, complete the authentication using the mock SMS confirmation step provided by PayTR.
 
 ---
 
@@ -141,17 +94,13 @@ In PayTR sandbox:
 - **Sandbox Endpoint**: `https://apipre.akbank.com/api/v1/payment/virtualpos`
 - **Documentation**: [Akbank API Portal](https://apiportal.akbank.com/)
 
-In Akbank sandbox:
-- Test cards and terminals are provisioned directly with your test merchant profile in the Akbank developer portal.
-- All requests are verified against Akbank pre-production security certificates.
+Akbank provides test cards and credentials with your test merchant account; ask your Akbank contact. All requests are authenticated against Akbank pre-production APIs.
 
 ---
 
 ## Parampos Sandbox
 
 - **Sandbox Endpoint**: `https://test-dmz.param.com.tr/turkpos.ws/service_turkpos_test.asmx`
-- **Documentation**: [Param Developer Documentation](https://param.com.tr/)
+- **Documentation**: [Param Developer Documentation](https://dev.param.com.tr/)
 
-In Parampos sandbox:
-- XML / SOAP endpoints and test GUIDs are provided when signing up for a developer test account.
-- Test cards issued by Param allow validating both non-3DS and 3DS payment flows and installments.
+Parampos provides test cards, test credentials (Client Code, Username, Password, and GUID) and SOAP endpoints with your test merchant account; ask your Param contact. Test cards issued by Param allow validating both non-3DS and 3DS payment flows and installments.
