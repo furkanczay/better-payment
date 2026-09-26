@@ -3,7 +3,7 @@ title: Hata Mesajları için Dil Desteği
 description: Müşterilere ödemenin neden başarısız olduğunu kendi dillerinde söyleyin.
 ---
 
-Sağlayıcılar hata mesajlarını kendi ifadeleri ve dilleriyle, çoğu zaman teknik terimlerle yazar ("Do not honour", "Invalid merchant"). `localizedErrors` plugin'i başarısız sonuçların `errorMessage` alanını, normalize [hata koduna](/docs/reference/error-codes) göre seçilen, müşteriye yönelik bir mesajla değiştirir. İngilizce ve Türkçe mesajlar dahildir.
+Sağlayıcılar hata mesajlarını kendi ifadeleri ve dilleriyle, çoğu zaman teknik terimlerle yazar ("Do not honour", "Invalid merchant"). `localizedErrors` plugin'i başarısız sonuçların `errorMessage` alanını, normalize [hata koduna](/docs/reference/error-codes) göre seçilen, müşteriye yönelik bir mesajla değiştirir. İngilizce, Türkçe ve Almanca mesajlar dahildir.
 
 ## Kurulum [#setup]
 
@@ -40,9 +40,9 @@ localizedErrors({
   locale: 'tr',
   messages: {
     tr: { INSUFFICIENT_FUNDS: 'Bakiyeniz yetersiz, lütfen başka bir kart deneyin.' },
-    de: {
-      INSUFFICIENT_FUNDS: 'Nicht genügend Guthaben. Versuchen Sie eine andere Karte.',
-      CARD_DECLINED: 'Ihre Bank hat die Zahlung abgelehnt.',
+    es: {
+      INSUFFICIENT_FUNDS: 'Fondos insuficientes. Intente con otra tarjeta.',
+      CARD_DECLINED: 'Su banco rechazó el pago.',
     },
   },
 });

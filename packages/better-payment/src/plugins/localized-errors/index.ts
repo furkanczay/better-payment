@@ -6,6 +6,7 @@ import {
 } from 'better-payment';
 import { en } from './en';
 import { tr } from './tr';
+import { de } from './de';
 
 /** Messages of one language by error code: normalized codes and plugin codes */
 export type ErrorMessageDictionary = Partial<Record<PaymentErrorCode, string>> &
@@ -15,7 +16,10 @@ export type ErrorMessageDictionary = Partial<Record<PaymentErrorCode, string>> &
  * The built-in languages. Each one has a message for every normalized error code;
  * a language that misses one does not compile.
  */
-export const errorMessages = { en, tr } satisfies Record<string, Record<PaymentErrorCode, string>>;
+export const errorMessages = { en, tr, de } satisfies Record<
+  string,
+  Record<PaymentErrorCode, string>
+>;
 
 export interface LocalizedErrorsOptions {
   /** Default language. Default: 'en' */

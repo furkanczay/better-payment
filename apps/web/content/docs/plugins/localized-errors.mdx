@@ -3,7 +3,7 @@ title: Localized Error Messages
 description: Tell customers why a payment failed, in their language.
 ---
 
-Providers write error messages in their own words and language, often in technical terms ("Do not honour", "Invalid merchant"). The `localizedErrors` plugin replaces the `errorMessage` of failed results with a message for the customer, chosen by the normalized [error code](/docs/reference/error-codes). English and Turkish messages are included.
+Providers write error messages in their own words and language, often in technical terms ("Do not honour", "Invalid merchant"). The `localizedErrors` plugin replaces the `errorMessage` of failed results with a message for the customer, chosen by the normalized [error code](/docs/reference/error-codes). English, Turkish, and German messages are included.
 
 ## Setup
 
@@ -40,9 +40,9 @@ localizedErrors({
   locale: 'tr',
   messages: {
     tr: { INSUFFICIENT_FUNDS: 'Bakiyeniz yetersiz, lütfen başka bir kart deneyin.' },
-    de: {
-      INSUFFICIENT_FUNDS: 'Nicht genügend Guthaben. Versuchen Sie eine andere Karte.',
-      CARD_DECLINED: 'Ihre Bank hat die Zahlung abgelehnt.',
+    es: {
+      INSUFFICIENT_FUNDS: 'Fondos insuficientes. Intente con otra tarjeta.',
+      CARD_DECLINED: 'Su banco rechazó el pago.',
     },
   },
 });
