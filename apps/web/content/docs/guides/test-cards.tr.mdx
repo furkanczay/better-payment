@@ -24,7 +24,7 @@ const payment = betterPayment({
   },
 });
 
-// Başarılı ödeme
+// Başarılı ödeme (payment.createPayment üzerinden de çağrılabilir)
 const success = await payment.mock.createPayment({
   price: '100',
   currency: 'TRY',
