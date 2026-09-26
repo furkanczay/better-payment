@@ -57,28 +57,28 @@ describe('localizedErrors', () => {
       errorMessages.tr.EXPIRED_CARD
     );
 
-    const de = betterPayment({
+    const es = betterPayment({
       providers: { mock: new MockProvider() },
       plugins: [
         localizedErrors({
-          locale: 'de',
+          locale: 'es',
           messages: {
-            de: { INSUFFICIENT_FUNDS: 'Nicht genügend Guthaben.' },
+            es: { INSUFFICIENT_FUNDS: 'Fondos insuficientes.' },
             tr: { EXPIRED_CARD: 'Kartın süresi dolmuş.' },
           },
         }),
       ],
     });
-    expect((await de.createPayment(withCard(MOCK_CARDS.INSUFFICIENT_FUNDS))).errorMessage).toBe(
-      'Nicht genügend Guthaben.'
+    expect((await es.createPayment(withCard(MOCK_CARDS.INSUFFICIENT_FUNDS))).errorMessage).toBe(
+      'Fondos insuficientes.'
     );
-    // Missing in German: English
-    expect((await de.createPayment(withCard(MOCK_CARDS.CARD_DECLINED))).errorMessage).toBe(
+    // Missing in Spanish: English
+    expect((await es.createPayment(withCard(MOCK_CARDS.CARD_DECLINED))).errorMessage).toBe(
       errorMessages.en.CARD_DECLINED
     );
-    expect(de.errors.message('EXPIRED_CARD', 'tr')).toBe('Kartın süresi dolmuş.');
-    expect(de.errors.message('LIMIT_EXCEEDED', 'tr-TR')).toBe(errorMessages.tr.LIMIT_EXCEEDED);
-    expect(de.errors.locales).toEqual(['en', 'tr', 'de']);
+    expect(es.errors.message('EXPIRED_CARD', 'tr')).toBe('Kartın süresi dolmuş.');
+    expect(es.errors.message('LIMIT_EXCEEDED', 'tr-TR')).toBe(errorMessages.tr.LIMIT_EXCEEDED);
+    expect(es.errors.locales).toEqual(['en', 'tr', 'de', 'es']);
   });
 
   it('rejects a language without messages', () => {
@@ -164,7 +164,10 @@ describe('localizedErrors', () => {
       expect(message(await pay(payment, { 'Accept-Language': 'tr-TR,tr;q=0.9,en;q=0.8' }))).toBe(
         errorMessages.tr.INSUFFICIENT_FUNDS
       );
-      expect(message(await pay(payment, { 'accept-language': 'de-DE, en;q=0.5' }))).toBe(
+      expect(message(await pay(payment, { 'accept-language': 'de-DE,de;q=0.9,en;q=0.5' }))).toBe(
+        errorMessages.de.INSUFFICIENT_FUNDS
+      );
+      expect(message(await pay(payment, { 'accept-language': 'es-ES, en;q=0.5' }))).toBe(
         errorMessages.en.INSUFFICIENT_FUNDS
       );
       expect(message(await pay(payment, { 'accept-language': 'fr' }))).toBe(
