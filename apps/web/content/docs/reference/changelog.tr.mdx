@@ -7,6 +7,16 @@ description: better-payment'in sürüm geçmişi ve geriye uyumsuz değişiklikl
   Sürüm geçmişi sıfırlandı. `0.0.1`, yeniden yazılan paketin ilk sürümüdür. `1.x`–`3.x` sürümlerinde hatalı sağlayıcı entegrasyonları ve atlatılabilen callback kontrolleri vardı; bunları kullanmayın. Gerekçe ve adım adım geçiş rehberi için [0.0.1'deki yenilikler](/docs/whats-new) sayfasına bakın.
 </Callout>
 
+## 0.5.1
+
+### Eklenenler [#added]
+
+- **[Hata mesajları için dil desteği](/docs/plugins/localized-errors):** Almanca (`de`). Handler'da `Accept-Language: de-DE` Almanca'yı seçer. Katkısı için [@ius-sharma](https://github.com/ius-sharma)'ya teşekkürler.
+
+### Değişenler [#changed]
+
+- Repo [czaydev/better-payment](https://github.com/czaydev/better-payment) adresine taşındı.
+
 ## 0.5.0
 
 Plugin'ler ve tipli ödeme olayları. **Geriye uyumsuz:** `new BetterPayment()` yerine `betterPayment()` geldi; sağlayıcılar fabrika fonksiyonlarıyla oluşturuluyor. Bkz. [0.5'e geçiş](/docs/guides/migration-0-5).
@@ -16,7 +26,7 @@ Plugin'ler ve tipli ödeme olayları. **Geriye uyumsuz:** `new BetterPayment()` 
 - `BetterPayment` sınıfının yerini `betterPayment({ providers, plugins })` aldı; sağlayıcılar `iyzico()`, `paytr()`, `akbank()` ve `parampos()` ile oluşturuluyor. `enabled` alanı kaldırıldı.
 - `providers` içindeki her anahtar bir sağlayıcı kimliğidir; `payment.<id>` sağlayıcıya göre tiplidir. `getEnabledProviders()` `string[]` döner.
 
-### Eklenenler [#added]
+### Eklenenler [#added-1]
 
 - **[Plugin'ler](/docs/concepts/plugins):** sağlayıcı işlemleri için before/after hook'ları, tipli metotlar, handler endpoint'leri ve hata kodları. [Kendi plugin'inizi](/docs/guides/writing-plugins) birkaç satırda yazın.
 - **[Ödeme olayları](/docs/concepts/events):** her sağlayıcı ve akış için tek bir tipli dinleyici; yalnızca doğrulanmış sonuçlar için yayınlanır.
@@ -27,13 +37,13 @@ Plugin'ler ve tipli ödeme olayları. **Geriye uyumsuz:** `new BetterPayment()` 
 
 Sandbox olmadan test ve tek satırlık framework entegrasyonu. Mevcut 0.3.0 kodu çalışmaya devam eder.
 
-### Eklenenler [#added-1]
+### Eklenenler [#added-2]
 
 - **[`better-payment/testing`](/docs/concepts/testing):** uygulama testleri için kimlik bilgisi ve ağ erişimi gerektirmeyen, bellek içi bir sağlayıcı olan `MockProvider`. Sihirli kart numaraları retleri, 3D Secure hatalarını, kaybolan yanıtları ve başarısız iadeleri kapsar; 3D Secure callback'leri gerçek handler'dan geçer.
 - **[Framework adapter'ları](/docs/integrations/frameworks):** `better-payment/next`, `better-payment/express`, `better-payment/fastify` ve `better-payment/hono` handler'ı tek satırda bağlar; `toFetchHandler` Workers, Deno ve Bun'u kapsar.
 - Dokümantasyon artık Türkçe de okunabiliyor.
 
-### Değişenler [#changed]
+### Değişenler [#changed-1]
 
 - `PROVIDER_DEFAULT_URLS`, `RemoteProviderType` ile tiplenir (`mock` dışındaki tüm sağlayıcılar).
 
@@ -41,13 +51,13 @@ Sandbox olmadan test ve tek satırlık framework entegrasyonu. Mevcut 0.3.0 kodu
 
 Edge ortamları ve sıfır runtime bağımlılığı. Uygulama kodu değişmeden çalışmaya devam eder.
 
-### Eklenenler [#added-2]
+### Eklenenler [#added-3]
 
 - **[Edge ortamı desteği](/docs/integrations/edge):** aynı paket Node.js 20+, Vercel Edge, Cloudflare Workers, Deno ve Bun'da çalışır. Yalnızca `fetch` ve WebCrypto kullanır.
 - Özel bir fetch uygulaması (proxy, test stub'ları) için **[`fetch` seçeneği](/docs/concepts/configuration#custom-fetch)**.
 - Özel sağlayıcılar için `HttpClient` ve `HttpError` dışa açıldı.
 
-### Değişenler [#changed-1]
+### Değişenler [#changed-2]
 
 - Runtime bağımlılığı yok: axios kaldırıldı. Zaman aşımları, loglama ve yeniden deneme kuralları değişmedi.
 - `PaymentProvider`'dan türeyen özel sağlayıcılar `setupAxiosLogging()` / `setupAxiosRetry()` yerine `createHttpClient()` kullanır.
@@ -56,13 +66,13 @@ Edge ortamları ve sıfır runtime bağımlılığı. Uygulama kodu değişmeden
 
 Ön provizyon ve kayıtlı kartlar. Mevcut 0.1.0 kodu çalışmaya devam eder. İki özellik de her gece gerçek iyzico sandbox'ına karşı test edilir.
 
-### Eklenenler [#added-3]
+### Eklenenler [#added-4]
 
 - **[Ön provizyon](/docs/payments/pre-authorization):** `authorize()` / `initThreeDSAuthorize()` tutarı bloke eder, `capture()` tahsil eder (kısmi capture desteklenir) ve `voidAuthorization()` serbest bırakır. iyzico, Parampos ve Akbank; PayTR henüz desteklenmiyor.
 - **[Kayıtlı kartlar](/docs/payments/stored-cards):** ödeme sırasında `saveCard` ile kartı kaydedin, sonra `storedCard: { customerToken, cardToken }` ile ödeme alın ve kartları `saveCard()`, `listCards()` ve `deleteCard()` ile yönetin. iyzico ve PayTR; Parampos ve Akbank henüz desteklenmiyor.
 - İkisi için [handler route'ları](/docs/concepts/handler#routes) ve tarayıcı client metotları. Capture, void ve kart route'ları bir `authorize` hook'u gerektirir.
 
-### Değişenler [#changed-2]
+### Değişenler [#changed-3]
 
 - `PaymentRequest.paymentCard` tiplerde opsiyonel; çalışma anında `paymentCard` ya da `storedCard`'dan biri zorunludur.
 - Bir sağlayıcı bir işlemi desteklemediğinde handler `500` yerine `400` döner.
@@ -71,7 +81,7 @@ Edge ortamları ve sıfır runtime bağımlılığı. Uygulama kodu değişmeden
 
 Sıfırlamadan sonraki ilk özellik sürümü. Mevcut 0.0.1 kodu çalışmaya devam eder; davranış değişiklikleri "Değişenler" altında listelenir. iyzico entegrasyonu artık her gece gerçek iyzico sandbox'ına karşı test ediliyor.
 
-### Eklenenler [#added-4]
+### Eklenenler [#added-5]
 
 - **[Birleşik hata kodları](/docs/reference/error-codes):** her başarısız sonuç bir `code` taşır (`INSUFFICIENT_FUNDS`, `CARD_DECLINED`, `THREEDS_FAILED`, `INVALID_HASH`, ...). `errorCode` sağlayıcının ham kodunu korur.
 - Sağlayıcı çağrılmadan önce **[istek doğrulama](/docs/concepts/configuration#request-validation)**. Geçersiz istekler tüm geçersiz alanları listeleyerek `code: 'INVALID_REQUEST'` döner. `validate: false` ile kapatılabilir.
@@ -79,7 +89,7 @@ Sıfırlamadan sonraki ilk özellik sürümü. Mevcut 0.0.1 kodu çalışmaya de
 - **[Tekrar eden callback'ler bir kez işlenir](/docs/concepts/handler#duplicate-callbacks-and-idempotency-key)**; veri değiştiren handler route'ları `Idempotency-Key` başlığını kabul eder. `IdempotencyStore` varsayılan olarak bellek içidir; birden çok örnekle Redis ya da bir veritabanı kullanın.
 - `PaymentErrorCode` ve `PaymentStatus`, `better-payment/client`'tan dışa açılır.
 
-### Değişenler [#changed-3]
+### Değişenler [#changed-4]
 
 - İstek doğrulama hataları `errorCode: 'VALIDATION_ERROR'` döner; önceden `errorCode` boştu.
 - `any` içermeyen daha sıkı public tipler: `rawResponse` ve handler gövdeleri `unknown`; `onCallback` / `callbackRedirect` bir `PaymentResponse` alır.

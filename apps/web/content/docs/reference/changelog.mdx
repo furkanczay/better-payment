@@ -7,6 +7,16 @@ description: Release history and breaking changes for better-payment.
   The version history was reset. `0.0.1` is the first release of the reworked package. Releases `1.x`–`3.x` had incorrect provider integrations and callback checks that could be bypassed. Do not use them. See [What's New in 0.0.1](/docs/whats-new) for the reasoning and a step-by-step migration guide.
 </Callout>
 
+## 0.5.1
+
+### Added
+
+- **[Localized error messages](/docs/plugins/localized-errors):** German (`de`). `Accept-Language: de-DE` picks German in the handler. Thanks to [@ius-sharma](https://github.com/ius-sharma).
+
+### Changed
+
+- The repository moved to [czaydev/better-payment](https://github.com/czaydev/better-payment).
+
 ## 0.5.0
 
 Plugins and typed payment events. **Breaking:** `betterPayment()` replaces `new BetterPayment()`, and providers are created with factories. See [Migrating to 0.5](/docs/guides/migration-0-5).
