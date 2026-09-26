@@ -24,7 +24,6 @@ const payment = betterPayment({
   },
 });
 
-// Successful payment (can also be called via payment.createPayment)
 const success = await payment.mock.createPayment({
   price: '100',
   currency: 'TRY',
@@ -38,7 +37,6 @@ const success = await payment.mock.createPayment({
   },
 });
 
-// Declined with insufficient funds
 const declined = await payment.mock.createPayment({
   price: '100',
   currency: 'TRY',

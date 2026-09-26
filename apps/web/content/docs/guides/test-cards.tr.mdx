@@ -24,7 +24,6 @@ const payment = betterPayment({
   },
 });
 
-// Başarılı ödeme (payment.createPayment üzerinden de çağrılabilir)
 const success = await payment.mock.createPayment({
   price: '100',
   currency: 'TRY',
@@ -38,7 +37,6 @@ const success = await payment.mock.createPayment({
   },
 });
 
-// Yetersiz bakiye ile reddedilen ödeme
 const declined = await payment.mock.createPayment({
   price: '100',
   currency: 'TRY',
