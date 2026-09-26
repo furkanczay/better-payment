@@ -6,6 +6,18 @@ earlier `1.x`–`3.x` releases are superseded and should not be used (see "Why t
 Upgrading from `3.x`? Read the migration guide:
 https://better-payment.czaylabs.com/docs/whats-new
 
+## 0.5.1
+
+### Added
+
+- `localizedErrors`: German (`de`) messages. `Accept-Language: de-DE` picks German in the
+  handler. Thanks to @ius-sharma (#100).
+
+### Changed
+
+- The repository moved to https://github.com/czaydev/better-payment. Package metadata and links
+  point to the new address.
+
 ## 0.5.0
 
 Plugins and typed payment events. **Breaking:** the payment object is created with
