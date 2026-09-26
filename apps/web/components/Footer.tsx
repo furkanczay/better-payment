@@ -37,8 +37,8 @@ function footerLinks(t: Dictionary["footer"]) {
       group: t.groups.resources,
       items: [
         { label: "npm", href: "https://www.npmjs.com/package/better-payment", external: true },
-        { label: "GitHub", href: "https://github.com/furkanczay/better-payment", external: true },
-        { label: t.links.issues, href: "https://github.com/furkanczay/better-payment/issues", external: true },
+        { label: "GitHub", href: "https://github.com/czaydev/better-payment", external: true },
+        { label: t.links.issues, href: "https://github.com/czaydev/better-payment/issues", external: true },
         { label: t.links.whatsNew, href: "/docs/whats-new" },
         { label: t.links.changelog, href: "/docs/reference/changelog" },
       ],
@@ -71,7 +71,7 @@ export default function Footer({ lang, t }: { lang: Locale; t: Dictionary["foote
             </p>
             <div className="flex items-center gap-3 mt-5">
               <a
-                href="https://github.com/furkanczay/better-payment"
+                href="https://github.com/czaydev/better-payment"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs text-muted-foreground/60 hover:text-muted-foreground border border-border/60 rounded-md px-2.5 py-1 transition-colors"

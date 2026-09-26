@@ -21,7 +21,7 @@ export default async function Layout({ children, params }: LayoutProps<"/[lang]/
         ),
         url: localePath(lang, "/"),
       }}
-      githubUrl="https://github.com/furkanczay/better-payment"
+      githubUrl="https://github.com/czaydev/better-payment"
     >
       {children}
     </DocsLayout>

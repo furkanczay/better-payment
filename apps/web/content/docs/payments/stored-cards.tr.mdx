@@ -73,8 +73,8 @@ const saved = await payment.use('iyzico').saveCard({
 | -------- | ------------------- | ------------ | ------------- | -------------- | ------------ |
 | iyzico | `registerCard` | `/cardstorage/card` | `/cardstorage/cards` | `/cardstorage/card` | `cardUserKey` + `cardToken` |
 | PayTR | Direct API `store_card=1` | desteklenmiyor | `/odeme/capi/list` | `/odeme/capi/delete` | `utoken` + `ctoken` |
-| Parampos | henüz yok ([#65](https://github.com/furkanczay/better-payment/issues/65)) | — | — | — | — |
-| Akbank | henüz yok ([#65](https://github.com/furkanczay/better-payment/issues/65)) | — | — | — | — |
+| Parampos | henüz yok ([#65](https://github.com/czaydev/better-payment/issues/65)) | — | — | — | — |
+| Akbank | henüz yok ([#65](https://github.com/czaydev/better-payment/issues/65)) | — | — | — | — |
 
 - **PayTR** kartları yalnızca Direct API ödemesi sırasında kaydeder ve bu özelliğin (Kart Saklama) PayTR hesabınızda açık olması gerekir. `utoken` ödeme sonucunda ya da bildirimde (`onCallback`) gelir; `ctoken`'ı `listCards()` ile alın. iFrame API kart kaydedemez.
 - Desteklemeyen sağlayıcılar `NOT_SUPPORTED` fırlatır (ödeme isteğindeki `storedCard`/`saveCard` için: `INVALID_REQUEST`); HTTP handler `400` döner.
@@ -101,4 +101,4 @@ transformRequest: async (ctx) => {
 
 ## Doğrulama [#verification]
 
-iyzico akışı (ödeme sırasında kaydetme, listeleme, token ile ödeme, silme) her gece gerçek iyzico sandbox'ına karşı çalıştırılır. PayTR token formülleri PayTR'nin resmi Postman koleksiyonunu izler; henüz bir PayTR hesabına karşı çalıştırılmadı ([yardım aranıyor](https://github.com/furkanczay/better-payment/issues/62)).
+iyzico akışı (ödeme sırasında kaydetme, listeleme, token ile ödeme, silme) her gece gerçek iyzico sandbox'ına karşı çalıştırılır. PayTR token formülleri PayTR'nin resmi Postman koleksiyonunu izler; henüz bir PayTR hesabına karşı çalıştırılmadı ([yardım aranıyor](https://github.com/czaydev/better-payment/issues/62)).

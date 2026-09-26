@@ -20,15 +20,15 @@ Thanks for helping! This guide gets you from clone to a merged pull request.
 ## Ways to contribute
 
 - **Report a bug:** open an issue with the bug template. Remove credentials, card numbers and personal data from what you paste.
-- **Report a security problem:** never in a public issue. Use [private vulnerability reporting](https://github.com/furkanczay/better-payment/security/advisories/new) (see [SECURITY.md](SECURITY.md)).
-- **Ask or discuss an idea:** [Discussions](https://github.com/furkanczay/better-payment/discussions).
+- **Report a security problem:** never in a public issue. Use [private vulnerability reporting](https://github.com/czaydev/better-payment/security/advisories/new) (see [SECURITY.md](SECURITY.md)).
+- **Ask or discuss an idea:** [Discussions](https://github.com/czaydev/better-payment/discussions).
 - **Propose a feature, a provider or a plugin:** open an issue with the matching template. Larger changes need an agreed issue before a pull request.
 - **Verify a provider in its sandbox:** see the `sandbox-verification` issues. Test credentials are often the hardest part.
 - **Improve the docs:** English and Turkish, see [Translations](#translations).
 
 ## Picking an issue
 
-1. Look for [`good first issue`](https://github.com/furkanczay/better-payment/labels/good%20first%20issue) and [`help wanted`](https://github.com/furkanczay/better-payment/labels/help%20wanted). The [roadmap](https://github.com/furkanczay/better-payment/issues/44) lists what comes next.
+1. Look for [`good first issue`](https://github.com/czaydev/better-payment/labels/good%20first%20issue) and [`help wanted`](https://github.com/czaydev/better-payment/labels/help%20wanted). The [roadmap](https://github.com/czaydev/better-payment/issues/44) lists what comes next.
 2. Comment on the issue to claim it, so nobody else starts on it. A maintainer assigns it to you.
 3. If you stop working on it, say so in the issue. Claimed issues with no activity for two weeks may be reassigned.
 4. Questions are welcome in the issue, before and while you work.
@@ -40,7 +40,7 @@ Requirements: Node.js 20 or newer, and pnpm. The pnpm version is pinned in `pack
 ```bash
 git clone https://github.com/<your-user>/better-payment.git
 cd better-payment
-git remote add upstream https://github.com/furkanczay/better-payment.git
+git remote add upstream https://github.com/czaydev/better-payment.git
 corepack enable
 pnpm install
 ```

@@ -73,8 +73,8 @@ const saved = await payment.use('iyzico').saveCard({
 | -------- | ------------------- | ------------ | ------------- | -------------- | ------------ |
 | iyzico | `registerCard` | `/cardstorage/card` | `/cardstorage/cards` | `/cardstorage/card` | `cardUserKey` + `cardToken` |
 | PayTR | Direct API `store_card=1` | not supported | `/odeme/capi/list` | `/odeme/capi/delete` | `utoken` + `ctoken` |
-| Parampos | not yet ([#65](https://github.com/furkanczay/better-payment/issues/65)) | — | — | — | — |
-| Akbank | not yet ([#65](https://github.com/furkanczay/better-payment/issues/65)) | — | — | — | — |
+| Parampos | not yet ([#65](https://github.com/czaydev/better-payment/issues/65)) | — | — | — | — |
+| Akbank | not yet ([#65](https://github.com/czaydev/better-payment/issues/65)) | — | — | — | — |
 
 - **PayTR** saves cards only during a Direct API payment, and the feature (Kart Saklama) must be enabled on your PayTR account. The `utoken` comes back in the payment result or in the notification (`onCallback`); get the `ctoken` from `listCards()`. The iFrame API cannot save cards.
 - Unsupported providers throw `NOT_SUPPORTED` (for `storedCard`/`saveCard` in a payment request: `INVALID_REQUEST`); the HTTP handler answers `400`.
@@ -101,4 +101,4 @@ transformRequest: async (ctx) => {
 
 ## Verification
 
-The iyzico flow (save during payment, list, pay by token, delete) runs every night against the real iyzico sandbox. The PayTR token formulas follow PayTR's official Postman collection and have not yet been run against a PayTR account ([help wanted](https://github.com/furkanczay/better-payment/issues/62)).
+The iyzico flow (save during payment, list, pay by token, delete) runs every night against the real iyzico sandbox. The PayTR token formulas follow PayTR's official Postman collection and have not yet been run against a PayTR account ([help wanted](https://github.com/czaydev/better-payment/issues/62)).

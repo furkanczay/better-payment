@@ -21,7 +21,7 @@ better-payment projesine katkıda bulunmayı düşündüğünüz için teşekkü
 
 Bu proje ve topluluğu herkes için açık ve misafirperver bir deneyim sağlamayı taahhüt eder. Lütfen saygılı ve yapıcı olun. Tüm katılımcılar [Davranış Kuralları](CODE_OF_CONDUCT.md)'na uyar.
 
-Güvenlik açıklarını asla herkese açık bir issue olarak bildirmeyin; [SECURITY.md](SECURITY.md)'deki gibi [gizli bildirim](https://github.com/furkanczay/better-payment/security/advisories/new) kullanın.
+Güvenlik açıklarını asla herkese açık bir issue olarak bildirmeyin; [SECURITY.md](SECURITY.md)'deki gibi [gizli bildirim](https://github.com/czaydev/better-payment/security/advisories/new) kullanın.
 
 ## Nasıl Katkıda Bulunabilirim?
 
@@ -40,7 +40,7 @@ Bug bulduğunuzda lütfen bir issue açın ve aşağıdaki bilgileri ekleyin:
 
 Yeni özellik önerileri için:
 
-1. Önce [Discussions](https://github.com/furkanczay/better-payment/discussions) bölümünde önerinizi paylaşın
+1. Önce [Discussions](https://github.com/czaydev/better-payment/discussions) bölümünde önerinizi paylaşın
 2. Topluluktan geri bildirim alın
 3. Onaylandıktan sonra bir issue açın
 
@@ -72,7 +72,7 @@ cd better-payment
 
 3. Upstream remote'u ekleyin:
 ```bash
-git remote add upstream https://github.com/furkanczay/better-payment.git
+git remote add upstream https://github.com/czaydev/better-payment.git
 ```
 
 4. Bağımlılıkları yükleyin:
@@ -460,8 +460,8 @@ sürümle yayınlanır ve changelog'da geçiş notuyla belirtilir.
 ## Sorular ve Destek
 
 - 📖 [Dokümantasyon](https://better-payment.czaylabs.com)
-- 🐛 [Issues](https://github.com/furkanczay/better-payment/issues)
-- 💬 [Discussions](https://github.com/furkanczay/better-payment/discussions)
+- 🐛 [Issues](https://github.com/czaydev/better-payment/issues)
+- 💬 [Discussions](https://github.com/czaydev/better-payment/discussions)
 
 ## Lisans
 

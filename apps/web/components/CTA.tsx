@@ -54,7 +54,7 @@ export default function CTA({ lang, t }: { lang: Locale; t: Dictionary["cta"] })
                   {t.readDocs} <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
                 <a
-                  href="https://github.com/furkanczay/better-payment"
+                  href="https://github.com/czaydev/better-payment"
                   target="_blank"
                   rel="noopener noreferrer"
                   className={cn(
