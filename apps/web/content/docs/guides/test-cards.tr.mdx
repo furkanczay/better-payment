@@ -1,0 +1,159 @@
+---
+title: Test Kartları ve Sandbox Kurulumu
+description: Entegrasyonunuzu bellek içi sahte kartlarla veya gerçek sağlayıcı sandbox ortamlarıyla test edin.
+---
+
+`better-payment` ile gerçek para transferi yapmadan ödemeleri test etmek iki şekilde mümkündür:
+
+1. **Bellek İçi Mock Sağlayıcı (`better-payment/testing`)**: Birim testleri, CI boru hatları ve yerel geliştirme için en uygundur. Harici ağ istekleri veya kimlik bilgileri gerektirmeden tamamen bellekte çalışır.
+2. **Sağlayıcı Sandbox Ortamı (`mode: 'sandbox'`)**: Canlı ortama geçmeden önce gerçek sağlayıcı test ortamlarına karşı uçtan uca doğrulama için en uygundur.
+
+---
+
+## Bellek İçi Mock Sağlayıcı [#in-memory-mock-provider]
+
+Uygulamanızdaki birim testleri ve entegrasyon testleri için `better-payment/testing` altındaki `MockProvider` sınıfını kullanın. API kimlik bilgileri gerektirmez ve sihirli kart numaralarıyla kesin sonuçlar sunar.
+
+```typescript
+import { betterPayment } from 'better-payment';
+import { MockProvider, MOCK_CARDS } from 'better-payment/testing';
+
+const payment = betterPayment({
+  providers: {
+    mock: new MockProvider(),
+  },
+});
+
+// Başarılı ödeme
+const success = await payment.mock.createPayment({
+  price: '100',
+  currency: 'TRY',
+  conversationId: 'order-123',
+  paymentCard: {
+    cardNumber: MOCK_CARDS.SUCCESS,
+    cardHolderName: 'John Doe',
+    expireMonth: '12',
+    expireYear: '2030',
+    cvc: '123',
+  },
+});
+
+// Yetersiz bakiye ile reddedilen ödeme
+const declined = await payment.mock.createPayment({
+  price: '100',
+  currency: 'TRY',
+  conversationId: 'order-124',
+  paymentCard: {
+    cardNumber: MOCK_CARDS.INSUFFICIENT_FUNDS,
+    cardHolderName: 'John Doe',
+    expireMonth: '12',
+    expireYear: '2030',
+    cvc: '123',
+  },
+});
+```
+
+### Mock Kart Numaraları [#mock-card-numbers]
+
+Her sihirli kart numarası Luhn algoritması doğrulamasından geçer. Gelecekteki herhangi bir son kullanma tarihini ve 3 haneli herhangi bir CVC kodunu kullanabilirsiniz:
+
+| Kart Numarası | Senaryo | Beklenen Durum | Hata Kodu |
+| ------------- | ------- | -------------- | --------- |
+| `4242424242424242` | Başarılı (Visa) | `SUCCESS` | — |
+| `5555555555554444` | Başarılı (Mastercard) | `SUCCESS` | — |
+| `4000000000000002` | Banka tarafından reddedildi | `FAILURE` | `CARD_DECLINED` |
+| `4000000000009995` | Yetersiz bakiye | `FAILURE` | `INSUFFICIENT_FUNDS` |
+| `4000000000000069` | Süresi dolmuş kart | `FAILURE` | `EXPIRED_CARD` |
+| `4000000000000127` | Geçersiz güvenlik kodu (CVC) | `FAILURE` | `INVALID_CVC` |
+| `4100000000000019` | Şüpheli işlem | `FAILURE` | `FRAUD_SUSPECTED` |
+| `4000000000009987` | Kart limiti aşıldı | `FAILURE` | `LIMIT_EXCEEDED` |
+| `4000002760003184` | 3D Secure zorunlu (3DS olmadan reddedilir) | `FAILURE` / `PENDING` | `CARD_DECLINED` |
+| `4000008400001629` | 3D Secure doğrulaması başarısız | `FAILURE` | `THREEDS_FAILED` |
+| `4000000000000341` | Ağ zaman aşımı / kayıp yanıt | `PENDING` | `NETWORK_ERROR` |
+| `4000000000005126` | Ödeme başarılı, iade başarısız | `SUCCESS` | `PROVIDER_ERROR` |
+
+---
+
+## Sağlayıcı Sandbox Kurulumu [#provider-sandbox-setup]
+
+`betterPayment` başlatılırken `mode: 'sandbox'` olarak ayarlayın. Sandbox modunda her sağlayıcı otomatik olarak kendi sandbox uç noktasına bağlanır:
+
+```typescript
+import { betterPayment, iyzico, paytr, akbank, parampos } from 'better-payment';
+
+const payment = betterPayment({
+  mode: 'sandbox',
+  providers: {
+    iyzico: iyzico({
+      apiKey: process.env.IYZICO_SANDBOX_API_KEY!,
+      secretKey: process.env.IYZICO_SANDBOX_SECRET_KEY!,
+    }),
+    paytr: paytr({
+      merchantId: process.env.PAYTR_SANDBOX_MERCHANT_ID!,
+      merchantKey: process.env.PAYTR_SANDBOX_MERCHANT_KEY!,
+      merchantSalt: process.env.PAYTR_SANDBOX_MERCHANT_SALT!,
+    }),
+    akbank: akbank({
+      merchantSafeId: process.env.AKBANK_SANDBOX_MERCHANT_SAFE_ID!,
+      terminalSafeId: process.env.AKBANK_SANDBOX_TERMINAL_SAFE_ID!,
+      secretKey: process.env.AKBANK_SANDBOX_SECRET_KEY!,
+    }),
+    parampos: parampos({
+      clientCode: process.env.PARAMPOS_SANDBOX_CLIENT_CODE!,
+      clientUsername: process.env.PARAMPOS_SANDBOX_CLIENT_USERNAME!,
+      clientPassword: process.env.PARAMPOS_SANDBOX_CLIENT_PASSWORD!,
+      guid: process.env.PARAMPOS_SANDBOX_GUID!,
+    }),
+  },
+});
+```
+
+---
+
+## iyzico Sandbox [#iyzico-sandbox]
+
+- **Sandbox Uç Noktası**: `https://sandbox-api.iyzipay.com`
+- **Dokümantasyon**: [iyzico Test Kartları](https://dev.iyzipay.com/tr/test-kartlari)
+
+### Test Kartları [#test-cards]
+
+| Kart Numarası | Marka | Senaryo | Son Kullanma / CVC | 3DS SMS Kodu |
+| ------------- | ----- | ------- | ------------------ | ------------ |
+| `5528790000000008` | Mastercard | Başarılı | Gelecek tarih / `123` | `123456` |
+| `4111111111111129` | Visa | Yetersiz Bakiye | Gelecek tarih / `123` | `123456` |
+| `4000000000000002` | Visa | Kart Reddedildi | Gelecek tarih / `123` | `123456` |
+
+iyzico sandbox ortamında 3D Secure doğrulaması gerektiğinde, herhangi bir SMS kodu (örneğin `123456`) işlemi onaylar.
+
+---
+
+## PayTR Sandbox [#paytr-sandbox]
+
+- **Sandbox Uç Noktası**: `https://www.paytr.com` (PayTR tek bir uç nokta kullanır; sandbox modunda otomatik olarak `test_mode: 1` gönderilir)
+- **Dokümantasyon**: [PayTR Geliştirici Portalı](https://dev.paytr.com/)
+
+PayTR sandbox ortamında:
+- Test modu bilgileri ve test kartları **PayTR Mağaza Paneli > Bilgi** sekmesinden yapılandırılır.
+- BIN sorguları ve taksit testleri için herhangi bir standart test kartı numarası (örneğin `4355084355084358`) kullanılabilir.
+
+---
+
+## Akbank Sandbox [#akbank-sandbox]
+
+- **Sandbox Uç Noktası**: `https://apipre.akbank.com/api/v1/payment/virtualpos`
+- **Dokümantasyon**: [Akbank API Portalı](https://apiportal.akbank.com/)
+
+Akbank sandbox ortamında:
+- Test kartları ve sanal POS terminalleri doğrudan Akbank geliştirici portalındaki test üye işyeri profilinizle tanımlanır.
+- Tüm istekler Akbank ön üretim güvenlik sertifikaları üzerinden doğrulanır.
+
+---
+
+## Parampos Sandbox [#parampos-sandbox]
+
+- **Sandbox Uç Noktası**: `https://test-dmz.param.com.tr/turkpos.ws/service_turkpos_test.asmx`
+- **Dokümantasyon**: [Param Geliştirici Dokümantasyonu](https://param.com.tr/)
+
+Parampos sandbox ortamında:
+- XML / SOAP uç noktaları ve test GUID bilgileri bir test hesabı oluşturulduğunda temin edilir.
+- Param tarafından sağlanan test kartları hem 3DS hem de 3DS'siz ödeme akışlarının ve taksitlerin test edilmesini sağlar.
