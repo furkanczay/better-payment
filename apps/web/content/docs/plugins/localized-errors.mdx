@@ -3,7 +3,7 @@ title: Localized Error Messages
 description: Tell customers why a payment failed, in their language.
 ---
 
-Providers write error messages in their own words and language, often in technical terms ("Do not honour", "Invalid merchant"). The `localizedErrors` plugin replaces the `errorMessage` of failed results with a message for the customer, chosen by the normalized [error code](/docs/api/error-codes). English and Turkish messages are included.
+Providers write error messages in their own words and language, often in technical terms ("Do not honour", "Invalid merchant"). The `localizedErrors` plugin replaces the `errorMessage` of failed results with a message for the customer, chosen by the normalized [error code](/docs/reference/error-codes). English and Turkish messages are included.
 
 ## Setup
 
@@ -52,7 +52,7 @@ A code missing in a language falls back to `fallbackLocale`. A `locale` without 
 
 ## Per request in the HTTP handler
 
-The [HTTP handler](/docs/api/handler) translates each response for its request, from the `Accept-Language` header by default: `tr-TR,tr;q=0.9` gets Turkish, an unsupported language gets `locale`. Responses replayed for an `Idempotency-Key` are translated for the new request too. Choose the language another way with a function, or turn detection off:
+The [HTTP handler](/docs/concepts/handler) translates each response for its request, from the `Accept-Language` header by default: `tr-TR,tr;q=0.9` gets Turkish, an unsupported language gets `locale`. Responses replayed for an `Idempotency-Key` are translated for the new request too. Choose the language another way with a function, or turn detection off:
 
 ```typescript
 // Language from a query parameter: /api/pay/iyzico/payment?lang=tr

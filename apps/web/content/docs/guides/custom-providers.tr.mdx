@@ -3,7 +3,7 @@ title: Özel Sağlayıcılar
 description: better-payment'in henüz desteklemediği bir ödeme sağlayıcısını, yerleşik olanlarla aynı API ile ekleyin.
 ---
 
-Sağlayıcı, `PaymentProvider` sınıfını genişleten bir sınıftır. Yerleşik sağlayıcılar da aynı şekilde yazılır; bu yüzden özel bir sağlayıcı diğer her şeyle çalışır: plugin'ler ve [olaylar](/docs/plugins/events), [HTTP handler](/docs/api/handler) (`/api/pay/<id>/...` altında), tarayıcı client'ı (`client.use('<id>')`) ve istek doğrulama.
+Sağlayıcı, `PaymentProvider` sınıfını genişleten bir sınıftır. Yerleşik sağlayıcılar da aynı şekilde yazılır; bu yüzden özel bir sağlayıcı diğer her şeyle çalışır: plugin'ler ve [olaylar](/docs/concepts/events), [HTTP handler](/docs/concepts/handler) (`/api/pay/<id>/...` altında), tarayıcı client'ı (`client.use('<id>')`) ve istek doğrulama.
 
 <Callout type="info">
   Sağlayıcı başkalarının da işine yarayacaksa (bir Türk bankası ya da ödeme kuruluşu), onu better-payment'e eklemeyi düşünün. Depodaki katkı rehberine bakın.
@@ -148,7 +148,7 @@ Temel sınıfın sağladıkları:
 | `validateConfig()` | Kimlik bilgilerini kontrol etmek için yazın; constructor onu çağırır |
 | `createHttpClient(name, { timeout })` | Yapılandırılmış `baseUrl`, logger, `fetch` ve yeniden deneme politikasıyla fetch tabanlı bir client. Yalnızca idempotent istekler yeniden denenir |
 | `validatePayment(request, rules)`, `validateRefund(request)` | İstek doğrulama. Geçersiz bir istek `ValidationError` fırlatır: bunu başarısız bir sonuç olarak döndürün; `withErrorCode` ona `INVALID_REQUEST` kodunu verir |
-| `errorCodeTable()` ve `withErrorCode(result)` | Sağlayıcının hata kodlarını [normalize kodlara](/docs/api/error-codes) eşler; `withErrorCode` başarısız sonuçlara `code` ekler |
+| `errorCodeTable()` ve `withErrorCode(result)` | Sağlayıcının hata kodlarını [normalize kodlara](/docs/reference/error-codes) eşler; `withErrorCode` başarısız sonuçlara `code` ekler |
 | `cardOf(request)` | İsteğin kartı ya da bir `ValidationError` |
 | `notSupported(feature)` | `NOT_SUPPORTED` hatası; handler buna `400` ile yanıt verir |
 

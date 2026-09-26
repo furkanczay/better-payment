@@ -18,10 +18,10 @@ Plugins and typed payment events. **Breaking:** `betterPayment()` replaces `new 
 
 ### Added
 
-- **[Plugins](/docs/plugins):** before/after hooks for provider operations, typed methods, handler endpoints and error codes. [Write your own](/docs/plugins/writing-plugins) in a few lines.
-- **[Payment events](/docs/plugins/events):** one typed listener for every provider and flow, emitted only for verified results.
+- **[Plugins](/docs/concepts/plugins):** before/after hooks for provider operations, typed methods, handler endpoints and error codes. [Write your own](/docs/guides/writing-plugins) in a few lines.
+- **[Payment events](/docs/concepts/events):** one typed listener for every provider and flow, emitted only for verified results.
 - **[Localized error messages](/docs/plugins/localized-errors):** the first official plugin, in `better-payment/plugins`. Customer-facing messages in English and Turkish.
-- **[Custom providers](/docs/plugins/custom-providers)** with `defineProvider()`, and WebCrypto helpers for signing.
+- **[Custom providers](/docs/guides/custom-providers)** with `defineProvider()`, and WebCrypto helpers for signing.
 
 ## 0.4.0
 
@@ -29,7 +29,7 @@ Testing without a sandbox and one-line framework integration. Existing 0.3.0 cod
 
 ### Added
 
-- **[`better-payment/testing`](/docs/guides/testing):** `MockProvider`, an in-memory provider for application tests, with no credentials and no network access. Magic card numbers cover declines, 3D Secure failures, lost responses and failing refunds; 3D Secure callbacks go through the real handler.
+- **[`better-payment/testing`](/docs/concepts/testing):** `MockProvider`, an in-memory provider for application tests, with no credentials and no network access. Magic card numbers cover declines, 3D Secure failures, lost responses and failing refunds; 3D Secure callbacks go through the real handler.
 - **[Framework adapters](/docs/integrations/frameworks):** `better-payment/next`, `better-payment/express`, `better-payment/fastify` and `better-payment/hono` mount the handler in one line; `toFetchHandler` covers Workers, Deno and Bun.
 - The documentation is available in Turkish.
 
@@ -44,7 +44,7 @@ Edge runtimes and zero runtime dependencies. Application code keeps working unch
 ### Added
 
 - **[Edge runtime support](/docs/integrations/edge):** the same package runs on Node.js 20+, Vercel Edge, Cloudflare Workers, Deno and Bun. It only uses `fetch` and WebCrypto.
-- **[`fetch` option](/docs/configuration#custom-fetch)** for a custom fetch implementation (proxy, test stubs).
+- **[`fetch` option](/docs/concepts/configuration#custom-fetch)** for a custom fetch implementation (proxy, test stubs).
 - `HttpClient` and `HttpError` are exported for custom providers.
 
 ### Changed
@@ -58,9 +58,9 @@ Pre-authorization and stored cards. Existing 0.1.0 code keeps working. Both feat
 
 ### Added
 
-- **[Pre-authorization](/docs/guides/pre-authorization):** `authorize()` / `initThreeDSAuthorize()` block an amount, `capture()` charges it (partial capture supported) and `voidAuthorization()` releases it. iyzico, Parampos and Akbank; PayTR is not supported yet.
-- **[Stored cards](/docs/guides/stored-cards):** save a card with `saveCard` during a payment, pay later with `storedCard: { customerToken, cardToken }`, and manage cards with `saveCard()`, `listCards()` and `deleteCard()`. iyzico and PayTR; Parampos and Akbank are not supported yet.
-- [Handler routes](/docs/api/handler#routes) and browser client methods for both. Capture, void and the card routes require an `authorize` hook.
+- **[Pre-authorization](/docs/payments/pre-authorization):** `authorize()` / `initThreeDSAuthorize()` block an amount, `capture()` charges it (partial capture supported) and `voidAuthorization()` releases it. iyzico, Parampos and Akbank; PayTR is not supported yet.
+- **[Stored cards](/docs/payments/stored-cards):** save a card with `saveCard` during a payment, pay later with `storedCard: { customerToken, cardToken }`, and manage cards with `saveCard()`, `listCards()` and `deleteCard()`. iyzico and PayTR; Parampos and Akbank are not supported yet.
+- [Handler routes](/docs/concepts/handler#routes) and browser client methods for both. Capture, void and the card routes require an `authorize` hook.
 
 ### Changed
 
@@ -73,10 +73,10 @@ The first feature release after the reset. Existing 0.0.1 code keeps working; be
 
 ### Added
 
-- **[Unified error codes](/docs/api/error-codes):** every failed result carries `code` (`INSUFFICIENT_FUNDS`, `CARD_DECLINED`, `THREEDS_FAILED`, `INVALID_HASH`, ...). `errorCode` keeps the provider's raw code.
-- **[Request validation](/docs/configuration#request-validation)** before the provider is called. Invalid requests return `code: 'INVALID_REQUEST'` with every invalid field listed. Turn it off with `validate: false`.
+- **[Unified error codes](/docs/reference/error-codes):** every failed result carries `code` (`INSUFFICIENT_FUNDS`, `CARD_DECLINED`, `THREEDS_FAILED`, `INVALID_HASH`, ...). `errorCode` keeps the provider's raw code.
+- **[Request validation](/docs/concepts/configuration#request-validation)** before the provider is called. Invalid requests return `code: 'INVALID_REQUEST'` with every invalid field listed. Turn it off with `validate: false`.
 - **[Parampos installments](/docs/providers/parampos#installments):** `installmentInfo()`, `calculatePaidPrice()` and `getInstallmentRates()` use your Param rates.
-- **[Duplicate callbacks are processed once](/docs/api/handler#duplicate-callbacks-and-idempotency-key)**, and mutating handler routes accept an `Idempotency-Key` header. The `IdempotencyStore` is in-memory by default; use Redis or a database with several instances.
+- **[Duplicate callbacks are processed once](/docs/concepts/handler#duplicate-callbacks-and-idempotency-key)**, and mutating handler routes accept an `Idempotency-Key` header. The `IdempotencyStore` is in-memory by default; use Redis or a database with several instances.
 - `PaymentErrorCode` and `PaymentStatus` are exported from `better-payment/client`.
 
 ### Changed

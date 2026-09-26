@@ -3,7 +3,7 @@ title: Custom Providers
 description: Add a payment provider that better-payment does not support yet, with the same API as the built-in ones.
 ---
 
-A provider is a class that extends `PaymentProvider`. The built-in providers are written the same way, so a custom provider works with everything else: plugins and [events](/docs/plugins/events), the [HTTP handler](/docs/api/handler) (at `/api/pay/<id>/...`), the browser client (`client.use('<id>')`) and request validation.
+A provider is a class that extends `PaymentProvider`. The built-in providers are written the same way, so a custom provider works with everything else: plugins and [events](/docs/concepts/events), the [HTTP handler](/docs/concepts/handler) (at `/api/pay/<id>/...`), the browser client (`client.use('<id>')`) and request validation.
 
 <Callout type="info">
   If the provider is useful to others (a Turkish bank or payment institution), consider contributing it to better-payment. See the contributing guide in the repository.
@@ -148,7 +148,7 @@ The base class provides:
 | `validateConfig()` | Override it to check credentials; the constructor calls it |
 | `createHttpClient(name, { timeout })` | A fetch-based client with the configured `baseUrl`, logger, `fetch` and retry policy. Only idempotent requests are retried |
 | `validatePayment(request, rules)`, `validateRefund(request)` | Request validation. An invalid request throws a `ValidationError`: return it as a failure, which `withErrorCode` gives the `INVALID_REQUEST` code |
-| `errorCodeTable()` and `withErrorCode(result)` | Map the provider's error codes to the [normalized codes](/docs/api/error-codes); `withErrorCode` adds `code` to failed results |
+| `errorCodeTable()` and `withErrorCode(result)` | Map the provider's error codes to the [normalized codes](/docs/reference/error-codes); `withErrorCode` adds `code` to failed results |
 | `cardOf(request)` | The request's card, or a `ValidationError` |
 | `notSupported(feature)` | The `NOT_SUPPORTED` error; the handler answers it with `400` |
 

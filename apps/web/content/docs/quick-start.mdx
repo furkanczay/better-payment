@@ -104,7 +104,7 @@ if (result.status === 'success') {
 
 The library checks the callback with your credentials and, when the provider
 requires it, finalizes the payment. A forged or failed callback always returns
-`failure`. The [HTTP handler](/docs/api/handler) does this for you.
+`failure`. The [HTTP handler](/docs/concepts/handler) does this for you.
 
 ## 5. Handle results
 
@@ -137,7 +137,7 @@ await payment.use('paytr').getPayment('ORDER123');
 
 ## Update orders with events
 
-Instead of checking every result, listen to [payment events](/docs/plugins/events). They are emitted for every provider and flow, after the provider verified the result:
+Instead of checking every result, listen to [payment events](/docs/concepts/events). They are emitted for every provider and flow, after the provider verified the result:
 
 ```typescript
 payment.on('payment.succeeded', async (event) => {

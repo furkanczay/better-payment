@@ -3,7 +3,7 @@ title: Hata Mesajları için Dil Desteği
 description: Müşterilere ödemenin neden başarısız olduğunu kendi dillerinde söyleyin.
 ---
 
-Sağlayıcılar hata mesajlarını kendi ifadeleri ve dilleriyle, çoğu zaman teknik terimlerle yazar ("Do not honour", "Invalid merchant"). `localizedErrors` plugin'i başarısız sonuçların `errorMessage` alanını, normalize [hata koduna](/docs/api/error-codes) göre seçilen, müşteriye yönelik bir mesajla değiştirir. İngilizce ve Türkçe mesajlar dahildir.
+Sağlayıcılar hata mesajlarını kendi ifadeleri ve dilleriyle, çoğu zaman teknik terimlerle yazar ("Do not honour", "Invalid merchant"). `localizedErrors` plugin'i başarısız sonuçların `errorMessage` alanını, normalize [hata koduna](/docs/reference/error-codes) göre seçilen, müşteriye yönelik bir mesajla değiştirir. İngilizce ve Türkçe mesajlar dahildir.
 
 ## Kurulum [#setup]
 
@@ -52,7 +52,7 @@ Bir dilde eksik olan kod `fallbackLocale` diline düşer. Mesajı olmayan bir `l
 
 ## HTTP handler'da isteğe göre [#per-request-in-the-http-handler]
 
-[HTTP handler](/docs/api/handler) her yanıtı kendi isteğine göre çevirir; varsayılan olarak `Accept-Language` başlığından: `tr-TR,tr;q=0.9` Türkçe alır, desteklenmeyen bir dil `locale` dilini alır. Bir `Idempotency-Key` için tekrar gönderilen yanıtlar da yeni isteğe göre çevrilir. Dili başka bir yolla seçmek için bir fonksiyon verin ya da algılamayı kapatın:
+[HTTP handler](/docs/concepts/handler) her yanıtı kendi isteğine göre çevirir; varsayılan olarak `Accept-Language` başlığından: `tr-TR,tr;q=0.9` Türkçe alır, desteklenmeyen bir dil `locale` dilini alır. Bir `Idempotency-Key` için tekrar gönderilen yanıtlar da yeni isteğe göre çevrilir. Dili başka bir yolla seçmek için bir fonksiyon verin ya da algılamayı kapatın:
 
 ```typescript
 // Language from a query parameter: /api/pay/iyzico/payment?lang=tr

@@ -1,0 +1,7 @@
+{
+  "title": "Payments",
+  "pages": [
+    "pre-authorization",
+    "stored-cards"
+  ]
+}

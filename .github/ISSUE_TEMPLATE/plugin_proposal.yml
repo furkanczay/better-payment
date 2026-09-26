@@ -4,7 +4,7 @@ labels: ["enhancement", "area: plugin"]
 body:
   - type: markdown
     attributes:
-      value: See [Write a plugin](https://better-payment.czaylabs.com/docs/plugins/writing-plugins) for what plugins can do.
+      value: See [Write a plugin](https://better-payment.czaylabs.com/docs/guides/writing-plugins) for what plugins can do.
   - type: textarea
     id: purpose
     attributes:

@@ -20,8 +20,8 @@ function footerLinks(t: Dictionary["footer"]) {
       items: [
         { label: t.links.introduction, href: "/docs" },
         { label: t.links.installation, href: "/docs/installation" },
-        { label: t.links.configuration, href: "/docs/configuration" },
-        { label: t.links.apiReference, href: "/docs/api/handler" },
+        { label: t.links.configuration, href: "/docs/concepts/configuration" },
+        { label: t.links.apiReference, href: "/docs/reference/types" },
       ],
     },
     {
@@ -40,7 +40,7 @@ function footerLinks(t: Dictionary["footer"]) {
         { label: "GitHub", href: "https://github.com/furkanczay/better-payment", external: true },
         { label: t.links.issues, href: "https://github.com/furkanczay/better-payment/issues", external: true },
         { label: t.links.whatsNew, href: "/docs/whats-new" },
-        { label: t.links.changelog, href: "/docs/guides/changelog" },
+        { label: t.links.changelog, href: "/docs/reference/changelog" },
       ],
     },
   ];

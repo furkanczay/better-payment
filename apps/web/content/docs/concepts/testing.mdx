@@ -1,5 +1,5 @@
 ---
-title: Testing your integration
+title: Testing
 description: Test checkout, 3D Secure and refund flows with the in-memory MockProvider, without a sandbox or network access.
 ---
 
@@ -34,7 +34,7 @@ const result = await payment.mock.createPayment({
 });
 ```
 
-A common pattern is to build the `providers` from the environment and pass `mock` in tests. Plugins and [payment events](/docs/plugins/events) work with `MockProvider` like with a real provider, so your order updates are tested too. Handler routes are `/api/pay/mock/...`, and the browser client has `client.mock`.
+A common pattern is to build the `providers` from the environment and pass `mock` in tests. Plugins and [payment events](/docs/concepts/events) work with `MockProvider` like with a real provider, so your order updates are tested too. Handler routes are `/api/pay/mock/...`, and the browser client has `client.mock`.
 
 ## Magic card numbers
 

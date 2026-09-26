@@ -19,7 +19,7 @@ const off = payment.on('*', (event) => console.log(event.type, event.provider));
 off(); // removes the listener
 ```
 
-Olaylar her sağlayıcı için yayınlanır; çağrı ödeme nesnesinde, bir sağlayıcıda ya da [HTTP handler](/docs/api/handler) üzerinden yapılmış olabilir.
+Olaylar her sağlayıcı için yayınlanır; çağrı ödeme nesnesinde, bir sağlayıcıda ya da [HTTP handler](/docs/concepts/handler) üzerinden yapılmış olabilir.
 
 ## Olaylar [#events]
 
@@ -108,4 +108,4 @@ export const slackAlerts = (webhookUrl: string) =>
 
 ## Tekrarlanan gönderimler [#duplicate-deliveries]
 
-Sağlayıcılar aynı callback'i birden fazla kez gönderebilir. HTTP handler [callback'leri tekilleştirir](/docs/api/handler#duplicate-callbacks-and-idempotency-key); tekrarlanan bir gönderim yeni bir olay yayınlamaz. `completeThreeDSPayment()`'ı kendiniz çağırıyorsanız tekilleştirmeyi dinleyicinizde yapın.
+Sağlayıcılar aynı callback'i birden fazla kez gönderebilir. HTTP handler [callback'leri tekilleştirir](/docs/concepts/handler#duplicate-callbacks-and-idempotency-key); tekrarlanan bir gönderim yeni bir olay yayınlamaz. `completeThreeDSPayment()`'ı kendiniz çağırıyorsanız tekilleştirmeyi dinleyicinizde yapın.

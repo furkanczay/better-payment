@@ -53,7 +53,7 @@ const init = await payment.paytr.initThreeDSPayment({
 server-to-server to the **notification URL** set in the PayTR merchant panel.
 
 1. Set the notification URL to `https://yoursite.com/api/pay/paytr/callback`.
-2. With the [HTTP handler](/docs/api/handler), the notification is verified, passed to `onCallback`, and answered with plain-text `OK`:
+2. With the [HTTP handler](/docs/concepts/handler), the notification is verified, passed to `onCallback`, and answered with plain-text `OK`:
 
 ```typescript
 handler: {

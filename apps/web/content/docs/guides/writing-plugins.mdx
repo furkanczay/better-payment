@@ -1,11 +1,11 @@
 ---
-title: Plugin Yazmak
-description: Plugin, id'si ve ihtiyaç duyduğu parçaları olan bir nesne döndüren bir fonksiyondur. Birkaç adımda yazın.
+title: Write a Plugin
+description: A plugin is a function that returns an object with an id and the parts it needs. Write one in a few steps.
 ---
 
-Plugin, plugin'in seçeneklerini alan ve bir nesne döndüren bir fonksiyondur. Nesnenin bir `id`'si ve yalnızca plugin'in ihtiyaç duyduğu parçaları vardır. Bu rehber plugin'leri adım adım oluşturur; sondaki [başvuru](#reference) bölümü tüm parçaları listeler.
+A plugin is a function that takes the plugin's options and returns an object. The object has an `id` and only the parts the plugin needs. This guide builds plugins step by step; the [reference](#reference) at the end lists every part.
 
-## En küçük plugin [#the-smallest-plugin]
+## The smallest plugin
 
 ```typescript
 import { definePlugin } from 'better-payment';
@@ -19,7 +19,7 @@ export const auditLog = () =>
   });
 ```
 
-`plugins` dizisine ekleyin:
+Add it to `plugins`:
 
 ```typescript
 const payment = betterPayment({
@@ -28,13 +28,13 @@ const payment = betterPayment({
 });
 ```
 
-`definePlugin()` nesneyi değiştirmeden döndürür. Nesnenin tam tipini korur; böylece plugin'in ödeme nesnesine eklediği her şey tiplidir. `id` benzersiz olmalıdır: aynı id'ye sahip iki plugin `ConfigurationError` fırlatır.
+`definePlugin()` returns the object unchanged. It keeps the object's exact type, so what the plugin adds to the payment object is typed. The `id` must be unique: two plugins with the same id throw a `ConfigurationError`.
 
-## Hook'lar [#hooks]
+## Hooks
 
-**Before hook'u** işlemden önce çalışır. `matcher` hangi işlemlerde çalışacağını seçer (verilmezse hepsinde), `handler` ise işlemin bağlamını alır: `operation`, `request`, `provider` ve `routable`. `ctx.operation` kontrolü `ctx.request`'i o işlemin istek tipine daraltır.
+A **before hook** runs before an operation. `matcher` selects the operations it runs for (all, when left out), and `handler` gets the operation's context: `operation`, `request`, `provider` and `routable`. Checking `ctx.operation` narrows `ctx.request` to that operation's request type.
 
-Bu plugin kartları ilk hanelerine göre, sağlayıcıyı çağırmadan reddeder:
+This plugin rejects cards by their first digits, without calling the provider:
 
 ```typescript
 import { definePlugin, PaymentStatus, PaymentErrorCode } from 'better-payment';
@@ -76,16 +76,16 @@ export const blockList = (options: BlockListOptions) =>
   });
 ```
 
-Handler işlemin devam etmesi için hiçbir şey döndürmez ya da bir nesne döndürür:
+The handler returns nothing to let the operation continue, or an object:
 
-| Dönüş | Etkisi |
-| ----- | ------ |
-| `{ request }` | İşlem bu istekle devam eder |
-| `{ provider }` | İşlem bu sağlayıcıda çalışır (yalnızca ödeme nesnesinde yapılan çağrılarda, bkz. [sağlayıcıyı seçmek](#choosing-the-provider)) |
-| `{ result }` | Sağlayıcı çağrılmaz ve sonuç budur. Kalan before hook'ları atlanır; after hook'ları ve olaylar çalışır |
-| hata fırlatmak | İşlem hata fırlatır |
+| Return | Effect |
+| ------ | ------ |
+| `{ request }` | The operation continues with this request |
+| `{ provider }` | The operation runs on this provider (calls made on the payment object only, see [choosing the provider](#choosing-the-provider)) |
+| `{ result }` | The provider is not called and this is the result. Remaining before hooks are skipped; after hooks and events run |
+| throw | The operation throws |
 
-**After hook'u** işlemden sonra, `ctx.result` ve işlemi çalıştıran sağlayıcıyla çalışır. Sonucu değiştirmek için `{ result }` döndürün:
+An **after hook** runs after the operation, with `ctx.result` and the provider that ran it. Return `{ result }` to replace the result:
 
 ```typescript
 hooks: {
@@ -103,11 +103,11 @@ hooks: {
 },
 ```
 
-Sağlayıcı hata fırlattığında (örneğin geçersiz bir yapılandırmada) after hook'ları çalışmaz; başarısız olanlar dahil her sonuç için çalışırlar.
+After hooks do not run when the provider throws (for example for an invalid configuration); they run for every result, including failures.
 
-## Sağlayıcıyı seçmek [#choosing-the-provider]
+## Choosing the provider
 
-Bir before hook'u `{ provider }` döndürerek çağrıyı başka bir sağlayıcıya gönderebilir. Yalnızca ödeme nesnesinde yapılan çağrılar (`payment.createPayment()`) taşınabilir; bunlarda `ctx.routable` `true`'dur. Bir sağlayıcıda (`payment.iyzico.refund()`) ya da handler'ın bir sağlayıcı adresi üzerinden yapılan çağrılar her zaman o sağlayıcıda çalışır; orada başka bir sağlayıcı döndürmek hata fırlatır.
+A before hook can send a call to another provider by returning `{ provider }`. Only calls made on the payment object (`payment.createPayment()`) can be moved; for them `ctx.routable` is `true`. Calls made on a provider (`payment.iyzico.refund()`) or through a provider route of the handler always run on that provider, and returning another provider there throws.
 
 ```typescript
 export const paytrAbove = (limit: number) =>
@@ -127,11 +127,11 @@ export const paytrAbove = (limit: number) =>
   });
 ```
 
-`defaultProvider` yoksa (ve birden fazla sağlayıcı varsa) bir hook seçene kadar `ctx.provider` `undefined`'dır. [Ödeme olaylarındaki](/docs/plugins/events) `event.provider` değerini siparişle birlikte saklayın: iade ve durum sorguları ödemeyi alan sağlayıcıya gitmelidir.
+Without a `defaultProvider` (and with more than one provider), `ctx.provider` is `undefined` until a hook chooses one. Store `event.provider` from the [payment events](/docs/concepts/events) with the order: refunds and status queries must go to the provider that took the payment.
 
-## init ve methods [#init-and-methods]
+## init and methods
 
-`init` ilk işlemden önce bir kez çalışır ve async olabilir. Hata fırlatırsa o işlem başarısız olur ve sonraki işlem `init`'i yeniden çalıştırır. `methods` ödeme nesnesi oluşturulurken çalışır ve nesneye eklenecek üyeleri döndürür:
+`init` runs once, before the first operation, and can be async. If it throws, that operation fails and the next one runs `init` again. `methods` runs when the payment object is created and returns members to add to it:
 
 ```typescript
 interface Rate {
@@ -161,11 +161,11 @@ export const rates = (loadRates: () => Promise<Rate[]>) => {
 // payment.rates.cheapest(3) is typed
 ```
 
-İkisi de plugin bağlamını alır: sağlayıcı kimlikleri, varsayılan sağlayıcı, mod, logger ve `use(id)`. `use(id)`, işlemleri hook'lar ve olaylarla çalışan bir sağlayıcı döndürür. Bir sağlayıcı kimliğiyle ya da ödeme nesnesinin bir üyesiyle çakışan üye `ConfigurationError` fırlatır.
+Both get the plugin context: the provider ids, the default provider, the mode, the logger and `use(id)`, which returns a provider whose operations run with the hooks and events. A member that clashes with a provider id or a member of the payment object throws a `ConfigurationError`.
 
-## Endpoint'ler [#endpoints]
+## Endpoints
 
-`endpoints`, [HTTP handler'a](/docs/api/handler) adres ekler. Handler, endpoint'in döndürdüğünü `200` durum koduyla JSON olarak ya da `ctx.json(body, status)` ile oluşturulan yanıtı döner:
+`endpoints` adds routes to the [HTTP handler](/docs/concepts/handler). The handler returns what the endpoint returns as JSON with status `200`, or the response built with `ctx.json(body, status)`:
 
 ```typescript
 endpoints: {
@@ -183,20 +183,20 @@ endpoints: {
 },
 ```
 
-- `ctx`, plugin bağlamına ek olarak `request`, ayrıştırılmış `body` ve `query` içerir.
-- Handler'ın `authorize` hook'u endpoint'ler için de çalışır; `provider: undefined` ve `action: 'plugin:<plugin id>/<endpoint adı>'` olur (burada `plugin:rates/quote`).
-- Ödemeleri değiştiren ya da gösteren endpoint'leri `privileged: true` ile işaretleyin: handler, iadelerde olduğu gibi `authorize` hook'u olmadan başlamayı reddeder.
-- Bir adres bir sağlayıcı kimliğiyle ya da `health` ile başlayamaz.
+- `ctx` has the plugin context plus `request`, the parsed `body` and `query`.
+- The handler's `authorize` hook runs for endpoints too, with `provider: undefined` and `action: 'plugin:<plugin id>/<endpoint name>'` (here `plugin:rates/quote`).
+- Mark endpoints that change or reveal payments with `privileged: true`: the handler then refuses to start without an `authorize` hook, like it does for refunds.
+- A path must not start with a provider id or `health`.
 
-Handler'ın yanıtlarını değiştirmek için `onResponse` kullanın. Tekrar gönderilenler dahil her yanıtta çalışır ve yerine yeni bir yanıt döndürebilir; [localizedErrors](/docs/plugins/localized-errors) bunu, mesajları her isteğin `Accept-Language` başlığına göre çevirmek için kullanır. Hata fırlatırsa hata loglanır ve yanıt değiştirilmeden gönderilir.
+To change the handler's responses, use `onResponse`. It runs on every response, including replayed ones, and can return a replacement; [localizedErrors](/docs/plugins/localized-errors) uses it to translate messages for each request's `Accept-Language`. If it throws, the error is logged and the response is sent unchanged.
 
-## Hata kodları [#error-codes]
+## Error codes
 
-Plugin'in kendi hata kodlarını varsayılan (İngilizce) mesajlarıyla `$ERROR_CODES` içinde tanımlayın; yukarıdaki `BLOCKED_BIN` gibi. Bunlar `payment.$ERROR_CODES` içinde birleşir ve orada tiplidir; böylece uygulamalar ve çeviri plugin'leri bunları kullanabilir. Kodu sonucun `errorCode` alanına yazın; `code` alanı [normalize hata kodlarından](/docs/api/error-codes) biri olarak kalsın.
+Declare the plugin's own error codes with their default (English) messages in `$ERROR_CODES`, like `BLOCKED_BIN` above. They are merged into `payment.$ERROR_CODES` and typed there, so that applications and translation plugins can use them. Put the code in the result's `errorCode`; keep `code` one of the [normalized error codes](/docs/reference/error-codes).
 
-## Test etmek [#testing]
+## Testing
 
-Plugin'leri bellek içi [MockProvider](/docs/guides/testing) ile test edin: ağ yok, kimlik bilgisi yok.
+Test plugins with the in-memory [MockProvider](/docs/concepts/testing): no network, no credentials.
 
 ```typescript
 import { it, expect } from 'vitest';
@@ -221,15 +221,15 @@ it('rejects blocked cards without calling the provider', async () => {
 });
 ```
 
-## Yayınlamak [#publishing]
+## Publishing
 
-- Plugin'i döndüren bir fonksiyon ve bir seçenekler arayüzü export edin.
-- npm paketine `better-payment-plugin-<ad>` adını verin ve `better-payment`'ı peer dependency olarak ekleyin.
-- `id`'yi değiştirmeyin: uygulamalar onu `authorize` hook'larında kullanabilir (`plugin:<id>/...`).
-- Kart verisini asla loglamayın ve saklamayın. Hook'lara gelen isteklerde kart numarası bulunur.
-- Plugin'inizin bu dokümanlarda listelenmesi için bir issue açın.
+- Export a function that returns the plugin, and an options interface.
+- Name the npm package `better-payment-plugin-<name>` and add `better-payment` as a peer dependency.
+- Keep the `id` stable: applications may use it in `authorize` hooks (`plugin:<id>/...`).
+- Never log or store card data. Requests passed to hooks contain the card number.
+- Open an issue to have your plugin listed in these docs.
 
-## Başvuru [#reference]
+## Reference
 
 ```typescript
 interface BetterPaymentPlugin {

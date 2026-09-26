@@ -19,7 +19,7 @@ const off = payment.on('*', (event) => console.log(event.type, event.provider));
 off(); // removes the listener
 ```
 
-Events are emitted for every provider, and for calls made on the payment object, on a provider, and through the [HTTP handler](/docs/api/handler).
+Events are emitted for every provider, and for calls made on the payment object, on a provider, and through the [HTTP handler](/docs/concepts/handler).
 
 ## Events
 
@@ -108,4 +108,4 @@ export const slackAlerts = (webhookUrl: string) =>
 
 ## Duplicate deliveries
 
-Providers can send the same callback more than once. The HTTP handler [deduplicates callbacks](/docs/api/handler#duplicate-callbacks-and-idempotency-key), so a repeated delivery emits no new event. When you call `completeThreeDSPayment()` yourself, deduplicate in your listener.
+Providers can send the same callback more than once. The HTTP handler [deduplicates callbacks](/docs/concepts/handler#duplicate-callbacks-and-idempotency-key), so a repeated delivery emits no new event. When you call `completeThreeDSPayment()` yourself, deduplicate in your listener.

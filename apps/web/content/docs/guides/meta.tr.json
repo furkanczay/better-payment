@@ -1,10 +1,8 @@
 {
   "title": "Rehberler",
   "pages": [
-    "migration-0-5",
-    "pre-authorization",
-    "stored-cards",
-    "testing",
-    "changelog"
+    "writing-plugins",
+    "custom-providers",
+    "migration-0-5"
   ]
 }

@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Check the [roadmap](https://github.com/furkanczay/better-payment/issues/44) first: some providers are already planned.
-        Read [Custom providers](https://better-payment.czaylabs.com/docs/plugins/custom-providers) to see what a provider implements.
+        Read [Custom providers](https://better-payment.czaylabs.com/docs/guides/custom-providers) to see what a provider implements.
   - type: input
     id: provider
     attributes:

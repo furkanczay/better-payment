@@ -3,7 +3,7 @@ title: Plugins
 description: Add features to better-payment with plugins — payment events, provider routing and your own logic.
 ---
 
-A plugin adds behaviour to the payment object without changing the library. It can react to payment events, run code before and after provider operations, add methods to the payment object and routes to the HTTP handler. Plugins are plain objects, so a plugin often fits in a few lines, and you can [write your own](/docs/plugins/writing-plugins).
+A plugin adds behaviour to the payment object without changing the library. It can react to payment events, run code before and after provider operations, add methods to the payment object and routes to the HTTP handler. Plugins are plain objects, so a plugin often fits in a few lines, and you can [write your own](/docs/guides/writing-plugins).
 
 ## Using plugins
 
@@ -26,7 +26,7 @@ Plugins run in the order of the `plugins` array. Their hooks, event listeners an
 
 | Part | What it does | Example |
 | ---- | ------------ | ------- |
-| `events` | Listens to [payment events](/docs/plugins/events) | Update orders, send e-mails, keep an audit log |
+| `events` | Listens to [payment events](/docs/concepts/events) | Update orders, send e-mails, keep an audit log |
 | `hooks.before` | Runs before an operation. It can choose the provider, change the request, or return a result without calling the provider | Send payments to the cheapest provider, block a card, add an order id |
 | `hooks.after` | Runs after an operation and can replace its result | Translate error messages |
 | `init` | Runs once, before the first operation | Load rate tables, warm up a cache |
@@ -56,4 +56,4 @@ Official plugins ship in the package, under `better-payment/plugins`:
 | ------ | ------------ |
 | [`localizedErrors`](/docs/plugins/localized-errors) | Error messages for customers, in their language (English and Turkish included) |
 
-Planned: a commission router that sends each payment to the cheapest provider ([#51](https://github.com/furkanczay/better-payment/issues/51)). Need something else? [Write your own](/docs/plugins/writing-plugins); it takes a few lines.
+Planned: a commission router that sends each payment to the cheapest provider ([#51](https://github.com/furkanczay/better-payment/issues/51)). Need something else? [Write your own](/docs/guides/writing-plugins); it takes a few lines.

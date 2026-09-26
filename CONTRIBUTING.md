@@ -111,7 +111,7 @@ This library moves money. These rules are not negotiable, and reviews check them
 
 ## Adding a provider
 
-Open a "New provider" issue first. A provider extends `PaymentProvider` and implements `createPayment`, `initThreeDSPayment`, `completeThreeDSPayment`, `refund`, `cancel` and `getPayment`. The [Custom providers](https://better-payment.czaylabs.com/docs/plugins/custom-providers) page walks through it. For a built-in provider, also:
+Open a "New provider" issue first. A provider extends `PaymentProvider` and implements `createPayment`, `initThreeDSPayment`, `completeThreeDSPayment`, `refund`, `cancel` and `getPayment`. The [Custom providers](https://better-payment.czaylabs.com/docs/guides/custom-providers) page walks through it. For a built-in provider, also:
 
 - add it under `src/providers/<provider>/` (`index.ts`, `types.ts`, `utils.ts`) with a factory (`export const xbank = (config) => defineProvider(...)`, using `withProviderDefaults`);
 - add its id to `ProviderType` and its URLs to `PROVIDER_DEFAULT_URLS` (`src/core/BetterPaymentConfig.ts`);
@@ -122,7 +122,7 @@ Open a "New provider" issue first. A provider extends `PaymentProvider` and impl
 
 ## Writing a plugin
 
-Behaviour that does not depend on a provider (routing, notifications, translations, fraud rules, …) belongs in a plugin, not in the core. See [Write a plugin](https://better-payment.czaylabs.com/docs/plugins/writing-plugins). Official plugins live in `src/plugins/` and are exported from `better-payment/plugins`. Community plugins are published as `better-payment-plugin-<name>`.
+Behaviour that does not depend on a provider (routing, notifications, translations, fraud rules, …) belongs in a plugin, not in the core. See [Write a plugin](https://better-payment.czaylabs.com/docs/guides/writing-plugins). Official plugins live in `src/plugins/` and are exported from `better-payment/plugins`. Community plugins are published as `better-payment-plugin-<name>`.
 
 ## Tests
 

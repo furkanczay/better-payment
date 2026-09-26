@@ -1,23 +1,19 @@
 ---
-title: BetterPaymentHandler
-description: Framework-agnostic, secure-by-default HTTP handler.
+title: HTTP Handler
+description: Framework'ten bağımsız, varsayılan olarak güvenli HTTP handler.
 ---
 
-`BetterPaymentHandler` maps HTTP requests to provider methods. It works with any
-framework: you convert the framework's request into a `BetterPaymentRequest`
-and send back the `BetterPaymentResponse`.
+`BetterPaymentHandler`, HTTP isteklerini sağlayıcı metotlarına eşler. Her framework'le çalışır: framework'ün isteğini bir `BetterPaymentRequest`'e çevirirsiniz ve `BetterPaymentResponse`'u geri gönderirsiniz.
 
-## Secure defaults
+## Güvenli varsayılanlar [#secure-defaults]
 
-With no options, the handler exposes only:
+Hiç seçenek verilmezse handler yalnızca şunları açar:
 
-- the provider callbacks: `payment/complete-3ds` and `callback`
-- the card queries: `installment` and `bin-check`
+- sağlayıcı callback'leri: `payment/complete-3ds` ve `callback`
+- kart sorguları: `installment` ve `bin-check`
 - `GET /health`
 
-Enable everything else explicitly with `allowedActions`. Refund, cancel, payment
-lookup and subscription management also need an `authorize` hook; without
-one, creating the handler throws.
+Geri kalan her şeyi `allowedActions` ile açıkça etkinleştirin. İade, iptal, ödeme sorgusu ve abonelik yönetimi ayrıca bir `authorize` hook'u gerektirir; hook yoksa handler oluşturulurken hata fırlatılır.
 
 ```typescript
 const payment = betterPayment({
@@ -65,14 +61,13 @@ const payment = betterPayment({
 });
 ```
 
-Use `payment.createHandler(options)` when you need more than one handler, for
-example a public handler and an admin handler.
+Birden fazla handler'a ihtiyacınız olduğunda `payment.createHandler(options)` kullanın; örneğin herkese açık bir handler ve bir yönetici handler'ı.
 
-## Routes
+## Route'lar [#routes]
 
-Paths are relative to `basePath` (default `/api/pay`).
+Yollar `basePath`'e göredir (varsayılan `/api/pay`).
 
-| Method | Path | Action | Provider method | Default |
+| Metot | Yol | İşlem | Sağlayıcı metodu | Varsayılan |
 |--------|------|--------|-----------------|---------|
 | POST | `/:provider/payment/complete-3ds` | `payment/complete-3ds` | `completeThreeDSPayment()` | ✅ |
 | POST | `/:provider/callback` | `callback` | `completeThreeDSPayment()` | ✅ |
@@ -100,43 +95,43 @@ Paths are relative to `basePath` (default `/api/pay`).
 | POST | `/iyzico/subscription/{product,pricing-plan}` | … | … | — 🔒 |
 | GET | `/health` | — | — | ✅ |
 
-🔒 = needs `authorize`.
+🔒 = `authorize` gerektirir.
 
-## Responses
+## Yanıtlar [#responses]
 
-| Situation | HTTP status | Body |
+| Durum | HTTP durum kodu | Gövde |
 |-----------|-------------|------|
-| `success` / `pending` result | 200 | provider result |
-| `failure` result | 422 | provider result (`errorCode`, `errorMessage`, `rawResponse`) |
-| PayTR notification (`/paytr/callback`) | 200 `text/plain` | `OK` (400 when the hash is invalid) |
-| `callbackRedirect` returned a URL | 303 | `Location` header |
-| Invalid input / wrong method / not enabled | 400 / 405 / 404 | `{ error, message }` |
-| `authorize` rejected | 403 | `{ error, message }` |
-| Unexpected error | 500 | `{ error, message: 'Internal server error' }` |
+| `success` / `pending` sonucu | 200 | sağlayıcı sonucu |
+| `failure` sonucu | 422 | sağlayıcı sonucu (`errorCode`, `errorMessage`, `rawResponse`) |
+| PayTR bildirimi (`/paytr/callback`) | 200 `text/plain` | `OK` (hash geçersizse 400) |
+| `callbackRedirect` bir URL döndürdü | 303 | `Location` başlığı |
+| Geçersiz girdi / yanlış metot / etkin değil | 400 / 405 / 404 | `{ error, message }` |
+| `authorize` reddetti | 403 | `{ error, message }` |
+| Beklenmeyen hata | 500 | `{ error, message: 'Internal server error' }` |
 
 <Callout type="warn">
-  PayTR re-sends a notification until it receives exactly `OK`. Return `res.body` as plain text when `res.headers['Content-Type']` is `text/plain`; do not JSON-encode it. If `onCallback` throws, the handler returns 500 and PayTR retries the notification.
+  PayTR, tam olarak `OK` alana kadar bildirimi yeniden gönderir. `res.headers['Content-Type']` `text/plain` olduğunda `res.body`'yi düz metin olarak döndürün; JSON'a çevirmeyin. `onCallback` hata fırlatırsa handler 500 döner ve PayTR bildirimi tekrar gönderir.
 </Callout>
 
-## Duplicate callbacks and Idempotency-Key
+## Tekrar eden callback'ler ve Idempotency-Key [#duplicate-callbacks-and-idempotency-key]
 
-Providers deliver callbacks more than once: PayTR resends a notification until it gets `OK`, and customers reload or go back to the 3D Secure return page. The handler processes each callback **once**:
+Sağlayıcılar callback'leri birden fazla kez iletir: PayTR `OK` alana kadar bildirimi yeniden gönderir, müşteriler de 3D Secure dönüş sayfasını yeniler ya da geri döner. Handler her callback'i **bir kez** işler:
 
-- The first delivery calls the provider (verification, and for Parampos the `TP_WMD_Pay` finalization), runs `onCallback`, and stores the response.
-- An identical delivery gets the stored response (PayTR: `OK`, browser: the same redirect). `onCallback` does not run again, and the provider is not called again.
-- If `onCallback` throws, the handler answers 500 (PayTR retries). The next delivery re-runs `onCallback` with the stored provider result, without calling the provider again.
-- A duplicate that arrives while the first is still running gets `409`, and the provider retries later.
-- Forged callbacks (`INVALID_HASH`) and unknown outcomes (`NETWORK_ERROR`) are never stored.
+- İlk iletim sağlayıcıyı çağırır (doğrulama; Parampos'ta ayrıca `TP_WMD_Pay` ile tamamlama), `onCallback`'i çalıştırır ve yanıtı saklar.
+- Aynısı tekrar geldiğinde saklanan yanıtı alır (PayTR: `OK`, tarayıcı: aynı yönlendirme). `onCallback` tekrar çalışmaz, sağlayıcı da tekrar çağrılmaz.
+- `onCallback` hata fırlatırsa handler 500 döner (PayTR tekrar dener). Sonraki iletim, sağlayıcıyı yeniden çağırmadan saklanan sağlayıcı sonucuyla `onCallback`'i tekrar çalıştırır.
+- İlki hâlâ işlenirken gelen bir tekrar `409` alır; sağlayıcı daha sonra yeniden dener.
+- Sahte callback'ler (`INVALID_HASH`) ve sonucu bilinmeyenler (`NETWORK_ERROR`) asla saklanmaz.
 
-Duplicates are recognized by a SHA-256 hash of the callback body. A forged body can never match a stored response.
+Tekrarlar, callback gövdesinin SHA-256 hash'iyle tanınır. Sahte bir gövde, saklanan bir yanıtla asla eşleşemez.
 
-Mutating routes (`payment`, `payment/init-3ds`, `refund`, `cancel`, `authorize`, `capture`, `void`, `cards/save`, `cards/delete`, iyzico checkout/PWI/subscription management) also honor an **`Idempotency-Key`** header. Send a unique key per operation, for example a UUID or `refund-<orderId>`:
+Veri değiştiren route'lar (`payment`, `payment/init-3ds`, `refund`, `cancel`, `authorize`, `capture`, `void`, `cards/save`, `cards/delete`, iyzico checkout/PWI/abonelik yönetimi) ayrıca bir **`Idempotency-Key`** başlığını da dikkate alır. Her işlem için benzersiz bir anahtar gönderin; örneğin bir UUID ya da `refund-<orderId>`:
 
-- The same key and the same body return the first response, marked `Idempotent-Replayed: true`, without calling the provider again.
-- The same key with a different body returns `422`.
-- A request that fails before a result (validation error, unexpected error) releases its key.
+- Aynı anahtar ve aynı gövde, sağlayıcıyı yeniden çağırmadan ilk yanıtı `Idempotent-Replayed: true` işaretiyle döner.
+- Aynı anahtar farklı bir gövdeyle gelirse `422` döner.
+- Sonuç üretilmeden başarısız olan bir istek (doğrulama hatası, beklenmeyen hata) anahtarını serbest bırakır.
 
-Results are remembered for 24 hours by default. The default store is **in-memory**, so it only deduplicates within one process. With several instances or serverless functions, pass a shared store:
+Sonuçlar varsayılan olarak 24 saat saklanır. Varsayılan depo **bellek içidir**, yani yalnızca tek bir süreç içinde tekilleştirir. Birden fazla örnek ya da serverless fonksiyon kullanıyorsanız paylaşımlı bir depo verin:
 
 ```typescript
 import Redis from 'ioredis';
@@ -160,10 +155,10 @@ betterPayment({
 ```
 
 <Callout type="info">
-  `setIfAbsent` must be atomic: Redis `SET ... NX`, or an insert into a table with a unique key in SQL (`INSERT ... ON CONFLICT DO NOTHING` and check the affected rows).
+  `setIfAbsent` atomik olmalıdır: Redis'te `SET ... NX`, SQL'de ise benzersiz anahtarlı bir tabloya ekleme (`INSERT ... ON CONFLICT DO NOTHING` ve etkilenen satır sayısını kontrol edin).
 </Callout>
 
-## Interfaces
+## Arayüzler [#interfaces]
 
 ```typescript
 interface BetterPaymentRequest {
@@ -188,20 +183,18 @@ interface HandlerContext {
 }
 ```
 
-`ctx.body` comes from the client, so its fields are typed `unknown`: validate them
-(or cast after validating) before you use them. `onCallback` and `callbackRedirect`
-receive a `PaymentResponse`.
+`ctx.body` client'tan gelir, bu yüzden alanları `unknown` tipindedir: kullanmadan önce doğrulayın (ya da doğruladıktan sonra cast edin). `onCallback` ve `callbackRedirect` bir `PaymentResponse` alır.
 
-Plugins can add routes to the handler ([plugin endpoints](/docs/plugins/writing-plugins#endpoints)). The `authorize` hook runs for them too, with `provider: undefined` and `action: 'plugin:<plugin id>/<endpoint name>'`. For callbacks, [payment events](/docs/plugins/events) are emitted right before `onCallback`, and are retried with it when a listener fails.
+Plugin'ler handler'a yeni adresler ekleyebilir ([plugin endpoint'leri](/docs/guides/writing-plugins#endpoints)). `authorize` hook'u bunlar için de çalışır; `provider: undefined` ve `action: 'plugin:<plugin id>/<endpoint adı>'` olur. Callback'lerde [ödeme olayları](/docs/concepts/events) `onCallback`'ten hemen önce yayınlanır; bir dinleyici hata verirse `onCallback` ile birlikte yeniden denenir.
 
-## Frameworks
+## Framework'ler [#frameworks]
 
-Adapters connect the handler to your framework and handle the details that are easy to get wrong:
-- raw bodies for form-urlencoded bank callbacks
-- PayTR's plain-text `OK`
-- redirects with no body
+Adapter'lar handler'ı framework'ünüze bağlar ve yanlış yapılması kolay ayrıntıları halleder:
+- form-urlencoded banka callback'leri için ham gövdeler
+- PayTR'nin düz metin `OK` yanıtı
+- gövdesiz yönlendirmeler
 
-| Framework | Import | Usage |
+| Framework | Import | Kullanım |
 | --------- | ------ | ----- |
 | Next.js (App Router) | `better-payment/next` | `export const { GET, POST } = toNextJsHandler(getBetterPayment)` |
 | Express | `better-payment/express` | `app.all('/api/pay/*path', toExpressHandler(payment))` |
@@ -210,4 +203,4 @@ Adapters connect the handler to your framework and handle the details that are e
 | `node:http` | `better-payment/express` | `createServer(toNodeHandler(payment))` |
 | Workers, Deno, Bun | `better-payment` | `toFetchHandler(payment)` |
 
-See [Next.js](/docs/integrations/nextjs), [other frameworks](/docs/integrations/frameworks) and [edge runtimes](/docs/integrations/edge). For any other framework, convert its request into a `BetterPaymentRequest` (pass the body as raw text), call `payment.handler.handle()` and write the `BetterPaymentResponse` back.
+[Next.js](/docs/integrations/nextjs), [diğer framework'ler](/docs/integrations/frameworks) ve [edge ortamları](/docs/integrations/edge) sayfalarına bakın. Başka bir framework için isteğini bir `BetterPaymentRequest`'e çevirin (gövdeyi ham metin olarak geçirin), `payment.handler.handle()`'ı çağırın ve `BetterPaymentResponse`'u geri yazın.

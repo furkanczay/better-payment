@@ -60,7 +60,7 @@ Deno.serve(toFetchHandler(payment));          // Deno
 
 ## Idempotency on edge and serverless
 
-The default idempotency store keeps duplicate-callback and `Idempotency-Key` records **in memory**. On edge and serverless platforms, every isolate or instance has its own memory, so it only deduplicates requests that reach the same isolate. Pass a [shared store](/docs/api/handler#duplicate-callbacks-and-idempotency-key) in production:
+The default idempotency store keeps duplicate-callback and `Idempotency-Key` records **in memory**. On edge and serverless platforms, every isolate or instance has its own memory, so it only deduplicates requests that reach the same isolate. Pass a [shared store](/docs/concepts/handler#duplicate-callbacks-and-idempotency-key) in production:
 
 - **Upstash Redis** (HTTP-based, works on every edge runtime): `SET key value EX ttl NX` for `setIfAbsent`.
 - **Cloudflare:** Durable Objects or D1 (`INSERT ... ON CONFLICT DO NOTHING`). Workers KV is eventually consistent and cannot implement the atomic `setIfAbsent`.

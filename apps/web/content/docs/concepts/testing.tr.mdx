@@ -1,5 +1,5 @@
 ---
-title: Entegrasyonunuzu test etme
+title: Test
 description: Ödeme, 3D Secure ve iade akışlarını sandbox ya da ağ erişimi olmadan, bellek içi MockProvider ile test edin.
 ---
 
@@ -34,7 +34,7 @@ const result = await payment.mock.createPayment({
 });
 ```
 
-Yaygın bir yöntem, `providers` nesnesini ortamdan oluşturmak ve testlerde `mock`'u vermektir. Plugin'ler ve [ödeme olayları](/docs/plugins/events) `MockProvider` ile gerçek bir sağlayıcıdaki gibi çalışır; böylece sipariş güncellemeleriniz de test edilir. Handler route'ları `/api/pay/mock/...` altındadır; tarayıcı client'ında da `client.mock` vardır.
+Yaygın bir yöntem, `providers` nesnesini ortamdan oluşturmak ve testlerde `mock`'u vermektir. Plugin'ler ve [ödeme olayları](/docs/concepts/events) `MockProvider` ile gerçek bir sağlayıcıdaki gibi çalışır; böylece sipariş güncellemeleriniz de test edilir. Handler route'ları `/api/pay/mock/...` altındadır; tarayıcı client'ında da `client.mock` vardır.
 
 ## Sihirli kart numaraları [#magic-card-numbers]
 

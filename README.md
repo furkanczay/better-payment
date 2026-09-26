@@ -120,7 +120,7 @@ requests are never retried automatically.
 Failed results also carry `code`, a provider-independent `PaymentErrorCode`
 (`INSUFFICIENT_FUNDS`, `CARD_DECLINED`, `THREEDS_FAILED`, `INVALID_HASH`, ...).
 The provider's raw code stays in `errorCode`. Unmapped codes are `UNKNOWN`. See
-[Error Codes](https://better-payment.czaylabs.com/docs/api/error-codes) for the
+[Error Codes](https://better-payment.czaylabs.com/docs/reference/error-codes) for the
 list and suggested customer messages.
 
 ```typescript
@@ -154,12 +154,12 @@ this id to `refund`, `cancel` and `getPayment`.
 Pre-authorization (block now, charge later) works on iyzico, Parampos and Akbank:
 `authorize()` / `initThreeDSAuthorize()`, then `capture({ paymentId, amount, ip })` or
 `voidAuthorization({ paymentId, ip })`. See the
-[pre-authorization guide](https://better-payment.czaylabs.com/docs/guides/pre-authorization).
+[pre-authorization guide](https://better-payment.czaylabs.com/docs/payments/pre-authorization).
 
 Stored cards (iyzico, PayTR): pass `saveCard: true` with a payment, then pay with
 `storedCard: { customerToken, cardToken }` instead of `paymentCard`. `listCards()` and
 `deleteCard()` manage saved cards. Only tokens are stored, never card numbers. See the
-[stored cards guide](https://better-payment.czaylabs.com/docs/guides/stored-cards).
+[stored cards guide](https://better-payment.czaylabs.com/docs/payments/stored-cards).
 
 Installments: pass `installment` in the request. For Parampos, set `paidPrice`
 to the total including commission: `payment.parampos.calculatePaidPrice({ binNumber,
@@ -270,9 +270,9 @@ import { localizedErrors } from 'better-payment/plugins';
 const payment = betterPayment({ providers: { ... }, plugins: [localizedErrors({ locale: 'tr' })] });
 ```
 
-See [Plugins](https://better-payment.czaylabs.com/docs/plugins),
-[payment events](https://better-payment.czaylabs.com/docs/plugins/events) and
-[writing a plugin](https://better-payment.czaylabs.com/docs/plugins/writing-plugins).
+See [Plugins](https://better-payment.czaylabs.com/docs/concepts/plugins),
+[payment events](https://better-payment.czaylabs.com/docs/concepts/events) and
+[writing a plugin](https://better-payment.czaylabs.com/docs/guides/writing-plugins).
 Upgrading from 0.4? See [Migrating to 0.5](https://better-payment.czaylabs.com/docs/guides/migration-0-5).
 
 ## Testing
@@ -289,7 +289,7 @@ await payment.mock.createPayment({ ...order, paymentCard: { ...card, cardNumber:
 // → { status: 'failure', code: 'INSUFFICIENT_FUNDS' }
 ```
 
-See the [testing guide](https://better-payment.czaylabs.com/docs/guides/testing).
+See the [testing guide](https://better-payment.czaylabs.com/docs/concepts/testing).
 
 ## Logging & Retry
 
