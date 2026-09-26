@@ -137,7 +137,7 @@ export default function Navbar({
           <ThemeToggle label={t.toggleTheme} />
           <Separator orientation="vertical" className="h-4 mx-1" />
           <a
-            href="https://github.com/furkanczay/better-payment"
+            href="https://github.com/czaydev/better-payment"
             target="_blank"
             rel="noopener noreferrer"
             className={cn(
@@ -191,7 +191,7 @@ export default function Navbar({
           <div className="flex gap-2 pb-1">
             <LanguageSwitch lang={lang} label={t.language} />
             <a
-              href="https://github.com/furkanczay/better-payment"
+              href="https://github.com/czaydev/better-payment"
               target="_blank"
               rel="noopener noreferrer"
               className={cn(

@@ -22,7 +22,7 @@ concurrency:
 jobs:
   sandbox:
     name: Provider sandboxes
-    if: github.repository == 'furkanczay/better-payment'
+    if: github.repository == 'czaydev/better-payment'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

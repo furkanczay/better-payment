@@ -316,11 +316,11 @@ credentials) are never logged.
 ## Contributing
 
 Contributions are welcome, from a typo fix to a new provider. Start with
-[CONTRIBUTING.md](https://github.com/furkanczay/better-payment/blob/main/CONTRIBUTING.md)
-([Türkçe](https://github.com/furkanczay/better-payment/blob/main/CONTRIBUTING.tr.md)) and the
-[good first issues](https://github.com/furkanczay/better-payment/labels/good%20first%20issue).
+[CONTRIBUTING.md](https://github.com/czaydev/better-payment/blob/main/CONTRIBUTING.md)
+([Türkçe](https://github.com/czaydev/better-payment/blob/main/CONTRIBUTING.tr.md)) and the
+[good first issues](https://github.com/czaydev/better-payment/labels/good%20first%20issue).
 Report security problems privately, as described in
-[SECURITY.md](https://github.com/furkanczay/better-payment/blob/main/SECURITY.md).
+[SECURITY.md](https://github.com/czaydev/better-payment/blob/main/SECURITY.md).
 
 ## License
 

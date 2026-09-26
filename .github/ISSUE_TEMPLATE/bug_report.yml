@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for reporting! **Remove API keys, secrets, card numbers and personal data** from everything you paste.
-        Security problems (for example a callback that can be forged) go to [private reporting](https://github.com/furkanczay/better-payment/security/advisories/new), not here.
+        Security problems (for example a callback that can be forged) go to [private reporting](https://github.com/czaydev/better-payment/security/advisories/new), not here.
   - type: input
     id: version
     attributes:

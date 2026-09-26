@@ -6,7 +6,7 @@ better-payment handles payments, so we take security reports seriously.
 
 **Do not open a public issue, discussion or pull request for a security problem.**
 
-Report it privately through GitHub: [open a private vulnerability report](https://github.com/furkanczay/better-payment/security/advisories/new) (Security tab → "Report a vulnerability").
+Report it privately through GitHub: [open a private vulnerability report](https://github.com/czaydev/better-payment/security/advisories/new) (Security tab → "Report a vulnerability").
 
 Please include:
 

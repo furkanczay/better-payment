@@ -35,10 +35,10 @@ const init = await payment.akbank.initThreeDSPayment({
 const result = await payment.akbank.completeThreeDSPayment(body);`;
 
 const roadmap = [
-  { name: "Garanti BBVA", href: "https://github.com/furkanczay/better-payment/issues/37" },
-  { name: "Yapı Kredi", href: "https://github.com/furkanczay/better-payment/issues/38" },
-  { name: "İş Bankası", href: "https://github.com/furkanczay/better-payment/issues/36" },
-  { name: "Ziraat Bankası", href: "https://github.com/furkanczay/better-payment/issues/36" },
+  { name: "Garanti BBVA", href: "https://github.com/czaydev/better-payment/issues/37" },
+  { name: "Yapı Kredi", href: "https://github.com/czaydev/better-payment/issues/38" },
+  { name: "İş Bankası", href: "https://github.com/czaydev/better-payment/issues/36" },
+  { name: "Ziraat Bankası", href: "https://github.com/czaydev/better-payment/issues/36" },
 ];
 
 export default function Banks({ lang, t }: { lang: Locale; t: Dictionary["banks"] }) {

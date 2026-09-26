@@ -95,11 +95,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/furkanczay/better-payment.git",
+    "url": "git+https://github.com/czaydev/better-payment.git",
     "directory": "packages/better-payment"
   },
   "bugs": {
-    "url": "https://github.com/furkanczay/better-payment/issues"
+    "url": "https://github.com/czaydev/better-payment/issues"
   },
   "homepage": "https://better-payment.czaylabs.com",
   "engines": {

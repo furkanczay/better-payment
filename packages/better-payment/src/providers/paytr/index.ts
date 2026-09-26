@@ -70,7 +70,7 @@ import type {
 } from './types';
 
 const PAYTR_PREAUTH_NOTE =
-  'PayTR pre-authorization is not implemented yet (https://github.com/furkanczay/better-payment/issues/60)';
+  'PayTR pre-authorization is not implemented yet (https://github.com/czaydev/better-payment/issues/60)';
 
 /** Fields PayTR requires for card and iFrame payments */
 const PAYTR_ORDER_RULES: PaymentValidationRules = {
@@ -731,7 +731,7 @@ export class PayTR extends PaymentProvider<PayTRConfig> {
    */
   /**
    * Pre-authorization is not implemented for PayTR yet (see
-   * https://github.com/furkanczay/better-payment/issues/60).
+   * https://github.com/czaydev/better-payment/issues/60).
    */
   async authorize(_request: PaymentRequest): Promise<PaymentResponse> {
     throw this.notSupported('Pre-authorization', PAYTR_PREAUTH_NOTE);
