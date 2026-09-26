@@ -323,11 +323,11 @@ export class YourProvider extends PaymentProvider<YourProviderConfig> {
   defineProvider(...)`); mevcut provider'lardaki gibi `withProviderDefaults` kullanın
 - `src/index.ts`: sınıf, fabrika fonksiyonu ve tip export'ları
 
-Provider ekleme adımları [Özel sağlayıcılar](https://better-payment.czaylabs.com/tr/docs/plugins/custom-providers)
+Provider ekleme adımları [Özel sağlayıcılar](https://better-payment.czaylabs.com/tr/docs/guides/custom-providers)
 sayfasında da anlatılıyor. Yeni bir özellik çekirdeğe mi yoksa bir plugin'e mi
 ait, emin değilseniz önce bir issue açın: sağlayıcıdan bağımsız davranışlar
 (yönlendirme, bildirimler, hata mesajı çevirileri) plugin olarak yazılır. Bkz.
-[Plugin yazmak](https://better-payment.czaylabs.com/tr/docs/plugins/writing-plugins).
+[Plugin yazmak](https://better-payment.czaylabs.com/tr/docs/guides/writing-plugins).
 
 ### 6. Dokümantasyon
 

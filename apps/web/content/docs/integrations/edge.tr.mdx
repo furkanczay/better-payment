@@ -60,7 +60,7 @@ Deno.serve(toFetchHandler(payment));          // Deno
 
 ## Edge ve serverless ortamlarda idempotency [#idempotency-on-edge-and-serverless]
 
-Varsayılan idempotency deposu, tekrar eden callback ve `Idempotency-Key` kayıtlarını **bellekte** tutar. Edge ve serverless platformlarda her isolate'in ya da örneğin kendi belleği vardır; bu yüzden yalnızca aynı isolate'e gelen istekleri tekilleştirir. Canlı ortamda [paylaşımlı bir depo](/docs/api/handler#duplicate-callbacks-and-idempotency-key) verin:
+Varsayılan idempotency deposu, tekrar eden callback ve `Idempotency-Key` kayıtlarını **bellekte** tutar. Edge ve serverless platformlarda her isolate'in ya da örneğin kendi belleği vardır; bu yüzden yalnızca aynı isolate'e gelen istekleri tekilleştirir. Canlı ortamda [paylaşımlı bir depo](/docs/concepts/handler#duplicate-callbacks-and-idempotency-key) verin:
 
 - **Upstash Redis** (HTTP tabanlı, her edge ortamında çalışır): `setIfAbsent` için `SET key value EX ttl NX`.
 - **Cloudflare:** Durable Objects ya da D1 (`INSERT ... ON CONFLICT DO NOTHING`). Workers KV nihai tutarlıdır (eventually consistent) ve atomik `setIfAbsent`'i sağlayamaz.

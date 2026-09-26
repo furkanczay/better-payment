@@ -48,7 +48,7 @@ const init = await payment.paytr.initThreeDSPayment({
 `callbackUrl` ödeme sonucunu **taşımaz**. PayTR sonucu, PayTR mağaza panelinde tanımlı **bildirim URL'sine** sunucudan sunucuya gönderir.
 
 1. Bildirim URL'sini `https://yoursite.com/api/pay/paytr/callback` olarak ayarlayın.
-2. [HTTP handler](/docs/api/handler) ile bildirim doğrulanır, `onCallback`'e iletilir ve düz metin `OK` ile yanıtlanır:
+2. [HTTP handler](/docs/concepts/handler) ile bildirim doğrulanır, `onCallback`'e iletilir ve düz metin `OK` ile yanıtlanır:
 
 ```typescript
 handler: {

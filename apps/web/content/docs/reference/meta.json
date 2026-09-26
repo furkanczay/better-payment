@@ -1,0 +1,9 @@
+{
+  "title": "Reference",
+  "pages": [
+    "types",
+    "error-codes",
+    "changelog",
+    "external:[Contributing](https://github.com/furkanczay/better-payment/blob/main/CONTRIBUTING.md)"
+  ]
+}

@@ -18,10 +18,10 @@ Plugin'ler ve tipli ödeme olayları. **Geriye uyumsuz:** `new BetterPayment()` 
 
 ### Eklenenler [#added]
 
-- **[Plugin'ler](/docs/plugins):** sağlayıcı işlemleri için before/after hook'ları, tipli metotlar, handler endpoint'leri ve hata kodları. [Kendi plugin'inizi](/docs/plugins/writing-plugins) birkaç satırda yazın.
-- **[Ödeme olayları](/docs/plugins/events):** her sağlayıcı ve akış için tek bir tipli dinleyici; yalnızca doğrulanmış sonuçlar için yayınlanır.
+- **[Plugin'ler](/docs/concepts/plugins):** sağlayıcı işlemleri için before/after hook'ları, tipli metotlar, handler endpoint'leri ve hata kodları. [Kendi plugin'inizi](/docs/guides/writing-plugins) birkaç satırda yazın.
+- **[Ödeme olayları](/docs/concepts/events):** her sağlayıcı ve akış için tek bir tipli dinleyici; yalnızca doğrulanmış sonuçlar için yayınlanır.
 - **[Hata mesajları için dil desteği](/docs/plugins/localized-errors):** `better-payment/plugins` altındaki ilk resmi plugin. Müşteriye yönelik İngilizce ve Türkçe mesajlar.
-- `defineProvider()` ile **[özel sağlayıcılar](/docs/plugins/custom-providers)** ve imzalama için WebCrypto yardımcıları.
+- `defineProvider()` ile **[özel sağlayıcılar](/docs/guides/custom-providers)** ve imzalama için WebCrypto yardımcıları.
 
 ## 0.4.0
 
@@ -29,7 +29,7 @@ Sandbox olmadan test ve tek satırlık framework entegrasyonu. Mevcut 0.3.0 kodu
 
 ### Eklenenler [#added-1]
 
-- **[`better-payment/testing`](/docs/guides/testing):** uygulama testleri için kimlik bilgisi ve ağ erişimi gerektirmeyen, bellek içi bir sağlayıcı olan `MockProvider`. Sihirli kart numaraları retleri, 3D Secure hatalarını, kaybolan yanıtları ve başarısız iadeleri kapsar; 3D Secure callback'leri gerçek handler'dan geçer.
+- **[`better-payment/testing`](/docs/concepts/testing):** uygulama testleri için kimlik bilgisi ve ağ erişimi gerektirmeyen, bellek içi bir sağlayıcı olan `MockProvider`. Sihirli kart numaraları retleri, 3D Secure hatalarını, kaybolan yanıtları ve başarısız iadeleri kapsar; 3D Secure callback'leri gerçek handler'dan geçer.
 - **[Framework adapter'ları](/docs/integrations/frameworks):** `better-payment/next`, `better-payment/express`, `better-payment/fastify` ve `better-payment/hono` handler'ı tek satırda bağlar; `toFetchHandler` Workers, Deno ve Bun'u kapsar.
 - Dokümantasyon artık Türkçe de okunabiliyor.
 
@@ -44,7 +44,7 @@ Edge ortamları ve sıfır runtime bağımlılığı. Uygulama kodu değişmeden
 ### Eklenenler [#added-2]
 
 - **[Edge ortamı desteği](/docs/integrations/edge):** aynı paket Node.js 20+, Vercel Edge, Cloudflare Workers, Deno ve Bun'da çalışır. Yalnızca `fetch` ve WebCrypto kullanır.
-- Özel bir fetch uygulaması (proxy, test stub'ları) için **[`fetch` seçeneği](/docs/configuration#custom-fetch)**.
+- Özel bir fetch uygulaması (proxy, test stub'ları) için **[`fetch` seçeneği](/docs/concepts/configuration#custom-fetch)**.
 - Özel sağlayıcılar için `HttpClient` ve `HttpError` dışa açıldı.
 
 ### Değişenler [#changed-1]
@@ -58,9 +58,9 @@ Edge ortamları ve sıfır runtime bağımlılığı. Uygulama kodu değişmeden
 
 ### Eklenenler [#added-3]
 
-- **[Ön provizyon](/docs/guides/pre-authorization):** `authorize()` / `initThreeDSAuthorize()` tutarı bloke eder, `capture()` tahsil eder (kısmi capture desteklenir) ve `voidAuthorization()` serbest bırakır. iyzico, Parampos ve Akbank; PayTR henüz desteklenmiyor.
-- **[Kayıtlı kartlar](/docs/guides/stored-cards):** ödeme sırasında `saveCard` ile kartı kaydedin, sonra `storedCard: { customerToken, cardToken }` ile ödeme alın ve kartları `saveCard()`, `listCards()` ve `deleteCard()` ile yönetin. iyzico ve PayTR; Parampos ve Akbank henüz desteklenmiyor.
-- İkisi için [handler route'ları](/docs/api/handler#routes) ve tarayıcı client metotları. Capture, void ve kart route'ları bir `authorize` hook'u gerektirir.
+- **[Ön provizyon](/docs/payments/pre-authorization):** `authorize()` / `initThreeDSAuthorize()` tutarı bloke eder, `capture()` tahsil eder (kısmi capture desteklenir) ve `voidAuthorization()` serbest bırakır. iyzico, Parampos ve Akbank; PayTR henüz desteklenmiyor.
+- **[Kayıtlı kartlar](/docs/payments/stored-cards):** ödeme sırasında `saveCard` ile kartı kaydedin, sonra `storedCard: { customerToken, cardToken }` ile ödeme alın ve kartları `saveCard()`, `listCards()` ve `deleteCard()` ile yönetin. iyzico ve PayTR; Parampos ve Akbank henüz desteklenmiyor.
+- İkisi için [handler route'ları](/docs/concepts/handler#routes) ve tarayıcı client metotları. Capture, void ve kart route'ları bir `authorize` hook'u gerektirir.
 
 ### Değişenler [#changed-2]
 
@@ -73,10 +73,10 @@ Sıfırlamadan sonraki ilk özellik sürümü. Mevcut 0.0.1 kodu çalışmaya de
 
 ### Eklenenler [#added-4]
 
-- **[Birleşik hata kodları](/docs/api/error-codes):** her başarısız sonuç bir `code` taşır (`INSUFFICIENT_FUNDS`, `CARD_DECLINED`, `THREEDS_FAILED`, `INVALID_HASH`, ...). `errorCode` sağlayıcının ham kodunu korur.
-- Sağlayıcı çağrılmadan önce **[istek doğrulama](/docs/configuration#request-validation)**. Geçersiz istekler tüm geçersiz alanları listeleyerek `code: 'INVALID_REQUEST'` döner. `validate: false` ile kapatılabilir.
+- **[Birleşik hata kodları](/docs/reference/error-codes):** her başarısız sonuç bir `code` taşır (`INSUFFICIENT_FUNDS`, `CARD_DECLINED`, `THREEDS_FAILED`, `INVALID_HASH`, ...). `errorCode` sağlayıcının ham kodunu korur.
+- Sağlayıcı çağrılmadan önce **[istek doğrulama](/docs/concepts/configuration#request-validation)**. Geçersiz istekler tüm geçersiz alanları listeleyerek `code: 'INVALID_REQUEST'` döner. `validate: false` ile kapatılabilir.
 - **[Parampos taksitleri](/docs/providers/parampos#installments):** `installmentInfo()`, `calculatePaidPrice()` ve `getInstallmentRates()` Param oranlarınızı kullanır.
-- **[Tekrar eden callback'ler bir kez işlenir](/docs/api/handler#duplicate-callbacks-and-idempotency-key)**; veri değiştiren handler route'ları `Idempotency-Key` başlığını kabul eder. `IdempotencyStore` varsayılan olarak bellek içidir; birden çok örnekle Redis ya da bir veritabanı kullanın.
+- **[Tekrar eden callback'ler bir kez işlenir](/docs/concepts/handler#duplicate-callbacks-and-idempotency-key)**; veri değiştiren handler route'ları `Idempotency-Key` başlığını kabul eder. `IdempotencyStore` varsayılan olarak bellek içidir; birden çok örnekle Redis ya da bir veritabanı kullanın.
 - `PaymentErrorCode` ve `PaymentStatus`, `better-payment/client`'tan dışa açılır.
 
 ### Değişenler [#changed-3]

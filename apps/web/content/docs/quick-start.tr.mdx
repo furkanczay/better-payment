@@ -102,7 +102,7 @@ if (result.status === 'success') {
 }
 ```
 
-Kütüphane callback'i sizin kimlik bilgilerinizle kontrol eder ve sağlayıcı gerektiriyorsa ödemeyi tamamlar. Sahte ya da başarısız bir callback her zaman `failure` döner. [HTTP handler](/docs/api/handler) bunu sizin için yapar.
+Kütüphane callback'i sizin kimlik bilgilerinizle kontrol eder ve sağlayıcı gerektiriyorsa ödemeyi tamamlar. Sahte ya da başarısız bir callback her zaman `failure` döner. [HTTP handler](/docs/concepts/handler) bunu sizin için yapar.
 
 ## 5. Sonuçları işleyin [#5-handle-results]
 
@@ -135,7 +135,7 @@ await payment.use('paytr').getPayment('ORDER123');
 
 ## Siparişleri olaylarla güncelleyin [#update-orders-with-events]
 
-Her sonucu tek tek kontrol etmek yerine [ödeme olaylarını](/docs/plugins/events) dinleyin. Olaylar her sağlayıcı ve akış için, sonuç sağlayıcı tarafından doğrulandıktan sonra yayınlanır:
+Her sonucu tek tek kontrol etmek yerine [ödeme olaylarını](/docs/concepts/events) dinleyin. Olaylar her sağlayıcı ve akış için, sonuç sağlayıcı tarafından doğrulandıktan sonra yayınlanır:
 
 ```typescript
 payment.on('payment.succeeded', async (event) => {

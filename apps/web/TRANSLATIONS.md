@@ -15,7 +15,7 @@ The website and docs are available in English (default, `/docs/...`) and Turkish
 
 1. **Translate prose only.** Code blocks are shared: keep them byte-for-byte identical to the English page, including comments.
 2. **Keep the structure.** Same headings (same levels, same order), same tables and callouts. Every Turkish heading keeps the English heading's id: `## Taksit [#installments]`. Run `node scripts/check-translations.mjs --fix` to add the ids.
-3. **Links** to other docs pages are written without a locale (`/docs/guides/testing`); they are localized automatically.
+3. **Links** to other docs pages are written without a locale (`/docs/concepts/testing`); they are localized automatically.
 4. **Frontmatter** values must not contain a second `: `. Use `—` or quote the value.
 5. When you change an English page, update its Turkish page in the same PR (and vice versa). A page without a translation falls back to the other language with a notice, but CI rejects it.
 

@@ -3,7 +3,7 @@ title: Plugin'ler
 description: better-payment'e plugin'lerle özellik ekleyin — ödeme olayları, sağlayıcı yönlendirme ve kendi mantığınız.
 ---
 
-Plugin, kütüphaneyi değiştirmeden ödeme nesnesine davranış ekler. Ödeme olaylarına tepki verebilir, sağlayıcı işlemlerinden önce ve sonra kod çalıştırabilir, ödeme nesnesine metot ve HTTP handler'a adres ekleyebilir. Plugin'ler düz nesnelerdir; bu yüzden bir plugin çoğu zaman birkaç satıra sığar ve [kendi plugin'inizi yazabilirsiniz](/docs/plugins/writing-plugins).
+Plugin, kütüphaneyi değiştirmeden ödeme nesnesine davranış ekler. Ödeme olaylarına tepki verebilir, sağlayıcı işlemlerinden önce ve sonra kod çalıştırabilir, ödeme nesnesine metot ve HTTP handler'a adres ekleyebilir. Plugin'ler düz nesnelerdir; bu yüzden bir plugin çoğu zaman birkaç satıra sığar ve [kendi plugin'inizi yazabilirsiniz](/docs/guides/writing-plugins).
 
 ## Plugin kullanmak [#using-plugins]
 
@@ -26,7 +26,7 @@ Plugin'ler `plugins` dizisindeki sırayla çalışır. Hook'ları, olay dinleyic
 
 | Parça | Ne yapar | Örnek |
 | ----- | -------- | ----- |
-| `events` | [Ödeme olaylarını](/docs/plugins/events) dinler | Siparişleri güncellemek, e-posta göndermek, denetim kaydı tutmak |
+| `events` | [Ödeme olaylarını](/docs/concepts/events) dinler | Siparişleri güncellemek, e-posta göndermek, denetim kaydı tutmak |
 | `hooks.before` | İşlemden önce çalışır. Sağlayıcıyı seçebilir, isteği değiştirebilir ya da sağlayıcıyı çağırmadan bir sonuç döndürebilir | Ödemeleri en ucuz sağlayıcıya göndermek, bir kartı engellemek, sipariş numarası eklemek |
 | `hooks.after` | İşlemden sonra çalışır ve sonucu değiştirebilir | Hata mesajlarını çevirmek |
 | `init` | İlk işlemden önce bir kez çalışır | Komisyon tablolarını yüklemek, önbelleği ısıtmak |
@@ -56,4 +56,4 @@ Resmi plugin'ler paketle birlikte, `better-payment/plugins` altında gelir:
 | ------ | -------- |
 | [`localizedErrors`](/docs/plugins/localized-errors) | Müşteriler için, kendi dillerinde hata mesajları (İngilizce ve Türkçe dahil) |
 
-Planlanan: her ödemeyi en ucuz sağlayıcıya gönderen bir komisyon yönlendirici ([#51](https://github.com/furkanczay/better-payment/issues/51)). Başka bir şeye mi ihtiyacınız var? [Kendi plugin'inizi yazın](/docs/plugins/writing-plugins); birkaç satır yeterli.
+Planlanan: her ödemeyi en ucuz sağlayıcıya gönderen bir komisyon yönlendirici ([#51](https://github.com/furkanczay/better-payment/issues/51)). Başka bir şeye mi ihtiyacınız var? [Kendi plugin'inizi yazın](/docs/guides/writing-plugins); birkaç satır yeterli.

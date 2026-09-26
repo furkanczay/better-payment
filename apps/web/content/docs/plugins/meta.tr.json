@@ -1,10 +1,6 @@
 {
   "title": "Plugin'ler",
   "pages": [
-    "index",
-    "localized-errors",
-    "events",
-    "writing-plugins",
-    "custom-providers"
+    "localized-errors"
   ]
 }
